@@ -1,0 +1,28 @@
+import { notFound } from "next/navigation";
+import { MutationForm } from "../components/MutationForm";
+import { OperatorShell, TenantRequired } from "../components/OperatorShell";
+import { DetailGrid, RecordList, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
+import { dateTime, shortId } from "../lib/format";
+import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+
+const priceMutation = `mutation Price($selectionId:ID!,$decimalOdds:String!,$line:String,$sequence:String!,$externalId:String!){ingestSandboxPrice(selectionId:$selectionId,decimalOdds:$decimalOdds,line:$line,sequence:$sequence,externalId:$externalId)}`;
+const stateMutation = `mutation MarketState($marketId:ID!,$status:String!,$reason:String!,$expectedVersion:Int!,$expectedStatus:String!){setMarketStatus(marketId:$marketId,status:$status,reason:$reason,expectedVersion:$expectedVersion,expectedStatus:$expectedStatus)}`;
+
+export async function TradingDetailScreen({ marketId }: { marketId: string }) {
+  const operator = await getOperatorContext("canTrade");
+  if (!operator) return <OperatorShell active="Trading" detail eyebrow="Trading detail" title="Market detail" description="Market status, prices and history."><TenantRequired /></OperatorShell>;
+  const market = await prisma.market.findFirst({ where: { id: marketId, tenantId: operator.tenantId }, include: { event: true, from_Selection_market: { include: { from_PriceSnapshot_selection: { orderBy: { receivedAt: "desc" }, take: 10 } } } } });
+  if (!market) notFound();
+  const changes = await prisma.tradingStatusChange.findMany({ where: { tenantId: operator.tenantId, scopeType: "MARKET", scopeId: market.id }, orderBy: { effectiveAt: "desc" }, take: 20 });
+  const canTrade = operator.capabilities.canTrade;
+  return <OperatorShell active="Trading" detail eyebrow="Trading detail" title={market.event?.name || market.definitionKey} description="Prices, status changes and their history for this market." tenantName={operator.tenantName}>
+    <DetailGrid items={[{ label: "Market", value: market.definitionKey }, { label: "Market ID", value: market.id }, { label: "Event state", value: <StatusBadge value={market.event?.status} /> }, { label: "Trading state", value: <StatusBadge value={market.status} /> }, { label: "Version", value: market.version ?? 1 }, { label: "Selections", value: market.from_Selection_market.length }]} />
+    <RecordList title="Selection prices" description="Up to ten newest snapshots are retained per selection in this detail view." columns={["Selection", "Price", "Sequence", "Received"]} rows={market.from_Selection_market.flatMap((selection: any) => selection.from_PriceSnapshot_selection.map((price: any) => ({ id: price.id, cells: [selection.label, price.decimalOdds, price.sequence, dateTime(price.receivedAt)] })))} emptyTitle="No price snapshots" emptyDescription="Enter the first price for this market below." />
+    <div className="grid gap-4 xl:grid-cols-2">
+      <MutationForm title="Enter price snapshot" description="Use the sandbox adapter boundary to append a price with external provenance." mutation={priceMutation} fields={[{ name: "selectionId", label: "Selection", type: "select", options: market.from_Selection_market.map((selection: any) => ({ label: `${selection.label} (${shortId(selection.id)})`, value: selection.id })) }, { name: "decimalOdds", label: "Decimal odds", defaultValue: "2.00" }, {name:'line',label:'Line / points',defaultValue:'',required:false,help:'Required for spread/total teasers; immutable with the snapshot.'}, { name: "sequence", label: "Provider sequence", placeholder: "provider sequence or monotonic reference" }, { name: "externalId", label: "External message ID", placeholder: `operator:${market.id}:unique-reference` }]} submitLabel="Append price" successMessage="Price snapshot appended." disabledReason={canTrade ? undefined : "Your role does not include trading capability."} />
+      <MutationForm title="Change trading state" description="Suspend, close, or reopen this market with an operator reason." mutation={stateMutation} fields={[{ name: "marketId", label: "Market", type: "hidden", defaultValue: market.id }, { name: "expectedVersion", label: "Reviewed version", type: "hidden", defaultValue: market.version ?? 1, transform: "int" }, { name: "expectedStatus", label: "Reviewed state", type: "hidden", defaultValue: market.status }, { name: "status", label: "New state", type: "select", defaultValue: market.status === "OPEN" ? "SUSPENDED" : "OPEN", options: [{ label: "Open", value: "OPEN" }, { label: "Suspended", value: "SUSPENDED" }, { label: "Closed", value: "CLOSED" }] }, { name: "reason", label: "Reason", placeholder: "Price feed gap, event delay, or reviewed reopen" }]} submitLabel="Apply state change" successMessage="Market state changed and recorded." disabledReason={canTrade ? undefined : "Your role does not include trading capability."} />
+    </div>
+    <RecordList title="Status history" description="Actor-attributed transitions, newest first." columns={["Transition", "Reason", "Source", "Effective"]} rows={changes.map((change: any) => ({ id: change.id, cells: [`${change.fromStatus} → ${change.toStatus}`, change.reason, `${change.source} · ${shortId(change.actorId || "system")}`, dateTime(change.effectiveAt)] }))} emptyTitle="No state transitions" emptyDescription="This market hasn’t been suspended, closed or reopened." />
+    <WorkflowNote title="Price freshness is explicit" tone="warning">A market can be open with no current price. Operators should suspend when provenance or freshness is uncertain.</WorkflowNote>
+  </OperatorShell>;
+}

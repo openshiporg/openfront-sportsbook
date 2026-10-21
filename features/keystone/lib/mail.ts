@@ -1,5 +1,3 @@
-'use server' 
-
 import { createTransport, getTestMessageUrl } from "nodemailer";
 
 // Utility function to get base URL for emails
@@ -8,19 +6,19 @@ function getBaseUrlForEmails(): string {
     return process.env.SMTP_STORE_LINK;
   }
   
-  // Fallback warning - this should be set in production
-  console.warn('SMTP_STORE_LINK not set. Please add SMTP_STORE_LINK to your environment variables for email links to work properly.');
-  return '';
+  if(process.env.NODE_ENV==='production')throw new Error('SMTP_STORE_LINK is required')
+  return 'http://localhost:3000';
 }
 
 const transport = createTransport({
-  // @ts-ignore
   host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
+  port: Number(process.env.SMTP_PORT??587),
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASSWORD,
   },
+  disableFileAccess:true,
+  disableUrlAccess:true,
 });
 
 function passwordResetEmail({ url }: { url: string }): string {
@@ -58,6 +56,19 @@ function passwordResetEmail({ url }: { url: string }): string {
   `;
 }
 
+/** Customer (storefront) account recovery: the token travels only to the account's mailbox, never back to the requester. */
+export async function sendCustomerRecoveryEmail(recoveryToken: string, to: string): Promise<void> {
+  const frontendUrl = getBaseUrlForEmails();
+  await transport.sendMail({
+    to,
+    from: process.env.SMTP_FROM,
+    subject: "Recover your sportsbook account",
+    html: passwordResetEmail({
+      url: `${frontendUrl}/account/auth?recovery=${encodeURIComponent(recoveryToken)}`,
+    }),
+  });
+}
+
 export async function sendPasswordResetEmail(resetToken: string, to: string, baseUrl?: string): Promise<void> {
   // Use provided baseUrl or fall back to utility function
   const frontendUrl = baseUrl || getBaseUrlForEmails();
@@ -71,7 +82,7 @@ export async function sendPasswordResetEmail(resetToken: string, to: string, bas
       url: `${frontendUrl}/dashboard/reset?token=${resetToken}`,
     }),
   });
-  if (process.env.MAIL_USER?.includes("ethereal.email")) {
+  if (process.env.SMTP_USER?.includes("ethereal.email")) {
     console.log(`📧 Message Sent!  Preview it at ${getTestMessageUrl(info as any)}`);
   }
 }

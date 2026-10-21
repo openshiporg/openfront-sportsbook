@@ -1,0 +1,37 @@
+import { MutationForm } from "../components/MutationForm";
+import { OperatorShell, TenantRequired } from "../components/OperatorShell";
+import { MetricGrid, RecordList, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
+import { dateTime, jsonText, shortId } from "../lib/format";
+import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { loadConfigValues } from "../configuration/effectiveConfig";
+import { getStoreSettings } from "../store-settings/actions";
+import { StoreSettingsPageClient } from "../store-settings/screens/StoreSettingsPageClient";
+
+const requestMutation = `mutation RequestSetting($key:String!,$value:String!,$reason:String!){requestSettingChange(key:$key,value:$value,reason:$reason)}`;
+const applyMutation = `mutation ApplySetting($approvalId:ID!,$key:String!,$value:String!){applyApprovedSetting(approvalId:$approvalId,key:$key,value:$value)}`;
+const proposal = (action: string) => { const [, key = "Unknown", encoded = ""] = action.split(":"); let value = ""; try { value = Buffer.from(encoded, "base64url").toString(); } catch {} return { key, value }; };
+
+export async function SettingsScreen() {
+  const operator = await getOperatorContext("canManageSportsbook");
+  if (!operator) return <OperatorShell active="Settings" eyebrow="Operator configuration" title="Settings" description="Storefront branding, policy settings and jurisdiction status."><TenantRequired /></OperatorShell>;
+  const [settings, jurisdictions, approvals, definitions] = await Promise.all([
+    loadConfigValues(prisma, operator.tenantId),
+    prisma.operatorJurisdiction.findMany({ where: { tenantId: operator.tenantId }, include: { jurisdiction: true } }),
+    prisma.approvalRequest.findMany({ where: { tenantId: operator.tenantId, action: { startsWith: "SETTING_CHANGE:" } }, orderBy: { createdAt: "desc" }, take: 100 }),
+    prisma.configDefinition.findMany({ where: { tenantId: operator.tenantId, secret: false }, orderBy: { key: "asc" } }),
+  ]);
+  const current = settings.effective;
+  // Only declared, tenant-scoped, non-secret definitions can be changed; the API re-validates type and scope.
+  const changeable = definitions.filter((definition: any) => Array.isArray(definition.allowedScopes) && definition.allowedScopes.includes("TENANT"));
+  const applicable = approvals.filter((approval: any) => approval.status === "APPROVED" && !approval.consumedAt && approval.expiresAt && new Date(approval.expiresAt) > new Date());
+  const storefront = await getStoreSettings();
+  return <OperatorShell active="Settings" eyebrow="Operator configuration" title="Settings" description="Storefront branding, policy settings and jurisdiction status." tenantName={operator.tenantName}>
+    <MetricGrid items={[{ label: "Current settings", value: current.length, detail: "No effective end" }, { label: "Other versions", value: settings.scheduled.length + settings.history.length, detail: "Scheduled, ended or superseded" }, { label: "Jurisdictions", value: jurisdictions.length, detail: "Operator assignments" }, { label: "Pending approvals", value: approvals.filter((item: any) => item.status === "PENDING").length, detail: "Setting changes only" }]} />
+    <RecordList title="Current configuration" description="Values in force now, newest version per scope and key." columns={["Key", "Value", "Policy", "Effective"]} rows={current.map((setting: any) => ({ id: setting.id, cells: [setting.key, <code key="value" className="text-xs whitespace-pre-wrap">{jsonText(setting.value).slice(0, 180)}</code>, `${setting.policyVersion} · ${setting.valueType}`, dateTime(setting.effectiveFrom)] }))} emptyTitle="No current settings" emptyDescription="Complete onboarding or apply an independently approved setting change." />
+    <RecordList title="Jurisdiction gates" description="Pending or sandbox states remain visible and are never presented as licensed." columns={["Jurisdiction", "Authority", "License reference", "State"]} rows={jurisdictions.map((item: any) => ({ id: item.id, cells: [item.jurisdiction?.code || shortId(item.jurisdictionId || "Unknown"), item.jurisdiction?.authority || "Unconfigured", `${item.licenseReference} · ${item.policyVersion}`, <StatusBadge key="state" value={item.status} />] }))} emptyTitle="No jurisdiction assignment" emptyDescription="Add a jurisdiction before going live." />
+    <section id="storefront-branding" className="space-y-4"><div><h2 className="font-semibold">Storefront branding</h2><p className="mt-1 text-sm text-muted-foreground">Logo and brand color shown in the customer storefront header and home banner.</p></div><StoreSettingsPageClient initialData={storefront.success ? storefront.data : null} initialError={storefront.success ? null : storefront.error} /></section>
+    <MutationForm title="Request setting change" description="Hashes the exact key and raw value. Another authorized user must approve it before the same values can be applied." mutation={requestMutation} fields={[{ name: "key", label: "Setting", type: "select", options: changeable.map((definition: any) => ({ label: `${definition.key} · ${definition.valueType} · ${definition.description}`, value: definition.key })) }, { name: "value", label: "Value", type: "textarea", placeholder: "MONEY: minor units such as 100000 · INTEGER: whole number · BOOLEAN: true or false · JSON: object or array" }, { name: "reason", label: "Change reason", type: "textarea", placeholder: "Policy reference and operational rationale" }]} submitLabel="Request dual approval" successMessage="Setting change approval requested." disabledReason={operator.capabilities.canManageSportsbook ? undefined : "Your role does not include sportsbook settings capability."} />
+    <RecordList title="Setting approvals" description="Requester and approver identities are retained with the exact-value hash." columns={["Approval", "Key", "Actors", "State"]} rows={approvals.map((approval: any) => ({ id: approval.id, cells: [shortId(approval.id), proposal(approval.action).key, `requester ${shortId(approval.requesterId)}${approval.approverId ? ` · approver ${shortId(approval.approverId)}` : ""}`, <StatusBadge key="state" value={approval.status} />] }))} emptyTitle="No setting approvals" emptyDescription="No setting change has been proposed." />
+    <section className="space-y-4"><div><h2 className="font-semibold">Apply approved setting</h2><p className="mt-1 text-sm text-muted-foreground">Enter the exact raw value that was approved; a hash mismatch is rejected.</p></div>{applicable.length === 0 ? <WorkflowNote title="No approved setting to apply">An independent approver must decide the request in Approvals. Each approval applies once and expires if unused.</WorkflowNote> : applicable.map((approval: any) => { const item = proposal(approval.action); return <MutationForm key={approval.id} compact title={`${item.key} · ${shortId(approval.id)}`} description={`Expires ${dateTime(approval.expiresAt)}. The approver can't apply their own decision.`} mutation={applyMutation} fields={[{ name: "approvalId", label: "Approval", type: "hidden", defaultValue: approval.id }, { name: "key", label: "Key", type: "hidden", defaultValue: item.key }, { name: "value", label: "Exact approved value", type: "textarea", defaultValue: item.value }]} submitLabel="Apply approved version" successMessage="Approved setting version applied." disabledReason={operator.capabilities.canManageSportsbook ? undefined : "Your role does not include sportsbook settings capability."} />; })}</section>
+  </OperatorShell>;
+}

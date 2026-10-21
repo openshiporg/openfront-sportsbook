@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "operator": {
+    "slug": "openfront-sandbox",
+    "operatorName": "Openfront Sandbox Operator",
+    "brandName": "Openfront Sportsbook",
+    "domain": "sportsbook.local",
+    "currency": "USD",
+    "currencyExponent": 2,
+    "jurisdictionCode": "SANDBOX",
+    "timezone": "UTC"
+  },
+  "dependencyOrder": [
+    "OPERATOR",
+    "BRAND",
+    "POLICY",
+    "PROVIDERS",
+    "CATALOG",
+    "LICENSING",
+    "CERTIFICATION"
+  ],
+  "externalGates": ["LICENSING", "CERTIFICATION"]
+}

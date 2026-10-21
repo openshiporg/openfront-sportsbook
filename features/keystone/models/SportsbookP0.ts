@@ -1,0 +1,56 @@
+import { list as keystoneList } from '@keystone-6/core'
+import { denyAll } from '@keystone-6/core/access'
+import { integer, json, relationship, select, text, timestamp } from '@keystone-6/core/fields'
+import { currentCapability, currentTenantScope } from '../access'
+import { trackingFields } from './trackingFields'
+const list=(config:any)=>keystoneList({...config,ui:{hideNavigation:true,hideCreate:true,hideDelete:true,...config.ui},graphql:{...config.graphql,maxTake:100}})
+const t=()=>text({validation:{isRequired:true}}); const rel=(ref:string)=>relationship({ref}); const tenant=()=>relationship({ref:'Tenant',access:{create:denyAll,update:denyAll}}); const st=(v:string[])=>select({type:'enum',options:v.map(value=>({label:value,value})),defaultValue:v[0]}); const scopedAccess=(capability:string)=>({operation:{query:currentCapability(capability),create:denyAll,update:denyAll,delete:denyAll},filter:{query:currentTenantScope}})
+const immutable=scopedAccess('canManageSportsbook')
+const f=(fields:Record<string,any>,access:any=immutable)=>list({access,fields:{tenant:tenant(),...fields,...trackingFields}})
+
+export const Team=f({name:t(),status:st(['ACTIVE','INACTIVE']),members:relationship({ref:'User',many:true})},scopedAccess('canManageRoles'))
+export const RoleGrant=f({user:rel('User'),role:rel('Role'),team:rel('Team'),scope:json(),effectiveFrom:timestamp(),effectiveTo:timestamp(),status:st(['ACTIVE','REVOKED'])},scopedAccess('canManageRoles'))
+export const ApprovalRequest=f({action:t(),payloadHash:t(),requesterId:t(),approverId:text(),status:st(['PENDING','APPROVED','REJECTED','EXPIRED']),reason:text(),decidedAt:timestamp(),requestPayload:json(),expiresAt:timestamp(),consumedAt:timestamp(),consumedById:text(),consumedKey:text()},scopedAccess('canManageRoles'))
+export const ConfigValue=f({key:t(),value:json(),valueType:t(),scopeType:t(),scopeId:text(),policyVersion:t(),effectiveFrom:timestamp(),effectiveTo:timestamp()},scopedAccess('canManageSportsbook'))
+export const PlayerIdentity=f({player:rel('Player'),encryptedPayload:t(),tokenizedIdentifiers:json(),encryptionKeyRef:t(),classification:st(['RESTRICTED_PII'])},scopedAccess('canManageCompliance'))
+export const VerificationCase=f({player:rel('Player'),providerConnection:rel('ProviderConnection'),type:st(['KYC','AGE','ADDRESS']),status:st(['PENDING','APPROVED','REJECTED','EXPIRED']),evidenceReference:text(),expiresAt:timestamp()},scopedAccess('canManageCompliance'))
+export const VerificationCheck=f({verificationCase:rel('VerificationCase'),attempt:integer(),decision:st(['PENDING','PASS','FAIL','REVIEW']),reasonCode:text(),rawEnvelope:rel('RawEnvelope')},scopedAccess('canManageCompliance'))
+export const AMLCase=f({player:rel('Player'),status:st(['OPEN','REVIEW','CLOSED']),riskBand:st(['LOW','MEDIUM','HIGH']),restrictedEvidence:json(),ownerId:text()},scopedAccess('canManageCompliance'))
+export const GeoSession=f({player:rel('Player'),sessionKey:t(),status:st(['ACTIVE','EXPIRED','REVOKED']),expiresAt:timestamp()},scopedAccess('canManageCompliance'))
+export const GeoCheck=f({geoSession:rel('GeoSession'),providerConnection:rel('ProviderConnection'),decision:st(['ALLOW','DENY','UNKNOWN']),reasonCode:text(),coarseEvidence:json(),checkedAt:timestamp()},scopedAccess('canManageCompliance'))
+export const AccountRestriction=f({player:rel('Player'),capability:t(),reasonCode:t(),startsAt:timestamp(),endsAt:timestamp(),status:st(['ACTIVE','EXPIRED','REVOKED'])},scopedAccess('canManageCompliance'))
+export const Consent=f({player:rel('Player'),type:t(),policyVersion:t(),givenAt:timestamp(),withdrawnAt:timestamp(),evidenceHash:t()},scopedAccess('canManageCompliance'))
+
+export const Competitor=f({key:t(),name:t(),status:st(['ACTIVE','INACTIVE'])},scopedAccess('canTrade'))
+export const EventParticipant=f({event:rel('Event'),competitor:rel('Competitor'),role:t(),sortOrder:integer()},scopedAccess('canTrade'))
+export const ProviderEntityMapping=f({providerConnection:rel('ProviderConnection'),entityType:t(),externalId:t(),canonicalType:t(),canonicalId:t(),confidence:text(),status:st(['PENDING','APPROVED','REJECTED'])},scopedAccess('canTrade'))
+export const TradingStatusChange=f({scopeType:t(),scopeId:t(),fromStatus:t(),toStatus:t(),reason:t(),source:t(),actorId:text(),effectiveAt:timestamp()},scopedAccess('canTrade'))
+export const LimitProfile=f({name:t(),version:integer(),status:st(['DRAFT','ACTIVE','RETIRED']),effectiveFrom:timestamp(),effectiveTo:timestamp()},scopedAccess('canManageRisk'))
+export const LimitRule=f({profile:rel('LimitProfile'),scopeType:t(),scopeId:text(),maxStakeMinor:text(),maxPayoutMinor:text(),maxLiabilityMinor:text(),currency:t(),priority:integer()},scopedAccess('canManageRisk'))
+export const ExposurePosition=f({scopeType:t(),scopeId:t(),currency:t(),stakeMinor:t(),liabilityMinor:t(),version:integer(),asOf:timestamp()},scopedAccess('canManageRisk'))
+
+export const BetSlip=f({player:rel('Player'),currency:t(),status:st(['OPEN','QUOTED','EXPIRED','ACCEPTED']),expiresAt:timestamp(),version:integer()},scopedAccess('canManageRisk'))
+export const BetSlipItem=f({betSlip:rel('BetSlip'),selection:rel('Selection'),priceSnapshot:rel('PriceSnapshot'),requestedOdds:t(),line:text()},scopedAccess('canManageRisk'))
+export const WagerStatusEvent=f({wager:rel('Wager'),fromStatus:text(),toStatus:t(),reasonCode:t(),actorId:text(),effectiveAt:timestamp()},scopedAccess('canManageRisk'))
+export const MarketGrade=f({market:rel('Market'),resultVersion:rel('ResultVersion'),ruleVersion:t(),outcome:t(),factorNumerator:text(),factorDenominator:text(),trace:json(),inputHash:t()},scopedAccess('canManageRisk'))
+export const LegGrade=f({wagerLeg:rel('WagerLeg'),marketGrade:rel('MarketGrade'),outcome:t(),factorNumerator:text(),factorDenominator:text(),inputHash:t()},scopedAccess('canManageRisk'))
+export const ResettlementCase=f({wager:rel('Wager'),oldSettlement:rel('Settlement'),newResultVersion:rel('ResultVersion'),reason:t(),approvalRequest:rel('ApprovalRequest'),status:st(['PENDING','APPROVED','COMPLETED','REJECTED'])},scopedAccess('canManageRisk'))
+export const CashOutOffer=f({wager:rel('Wager'),amountMinor:t(),currency:t(),portionNumerator:t(),portionDenominator:t(),feeMinor:text(),marginBasisPoints:integer(),valuationInputs:json(),valuationHash:t(),wagerVersion:integer(),offeredAt:timestamp(),expiresAt:timestamp(),status:st(['OPEN','ACCEPTED','EXPIRED','WITHDRAWN'])},scopedAccess('canManageRisk'))
+export const Dispute=f({player:rel('Player'),wager:rel('Wager'),category:t(),status:st(['OPEN','TRIAGED','INVESTIGATING','PROPOSED_RESOLUTION','RESOLVED','REJECTED','APPEALED']),evidence:json(),resolution:text(),approvalRequest:rel('ApprovalRequest'),resolvedAt:timestamp()},scopedAccess('canManageRisk'))
+export const DisputeEvent=f({dispute:rel('Dispute'),type:t(),actorId:t(),evidenceHash:t(),details:json()},scopedAccess('canManageRisk'))
+
+export const BalanceProjection=f({account:rel('LedgerAccount'),postedMinor:t(),pendingMinor:t(),availableMinor:t(),version:integer(),asOf:timestamp()},scopedAccess('canManageFinance'))
+export const PaymentIntent=f({player:rel('Player'),type:st(['DEPOSIT','WITHDRAWAL','REFUND','CHARGEBACK','ADJUSTMENT']),amountMinor:t(),feeMinor:text(),currency:t(),idempotencyKey:t(),status:st(['PENDING','REVIEW','PROCESSING','SUCCEEDED','FAILED','UNKNOWN','CANCELLED']),providerConnection:rel('ProviderConnection'),paymentMethodReference:text(),providerSessionReference:text(),hold:rel('Hold'),riskEvidence:json(),completedAt:timestamp()},scopedAccess('canManageFinance'))
+export const PaymentAttempt=f({paymentIntent:rel('PaymentIntent'),attempt:integer(),externalReference:text(),status:st(['PENDING','SUCCEEDED','FAILED','UNKNOWN']),rawEnvelope:rel('RawEnvelope'),reasonCode:text()},scopedAccess('canManageFinance'))
+export const ReconciliationRun=f({type:t(),windowFrom:timestamp(),windowTo:timestamp(),status:st(['PENDING','RUNNING','COMPLETED','FAILED']),inputHash:t(),differenceMinor:text()},scopedAccess('canManageFinance'))
+export const ReconciliationItem=f({run:rel('ReconciliationRun'),internalReference:t(),providerReference:text(),differenceMinor:t(),currency:t(),status:st(['MATCHED','OPEN','RESOLVED']),resolutionJournal:rel('JournalTransaction')},scopedAccess('canManageFinance'))
+export const TaxAssessment=f({wager:rel('Wager'),ruleVersion:t(),basisMinor:t(),amountMinor:t(),currency:t(),status:st(['CALCULATED','POSTED','REVERSED'])},scopedAccess('canManageFinance'))
+
+export const Incident=f({severity:st(['SEV1','SEV2','SEV3','SEV4']),title:t(),status:st(['OPEN','MITIGATING','RESOLVED']),commanderId:text(),evidence:json(),resolvedAt:timestamp()},scopedAccess('canManageIntegrations'))
+export const ComplianceReport=f({type:t(),periodStart:timestamp(),periodEnd:timestamp(),version:integer(),artifactHash:t(),artifactReference:t(),status:st(['DRAFT','APPROVED','SUBMITTED']),submittedAt:timestamp()},scopedAccess('canManageCompliance'))
+export const LegalHold=f({scopeType:t(),scopeId:t(),reason:t(),startsAt:timestamp(),endsAt:timestamp(),status:st(['ACTIVE','RELEASED']),approvalRequest:rel('ApprovalRequest')},scopedAccess('canManageCompliance'))
+export const DataCorrectionCase=f({scopeType:t(),scopeId:t(),reason:t(),dryRunHash:t(),approvalRequest:rel('ApprovalRequest'),status:st(['PENDING','APPROVED','APPLIED','REJECTED'])},scopedAccess('canManageRisk'))
+export const ApiRateBucket=f({keyHash:t(),scope:t(),windowStartedAt:timestamp(),count:integer({defaultValue:0}),expiresAt:timestamp()},scopedAccess('canManageIntegrations'))
+export const WebhookReplay=f({providerConnection:rel('ProviderConnection'),messageHash:t(),occurredAt:timestamp(),expiresAt:timestamp()},scopedAccess('canManageIntegrations'))
+export const AuditAnchor=f({chainHeadHash:t(),eventCount:integer(),anchoredAt:timestamp(),externalReference:t(),status:st(['PENDING','ANCHORED','FAILED'])},scopedAccess('canReadAudit'))
+export const OnboardingProgress=f({stage:t(),status:st(['PENDING','COMPLETE','BLOCKED']),evidenceHash:t(),completedAt:timestamp(),details:json()},scopedAccess('canManageSportsbook'))

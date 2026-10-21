@@ -112,6 +112,26 @@
   --sidebar-ring: oklch(0.552 0.016 285.938);
 }
 
+html, body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+:where(button, a, input, select, textarea, summary):focus-visible {
+  outline: 2px solid oklch(0.45 0.12 165);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
