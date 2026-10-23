@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useUnsavedChangesGuard } from "./useUnsavedChangesGuard";
+import { Pill, StatusDot, Track } from "./kit";
 
 export type MutationFieldColumn = { name: string; label: string; placeholder?: string };
 
@@ -157,7 +158,8 @@ export function MutationForm({
   requireReview = false,
 }: {
   title: string;
-  description: string;
+  /** Short scope label only (what the form acts on); never an explanation. */
+  description?: string;
   mutation: string;
   fields: MutationField[];
   submitLabel: string;
@@ -291,12 +293,12 @@ export function MutationForm({
   const href = result?.reference && resultHref ? resultHref.replace("{id}", encodeURIComponent(result.reference)) : undefined;
   const controlClass = "mt-1 block min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-normal outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive";
 
-  return <form onSubmit={submit} noValidate aria-labelledby={`${formId}-title`} className={`rounded-xl border bg-card text-card-foreground shadow-sm ${compact ? "p-4" : "p-5"}`}>
+  return <form onSubmit={submit} noValidate aria-labelledby={`${formId}-title`} className={`min-w-0 rounded-xl border bg-card text-card-foreground ${compact ? "p-4" : "p-5"}`}>
     <div className="flex flex-wrap items-start justify-between gap-2">
-      <div><h2 id={`${formId}-title`} className="font-semibold">{title}</h2><p className="mt-1 text-sm text-muted-foreground">{description}</p></div>
-      {dirty && !locked ? <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">Unsaved changes</span> : null}
+      <div className="min-w-0"><h2 id={`${formId}-title`} className="text-sm font-semibold">{status === "unknown" ? <StatusDot tone="wait" /> : status === "failed" ? <StatusDot tone="alert" /> : status === "succeeded" ? <StatusDot tone="ok" /> : disabledReason || unavailable.length > 0 ? <StatusDot tone="off" /> : null}{title}</h2>{description ? <p className="mt-0.5 text-xs text-muted-foreground">{description}</p> : null}</div>
+      {dirty && !locked ? <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"><StatusDot tone="wait" className="mr-1.5 size-1.5 align-middle" />Unsaved</span> : null}
     </div>
-    {serverChanged ? <div role="status" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100"><span>This record changed since you started editing. Review your values before submitting.</span><Button type="button" size="sm" variant="outline" onClick={() => { setDraft(baseline); setServerChanged(false); }}>Use latest values</Button></div> : null}
+    {serverChanged ? <div role="status" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100"><span><StatusDot tone="wait" />Record changed since you started editing</span><Track><Pill size="sm" onClick={() => { setDraft(baseline); setServerChanged(false); }}>Use latest values</Pill></Track></div> : null}
     <fieldset disabled={locked} className="mt-4 min-w-0 disabled:opacity-70">
       <legend className="sr-only">{title}</legend>
       <div className={`grid gap-4 ${visibleFields.length > 1 ? "md:grid-cols-2" : ""}`}>
@@ -322,7 +324,7 @@ export function MutationForm({
             const setRows = (next: Record<string, string>[]) => update(field.name, JSON.stringify(next));
             control = <div id={id} tabIndex={-1} role="group" aria-describedby={describedBy} className="mt-2 space-y-2">
               {rows.map((row, index) => <div key={index} className="flex items-end gap-2">{columns.map((column) => <label key={column.name} className="min-w-0 flex-1 text-xs font-normal text-muted-foreground">{column.label} {index + 1}<Input value={row[column.name] ?? ""} placeholder={column.placeholder} aria-invalid={invalid} onChange={(event) => setRows(rows.map((current, rowIndex) => rowIndex === index ? { ...current, [column.name]: event.target.value } : current))} className="mt-1 h-10 text-sm text-foreground" /></label>)}<Button type="button" variant="ghost" size="icon" aria-label={`Remove row ${index + 1}`} disabled={rows.length <= (field.minRows ?? 1)} onClick={() => setRows(rows.filter((_, rowIndex) => rowIndex !== index))}><Trash2 className="h-4 w-4" aria-hidden="true" /></Button></div>)}
-              <Button type="button" variant="outline" size="sm" onClick={() => setRows([...rows, Object.fromEntries(columns.map((column) => [column.name, ""]))])}><Plus className="h-4 w-4" aria-hidden="true" />Add row</Button>
+              <Track><Pill size="sm" onClick={() => setRows([...rows, Object.fromEntries(columns.map((column) => [column.name, ""]))])}><Plus aria-hidden="true" />Add row</Pill></Track>
             </div>;
           } else {
             control = <Input id={id} name={field.name} type={field.type === "number" ? "text" : field.type ?? "text"} inputMode={field.type === "number" || field.transform === "int" ? "numeric" : undefined} value={value} onChange={(event) => update(field.name, event.target.value)} placeholder={field.placeholder} aria-invalid={invalid} aria-describedby={describedBy} aria-required={isRequired(field)} autoComplete={field.type === "password" ? "new-password" : undefined} className="mt-1 h-10 text-sm font-normal" />;
@@ -336,14 +338,14 @@ export function MutationForm({
         })}
       </div>
     </fieldset>
-    {reviewing ? <div ref={reviewRef} tabIndex={-1} role="region" aria-label="Review before submitting" className="mt-4 rounded-md border bg-muted/50 p-3 text-sm outline-none"><p className="font-medium">Review before submitting</p><dl className="mt-2 grid gap-1">{visibleFields.map((field) => <div key={field.name} className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-2"><dt className="text-muted-foreground">{field.label}</dt><dd className="break-words">{displayValue(field, draft[field.name] ?? "")}</dd></div>)}</dl><div className="mt-3 flex flex-wrap gap-2"><Button type="submit" size="sm">Confirm: {submitLabel}</Button><Button type="button" size="sm" variant="outline" onClick={() => setReviewing(false)}>Back to edit</Button></div></div> : null}
-    {disabledReason ? <p className="mt-4 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{disabledReason}</p> : null}
-    {status === "unknown" || reviewing ? null : <Button type="submit" disabled={locked || Boolean(disabledReason) || unavailable.length > 0} className="mt-4">{status === "submitting" ? "Saving…" : submitLabel}</Button>}
+    {reviewing ? <div ref={reviewRef} tabIndex={-1} role="region" aria-label="Review before submitting" className="mt-4 rounded-lg bg-muted/60 p-3 text-sm outline-none"><p className="font-medium"><StatusDot tone="info" />Review</p><dl className="mt-2 grid gap-1">{visibleFields.map((field) => <div key={field.name} className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-2"><dt className="text-muted-foreground">{field.label}</dt><dd className="break-words">{displayValue(field, draft[field.name] ?? "")}</dd></div>)}</dl><div className="mt-3"><Track><Pill type="submit" size="sm" variant="primary">Confirm: {submitLabel}</Pill><Pill size="sm" onClick={() => setReviewing(false)}>Back to edit</Pill></Track></div></div> : null}
+    {disabledReason ? <p className="mt-4 text-sm text-muted-foreground"><StatusDot tone="off" />{disabledReason}</p> : null}
+    {status === "unknown" || reviewing ? null : <div className="mt-4"><Track><Pill type="submit" variant="primary" disabled={locked || Boolean(disabledReason) || unavailable.length > 0}>{status === "submitting" ? "Saving…" : submitLabel}</Pill></Track></div>}
     <div ref={statusRef} tabIndex={-1} aria-live="polite" className="mt-3 min-h-5 text-sm outline-none">
-      {status === "failed" && error ? <p role="alert" className="text-destructive">{error}</p> : null}
+      {status === "failed" && error ? <p role="alert" className="text-destructive"><StatusDot tone="alert" />{error}</p> : null}
       {status === "failed" && !error && Object.keys(fieldErrors).length ? <p role="alert" className="text-destructive">Check the highlighted fields.</p> : null}
-      {status === "unknown" ? <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100"><p className="font-medium">We couldn&apos;t confirm whether this was saved.</p><p className="mt-1 text-xs opacity-80">Your submitted values are kept and can&apos;t be changed until this is resolved. Retrying sends exactly the same request. Check the record first if you are unsure.</p><div className="mt-2 flex flex-wrap gap-2"><Button type="button" size="sm" onClick={() => pendingBody && send(pendingBody, draft)}>Retry same request</Button><Button type="button" size="sm" variant="outline" onClick={() => { setPendingBody(undefined); setStatus("idle"); router.refresh(); }}>I&apos;ve checked — edit again</Button></div></div> : null}
-      {status === "succeeded" ? <p role="status" className="text-emerald-700 dark:text-emerald-400">{successMessage}{result?.reference ? <> Reference <code className="text-xs">{result.reference}</code>.</> : null}{href ? <> <Link href={href} className="underline underline-offset-2">View record</Link></> : null}</p> : null}
+      {status === "unknown" ? <div role="alert" className="rounded-lg bg-amber-50 p-3 text-amber-950 ring-1 ring-amber-200 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100"><p className="font-medium"><StatusDot tone="wait" />Not confirmed whether this was saved</p><p className="mt-0.5 pl-4 text-xs opacity-80">Values are locked. Retry sends the same request.</p><div className="mt-2 pl-4"><Track><Pill size="sm" onClick={() => pendingBody && send(pendingBody, draft)}>Retry same request</Pill><Pill size="sm" onClick={() => { setPendingBody(undefined); setStatus("idle"); router.refresh(); }}>Checked — edit again</Pill></Track></div></div> : null}
+      {status === "succeeded" ? <p role="status" className="text-emerald-700 dark:text-emerald-400"><StatusDot tone="ok" />{successMessage}{result?.reference ? <> Reference <code className="text-xs">{result.reference}</code>.</> : null}{href ? <> <Link href={href} className="underline underline-offset-2">View record</Link></> : null}</p> : null}
     </div>
   </form>;
 }

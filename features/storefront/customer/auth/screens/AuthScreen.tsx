@@ -2,9 +2,10 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircle2, KeyRound, Loader2, ShieldCheck } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { CustomerShell } from '../../components/CustomerShell'
 import { customerApi, CustomerApiError } from '../../lib/customer-api'
+import { Notice, Pill, Track, checkClass, fieldClass, labelClass } from '../../components/kit'
 
 type Mode = 'register' | 'login' | 'recover'
 type Terms = { termsVersion: string; termsContentHash: string }
@@ -75,7 +76,7 @@ export function AuthScreen() {
         window.location.assign('/')
       } else if (!recoveryToken) {
         await customerApi<{ accepted: boolean }>('/api/sandbox/sportsbook/auth/recovery', { method: 'POST', body: JSON.stringify({ email }) })
-        setSuccess('If an account exists for that email, a recovery link has been sent to it. The link works once and expires in 15 minutes.')
+        setSuccess('If an account exists for that email, a recovery link was sent. It works once and expires in 15 minutes.')
       } else {
         await customerApi('/api/sandbox/sportsbook/auth/recovery', { method: 'PUT', body: JSON.stringify({ token: recoveryToken, password }) })
         setMode('login'); setRecoveryToken(''); setPassword(''); setSuccess('Password updated. Sign in with the new password.')
@@ -87,35 +88,31 @@ export function AuthScreen() {
     } finally { setPending(false) }
   }
 
+  const title = mode==='register' ? 'Create account' : mode==='login' ? 'Sign in' : recoveryToken ? 'New password' : 'Recover access'
   return <CustomerShell>
-    <div className="mx-auto grid min-h-[calc(100vh-9rem)] max-w-5xl items-center gap-8 px-4 py-10 lg:grid-cols-[1fr_440px]">
-      <section className="max-w-xl">
-        <p className="text-xs font-semibold uppercase tracking-[.16em] text-emerald-700">Customer account</p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">One account. Verifiable ownership.</h1>
-        <p className="mt-5 text-base leading-7 text-slate-600">Your password is stored securely and you can sign out of any session from Security. You’ll be asked to verify your identity and location before you can bet.</p>
-        <ul className="mt-7 grid gap-3 text-sm text-slate-700">
-          {['Password-manager compatible fields','Sign out of any session at any time','Recovery links go only to the account email and revoke every existing session','Your acceptance is recorded against the published terms revision'].map(item => <li key={item} className="flex items-start gap-3"><ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-emerald-700" />{item}</li>)}
-        </ul>
-      </section>
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" aria-labelledby="auth-heading">
-        <div className="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1" role="tablist" aria-label="Account access">
-          {MODES.map(([value,label]) => <button key={value} ref={element=>{tabRefs.current[value]=element}} id={`auth-tab-${value}`} type="button" role="tab" aria-selected={mode===value} aria-controls="auth-panel" tabIndex={mode===value?0:-1} disabled={pending&&mode!==value} onKeyDown={onTabKeyDown} onClick={()=>switchMode(value)} className={`min-h-10 rounded-md px-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${mode===value?'bg-white text-slate-950 shadow-sm':'text-slate-600 hover:text-slate-950'}`}>{label}</button>)}
+    <div className="mx-auto w-full max-w-md px-4 py-10 sm:py-16">
+      <section className="overflow-hidden rounded-3xl bg-sb-card shadow-[0_12px_32px_-12px_rgb(16_20_27/0.25)] ring-1 ring-sb-line" aria-labelledby="auth-heading">
+        <div className="bg-sb-night px-5 pb-5 pt-6 text-white sm:px-7">
+          <h1 id="auth-heading" className="font-sb-display text-4xl font-bold uppercase leading-none tracking-tight">{title}</h1>
+          <p className="mt-2 font-sb-mono text-xs uppercase tracking-wider text-white/50">Practice play · no real money</p>
+          <div className="mt-5 grid grid-cols-3 gap-1 rounded-full bg-black/40 p-1 shadow-[inset_0_1px_2px_rgb(0_0_0/0.6)] ring-1 ring-inset ring-white/5" role="tablist" aria-label="Account access">
+            {MODES.map(([value,label]) => <button key={value} ref={element=>{tabRefs.current[value]=element}} id={`auth-tab-${value}`} type="button" role="tab" aria-selected={mode===value} aria-controls="auth-panel" tabIndex={mode===value?0:-1} disabled={pending&&mode!==value} onKeyDown={onTabKeyDown} onClick={()=>switchMode(value)} className="min-h-9 rounded-full px-2 text-sm font-semibold text-white/60 transition-colors hover:text-white aria-selected:bg-sb-rule aria-selected:text-white aria-selected:shadow-[0_1px_2px_rgb(0_0_0/0.5)]">{label}</button>)}
+          </div>
         </div>
-        <div role="tabpanel" id="auth-panel" aria-labelledby={`auth-tab-${mode}`}>
-        <div className="mt-6 flex items-center gap-3"><div className="grid size-10 place-items-center rounded-full bg-emerald-50 text-emerald-800"><KeyRound aria-hidden="true" className="size-5" /></div><div><h2 id="auth-heading" className="font-semibold">{mode==='register'?'Create your sportsbook account':mode==='login'?'Sign in securely':'Recover account access'}</h2><p className="text-xs text-slate-500">Practice play · no real money</p></div></div>
-        <form className="mt-6 grid gap-4" onSubmit={submit} noValidate>
-          {(!recoveryToken || mode!=='recover') && <label className="grid gap-1.5 text-sm font-medium">Email address<input type="email" name="email" autoComplete="email" required value={email} onChange={event=>setEmail(event.target.value)} className="min-h-12 rounded-lg border border-slate-300 px-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700" /></label>}
-          {(mode!=='recover'||recoveryToken) && <label className="grid gap-1.5 text-sm font-medium">{mode==='recover'?'New password':'Password'}<input type="password" name={mode==='recover'?'new-password':'password'} autoComplete={mode==='login'?'current-password':'new-password'} required minLength={12} value={password} onChange={event=>setPassword(event.target.value)} aria-describedby="password-help" className="min-h-12 rounded-lg border border-slate-300 px-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700" /><span id="password-help" className="text-xs font-normal leading-5 text-slate-500">12–128 characters and at least three character classes.</span></label>}
-          {mode==='register' && <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-3 text-sm"><input type="checkbox" required checked={termsAccepted} disabled={!terms} onChange={event=>setTermsAccepted(event.target.checked)} className="mt-0.5 size-6 min-w-6 accent-emerald-700" /><span><strong className="font-medium">I accept the terms and privacy notice</strong><span className="mt-1 block text-xs leading-5 text-slate-500">{terms?`Published revision ${terms.termsVersion}. Your acceptance is recorded against this exact revision.`:'Loading the published revision…'}</span></span></label>}
-          {mode==='register' && <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-3 text-sm"><input type="checkbox" checked={marketingConsent} onChange={event=>setMarketingConsent(event.target.checked)} className="mt-0.5 size-6 min-w-6 accent-emerald-700" /><span><strong className="font-medium">Optional marketing</strong><span className="mt-1 block text-xs leading-5 text-slate-500">Separate from required terms and privacy consent. You can withdraw it in Profile.</span></span></label>}
-          {mode==='recover'&&recoveryToken&&<label className="grid gap-1.5 text-sm font-medium">Recovery code from your email<input value={recoveryToken} onChange={event=>setRecoveryToken(event.target.value)} autoComplete="one-time-code" className="min-h-12 rounded-lg border border-slate-300 px-3 font-mono text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700" /></label>}
-          {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">{error}</div>}
-          {success && <div role="status" className="flex gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950"><CheckCircle2 aria-hidden="true" className="mt-0.5 size-4 shrink-0" />{success}</div>}
-          <button type="submit" disabled={pending} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-emerald-800 px-4 font-semibold text-white hover:bg-emerald-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:cursor-wait disabled:opacity-60">{pending&&<Loader2 aria-hidden="true" className="size-4 animate-spin" />}{mode==='register'?'Create account':mode==='login'?'Sign in':recoveryToken?'Set new password':'Send recovery link'}</button>
+        <div role="tabpanel" id="auth-panel" aria-labelledby={`auth-tab-${mode}`} className="px-5 pb-6 pt-5 sm:px-7">
+        <form className="grid gap-4" onSubmit={submit} noValidate>
+          {(!recoveryToken || mode!=='recover') && <label className={labelClass}>Email<input type="email" name="email" autoComplete="email" required value={email} onChange={event=>setEmail(event.target.value)} className={fieldClass} /></label>}
+          {(mode!=='recover'||recoveryToken) && <label className={labelClass}>{mode==='recover'?'New password':'Password'}<input type="password" name={mode==='recover'?'new-password':'password'} autoComplete={mode==='login'?'current-password':'new-password'} required minLength={12} value={password} onChange={event=>setPassword(event.target.value)} aria-describedby="password-help" className={fieldClass} /><span id="password-help" className="text-xs font-normal normal-case tracking-normal text-sb-mute">12–128 characters, three character types</span></label>}
+          {mode==='register' && <label className="flex items-start gap-3 rounded-2xl bg-sb-paper p-3.5 text-sm ring-1 ring-inset ring-sb-line"><input type="checkbox" required checked={termsAccepted} disabled={!terms} onChange={event=>setTermsAccepted(event.target.checked)} className={checkClass} /><span><span className="font-semibold">I accept the terms and privacy notice</span><span className="mt-0.5 block font-sb-mono text-[11px] text-sb-mute">{terms?`Revision ${terms.termsVersion}`:'Loading revision…'}</span></span></label>}
+          {mode==='register' && <label className="flex items-start gap-3 rounded-2xl bg-sb-paper p-3.5 text-sm ring-1 ring-inset ring-sb-line"><input type="checkbox" checked={marketingConsent} onChange={event=>setMarketingConsent(event.target.checked)} className={checkClass} /><span className="font-semibold">Marketing messages <span className="font-normal text-sb-mute">(optional)</span></span></label>}
+          {mode==='recover'&&recoveryToken&&<label className={labelClass}>Recovery code<input value={recoveryToken} onChange={event=>setRecoveryToken(event.target.value)} autoComplete="one-time-code" className={`${fieldClass} font-sb-mono text-xs`} /></label>}
+          {error && <Notice tone="alert">{error}</Notice>}
+          {success && <Notice tone="ok">{success}</Notice>}
+          <Track block><Pill type="submit" variant="primary" size="lg" disabled={pending}>{pending&&<Loader2 aria-hidden="true" className="animate-spin" />}{mode==='register'?'Create account':mode==='login'?'Sign in':recoveryToken?'Set new password':'Send recovery link'}</Pill></Track>
         </form>
         </div>
-        <p className="mt-5 text-center text-xs text-slate-500"><Link href="/account/responsible-play" className="font-semibold text-emerald-800 underline-offset-4 hover:underline">Safer-play controls remain accessible</Link></p>
       </section>
+      <p className="mt-5 text-center text-xs text-sb-mute"><Link href="/account/responsible-play" className="font-semibold text-sb-ink underline-offset-4 hover:underline">Safer play</Link></p>
     </div>
   </CustomerShell>
 }

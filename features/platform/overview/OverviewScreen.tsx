@@ -1,12 +1,18 @@
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { ExternalGateNotice, OperatorShell, TenantRequired } from "../components/OperatorShell";
-import { MetricGrid, RecordList, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
+import { Mono, StatusDot, type Tone } from "../components/kit";
+import { MetricGrid, RecordList } from "../components/WorkflowUI";
 import { dateTime, money, moneyTotals, shortId, sumByCurrency } from "../lib/format";
 import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
 
+const stateText = (value: string | null | undefined) => (value || "unknown").replaceAll("_", " ").toLowerCase();
+
+type Queue = { label: string; count: number; href?: string; tone: Tone };
+
 export async function OverviewScreen() {
   const operator = await getOperatorContext("canManageSportsbook");
-  if (!operator) return <OperatorShell active="Overview" eyebrow="Operator overview" title="Sportsbook control room" description="Today’s queues, exceptions and shortcuts into each workflow."><TenantRequired /></OperatorShell>;
+  if (!operator) return <OperatorShell active="Overview" title="Control room"><TenantRequired /></OperatorShell>;
   const tenantId = operator.tenantId;
   // General operators see aggregate counts only; risk, finance and integration breakdowns and player-linked
   // wagers follow the same domain capabilities as their source records.
@@ -22,22 +28,36 @@ export async function OverviewScreen() {
     can.canManageRisk ? prisma.wager.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" }, take: 5, include: { player: { select: { subject: true } } } }) : null,
   ]);
   const liability = exposure ? sumByCurrency(exposure, (item: any) => item.liabilityMinor, (item: any) => item.currency) : null;
-  return <OperatorShell active="Overview" eyebrow="Operator overview" title="Sportsbook control room" description="Today’s queues, exceptions and shortcuts into each workflow." tenantName={operator.tenantName}>
+  const attention = pendingResults + (reconExceptions ?? 0) + (deadLetters ?? 0) + incidents;
+  const queues: Queue[] = [
+    { label: "Results pending", count: pendingResults, href: "/dashboard/platform/results", tone: pendingResults ? "wait" : "ok" },
+    { label: "Open incidents", count: incidents, tone: incidents ? "alert" : "ok" },
+    ...(deadLetters === null ? [] : [{ label: "Dead letters", count: deadLetters, href: "/dashboard/platform/recovery", tone: (deadLetters ? "alert" : "ok") as Tone }]),
+    ...(reconExceptions === null ? [] : [{ label: "Recon exceptions", count: reconExceptions, tone: (reconExceptions ? "wait" : "ok") as Tone }]),
+    { label: "Open markets", count: openMarkets, href: "/dashboard/platform/trading", tone: "info" },
+  ];
+  return <OperatorShell active="Overview" title="Control room" tone={attention ? "wait" : "ok"} meta={`${attention} need attention · ${openMarkets} open markets · ${wagers} wagers`} tenantName={operator.tenantName}>
+    <section aria-labelledby="overview-queues" className="min-w-0 overflow-hidden rounded-xl border bg-card text-card-foreground">
+      <h2 id="overview-queues" className="border-b px-4 py-3 text-sm font-semibold">{attention ? <StatusDot tone="wait" /> : <StatusDot tone="ok" />}Queues<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{attention}</span></h2>
+      <ul className="divide-y">
+        {queues.map((queue) => {
+          const body = <>
+            <span className="min-w-0 truncate text-sm font-medium"><StatusDot tone={queue.tone} />{queue.label}</span>
+            <span className="flex shrink-0 items-center gap-2"><Mono className="text-base font-semibold">{queue.count}</Mono>{queue.href ? <ArrowRight className="size-4 text-muted-foreground" aria-hidden="true" /> : <span className="size-4" aria-hidden="true" />}</span>
+          </>;
+          return <li key={queue.label}>{queue.href
+            ? <Link href={queue.href} className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-muted/40">{body}</Link>
+            : <div className="flex items-center justify-between gap-3 px-4 py-3">{body}</div>}</li>;
+        })}
+      </ul>
+    </section>
     <MetricGrid items={[
-      { label: "Wagers", value: wagers, detail: "All lifecycle states" },
-      { label: "Open-status markets", value: openMarkets, detail: "Stored OPEN status; price freshness and event state are checked at quote time, not here" },
-      { label: "Open liability", value: liability && exposure ? moneyTotals(liability) : "Risk access required", detail: exposure ? `Per currency · ${exposure.length} exposure projections` : "Shown to operators with risk permission" },
-      { label: "Needs attention", value: pendingResults + (reconExceptions ?? 0) + (deadLetters ?? 0) + incidents, detail: `Results, incidents${reconExceptions === null ? "" : ", recon"}${deadLetters === null ? "" : ", queue"}` },
+      { label: "Open liability", value: liability && exposure ? moneyTotals(liability) : "Restricted", detail: exposure ? `${exposure.length} positions · per currency` : "Risk access required", tone: exposure ? undefined : "off" },
+      { label: "Open markets", value: openMarkets, tone: "info" },
+      { label: "Wagers", value: wagers },
+      { label: "Needs attention", value: attention, tone: attention ? "wait" : "ok" },
     ]} />
-    <div className="grid gap-4 lg:grid-cols-3">
-      {([
-        ["Trading", `${openMarkets} open markets`, "/dashboard/platform/trading"],
-        ["Results & grading", `${pendingResults} results await approval`, "/dashboard/platform/results"],
-        deadLetters === null ? null : ["Recovery", `${deadLetters} unresolved dead letters`, "/dashboard/platform/recovery"],
-      ].filter(Boolean) as string[][]).map(([label, detail, href]) => <Link key={label} href={href} className="rounded-xl border bg-card p-4 shadow-sm hover:border-ring"><p className="font-semibold">{label}</p><p className="mt-1 text-sm text-muted-foreground">{detail}</p><p className="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-400">Open workflow →</p></Link>)}
-    </div>
-    {recent === null ? null : <RecordList title="Recent wagers" description="Latest immutable wager receipts for this tenant." columns={["Reference", "Player", "Stake", "State"]} rows={recent.map((wager: any) => ({ id: wager.id, href: `/dashboard/platform/wagers/${wager.id}`, cells: [shortId(wager.id), wager.player?.subject || "Unknown player", `${money(wager.stakeMinor, wager.currency)} · ${dateTime(wager.createdAt)}`, <StatusBadge key="status" value={wager.status} />] }))} emptyTitle="No wagers have been recorded" emptyDescription="Accepted and rejected wagers will appear here." />}
-    <WorkflowNote title="Exception totals are not health claims">A zero means no matching tenant records were found. It does not certify an upstream provider, regulator, backup, or worker.</WorkflowNote>
+    {recent === null ? null : <RecordList title="Latest wagers" columns={["Reference", "Player", "Stake", "State"]} rows={recent.map((wager: any) => ({ id: wager.id, href: `/dashboard/platform/wagers/${wager.id}`, status: wager.status, cells: [<Mono key="ref">{shortId(wager.id)}</Mono>, wager.player?.subject || "Unknown player", <span key="stake"><Mono className="text-foreground">{money(wager.stakeMinor, wager.currency)}</Mono><span className="block text-xs">{dateTime(wager.createdAt)}</span></span>, stateText(wager.status)] }))} emptyTitle="No wagers" />}
     <ExternalGateNotice />
   </OperatorShell>;
 }

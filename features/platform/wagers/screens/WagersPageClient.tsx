@@ -1,7 +1,7 @@
 'use client';
 
-import Link from "next/link";
 import { ListFilters } from "../../components/ListFilters";
+import { Mono, PillLink, Track } from "../../components/kit";
 import { MetricGrid, RecordList, StatusBadge } from "../../components/WorkflowUI";
 import { hrefWith } from "../../lib/paging";
 
@@ -31,36 +31,42 @@ export type WagersPageData = {
 };
 
 const basePath = "/dashboard/platform/wagers";
-const linkClass = "inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted";
+const stateText = (value: string | null | undefined) => (value || "unknown").replaceAll("_", " ").toLowerCase();
+
+/** Server-formatted "stake → return · time" split back into mono figures and a time line. */
+function StakeAndReturn({ value }: { value: string }) {
+  const split = value.lastIndexOf(" · ");
+  if (split < 0) return <Mono>{value}</Mono>;
+  return <span><Mono className="text-foreground">{value.slice(0, split)}</Mono><span className="block text-xs">{value.slice(split + 3)}</span></span>;
+}
 
 export function WagersPageClient({ data }: { data: WagersPageData }) {
   const filtered = Boolean(data.status || data.search);
   return <>
     <MetricGrid items={[
-      { label: data.status ? `${data.status.replaceAll("_", " ").toLowerCase()} wagers` : data.search ? "Matching wagers" : "Wagers", value: data.total, detail: `Showing ${data.rows.length} on page ${data.page}` },
-      { label: "Accepted", value: data.accepted, detail: "Current accepted state" },
-      { label: "Rejected", value: data.rejected, detail: "Evidence retained" },
-      { label: "Accepted handle (this page)", value: data.handle, detail: data.handleDetail },
+      { label: "Open disputes", value: data.openDisputes, tone: data.openDisputes ? "alert" : "ok" },
+      { label: data.status ? stateText(data.status) : data.search ? "Matching" : "Wagers", value: data.total },
+      { label: "Accepted", value: data.accepted, detail: `${data.rejected} rejected` },
+      { label: "Handle (page)", value: data.handle, detail: data.handleDetail },
     ]} />
     <RecordList
-      title="Wager receipts"
-      description={`${data.openDisputes} open or investigating disputes. Open a receipt for terms and gate-level evidence. Search by exact wager ID or request key.`}
-      action={<ListFilters searchLabel="Search wagers" searchPlaceholder="Wager ID or request key" filters={[{ key: "status", label: "Status", options: data.statuses.map((value) => ({ label: value.replaceAll("_", " ").toLowerCase(), value })) }]} />}
-      columns={["Reference", "Player", "Stake / return", "State"]}
+      title="Receipts"
+      action={<ListFilters searchLabel="Search wagers" searchPlaceholder="Wager ID or request key" filters={[{ key: "status", label: "Status", options: data.statuses.map((value) => ({ label: stateText(value), value })) }]} />}
+      columns={["Reference", "Player", "Stake → return", "State"]}
       rows={data.rows.map((wager) => ({
         id: wager.id,
         href: `${basePath}/${wager.id}`,
+        status: wager.status ?? undefined,
         cells: [
-          <span key="id" className="font-mono">{wager.reference}</span>,
-          wager.player,
-          wager.stakeAndReturn,
-          <span key="state" className="flex flex-wrap gap-2"><StatusBadge value={wager.status} />{wager.disputed ? <StatusBadge value="INVESTIGATING" /> : null}</span>,
+          <Mono key="id" className="break-all">{wager.reference}</Mono>,
+          <span key="player" className="break-all">{wager.player}</span>,
+          <StakeAndReturn key="stake" value={wager.stakeAndReturn} />,
+          <span key="state" className="flex flex-wrap items-center gap-x-3 gap-y-1"><span>{stateText(wager.status)}</span>{wager.disputed ? <StatusBadge value="INVESTIGATING" /> : null}</span>,
         ],
       }))}
       filtered={filtered}
-      emptyTitle={filtered ? "No matching wagers" : "No wager receipts"}
-      emptyDescription={filtered ? "No wagers match this status or search." : "Accepted and rejected wagers will appear here."}
-      emptyAction={filtered ? <Link href={basePath} className={linkClass}>Show all wagers</Link> : <Link href="/dashboard/platform/trading" className={linkClass}>Check markets open for betting</Link>}
+      emptyTitle={filtered ? "No matching wagers" : "No wagers"}
+      emptyAction={<Track>{filtered ? <PillLink size="sm" href={basePath}>Show all</PillLink> : <PillLink size="sm" href="/dashboard/platform/trading">Open Trading</PillLink>}</Track>}
       pagination={{ page: data.page, pageSize: data.pageSize, total: data.total, hrefForPage: (next) => hrefWith(basePath, { status: data.status, q: data.search, page: next }) }}
     />
   </>;

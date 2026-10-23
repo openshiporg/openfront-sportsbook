@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { MutationForm } from "../components/MutationForm";
+import { Mono, Pill, StatusDot, Track } from "../components/kit";
 
 export type ResultEditorMarket = { id: string; label: string; selections: { key: string; label: string }[] };
 
@@ -33,34 +34,37 @@ export function ResultOutcomeEditor({ eventId, eventLabel, markets, mutation, di
   });
   const update = (id: string, patch: Partial<Fact>) => setFacts((current) => ({ ...current, [id]: { ...(current[id] ?? { outcome: "", factorNumerator: "", factorDenominator: "" }), ...patch } }));
 
+  const factorInput = "mt-1 block h-9 w-full rounded-full border bg-background px-3 font-mono text-sm tabular-nums";
   return <div className="space-y-4">
-    <section className="rounded-xl border bg-card p-5 shadow-sm">
-      <h2 className="font-semibold">Outcomes · {eventLabel}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">{rows.length} selection(s) across {markets.length} market(s). Every selection needs an outcome; dead heats need a factor no greater than 1.</p>
-      <div className="mt-4 space-y-4">
-        {markets.map((market) => <fieldset key={market.id} className="rounded-lg border p-3">
-          <legend className="px-1 text-sm font-semibold">{market.label}</legend>
-          <div className="space-y-2">
+    <section aria-labelledby="result-outcomes" className="min-w-0 overflow-hidden rounded-xl border bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+        <h2 id="result-outcomes" className="min-w-0 break-words text-sm font-semibold"><StatusDot tone={missing.length ? "wait" : "ok"} />Outcomes · {eventLabel}</h2>
+        <Mono className="text-xs text-muted-foreground">{rows.length - missing.length}/{rows.length} set · {markets.length} markets</Mono>
+      </div>
+      <div className="divide-y">
+        {markets.map((market) => <fieldset key={market.id} className="min-w-0 px-4 py-3">
+          <legend className="sr-only">{market.label}</legend>
+          <p aria-hidden="true" className="break-all font-mono text-xs font-medium text-muted-foreground">{market.label}</p>
+          <div className="mt-2 space-y-3">
             {market.selections.map((selection) => {
               const id = `${market.id}\u0000${selection.key}`;
               const fact = facts[id];
-              return <div key={id} className="flex flex-wrap items-end gap-2 text-sm">
-                <label className="min-w-48 flex-1">{selection.label} <span className="font-mono text-xs text-muted-foreground">{selection.key}</span>
-                  <select value={fact?.outcome ?? ""} onChange={(event) => update(id, { outcome: event.target.value })} className="mt-1 block h-10 w-full rounded-md border bg-card px-3">
-                    <option value="">Select outcome…</option>
-                    {OUTCOMES.map((outcome) => <option key={outcome} value={outcome}>{outcome.replace("_", " ")}</option>)}
-                  </select>
-                </label>
-                {fact?.outcome === "DEAD_HEAT" ? <>
-                  <label className="w-28 text-xs">Numerator<input inputMode="numeric" value={fact.factorNumerator} onChange={(event) => update(id, { factorNumerator: event.target.value.trim() })} className="mt-1 block h-10 w-full rounded-md border px-2" /></label>
-                  <label className="w-28 text-xs">Denominator<input inputMode="numeric" value={fact.factorDenominator} onChange={(event) => update(id, { factorDenominator: event.target.value.trim() })} className="mt-1 block h-10 w-full rounded-md border px-2" /></label>
-                </> : null}
+              return <div key={id} className="flex min-w-0 flex-wrap items-end justify-between gap-2 text-sm">
+                <p className="min-w-0 flex-1 basis-40 break-words font-medium"><StatusDot tone={fact?.outcome ? "ok" : "wait"} />{selection.label} <Mono className="break-all text-xs font-normal text-muted-foreground">{selection.key}</Mono></p>
+                <Track label={`Outcome for ${selection.label}`}>
+                  {OUTCOMES.map((outcome) => <Pill key={outcome} size="sm" variant="flat" aria-pressed={fact?.outcome === outcome} onClick={() => update(id, { outcome: fact?.outcome === outcome ? "" : outcome })}>{outcome.replace("_", " ").toLowerCase()}</Pill>)}
+                </Track>
+                {fact?.outcome === "DEAD_HEAT" ? <div className="flex w-full flex-wrap items-end justify-end gap-2">
+                  <label className="w-28 text-xs text-muted-foreground">Numerator<input inputMode="numeric" value={fact.factorNumerator} onChange={(event) => update(id, { factorNumerator: event.target.value.trim() })} className={factorInput} /></label>
+                  <label className="w-28 text-xs text-muted-foreground">Denominator<input inputMode="numeric" value={fact.factorDenominator} onChange={(event) => update(id, { factorDenominator: event.target.value.trim() })} className={factorInput} /></label>
+                  <span className="pb-2 text-xs text-muted-foreground">Factor ≤ 1</span>
+                </div> : null}
               </div>;
             })}
           </div>
         </fieldset>)}
       </div>
     </section>
-    <MutationForm title="Enter pending result" description="Creates a pending, content-hashed result version for this event only. It cannot settle a wager until independently approved and graded." mutation={mutation} fields={[{ name: "eventId", label: "Event", type: "hidden", defaultValue: eventId }, { name: "payload", label: "Canonical result", type: "hidden", defaultValue: payload }]} submitLabel="Enter pending result" successMessage="Pending result version entered." disabledReason={disabledReason ?? (rows.length === 0 ? "This event has no selections to result." : missing.length ? `${missing.length} selection(s) still need a valid outcome.` : undefined)} />
+    <MutationForm title="Enter pending result" mutation={mutation} fields={[{ name: "eventId", label: "Event", type: "hidden", defaultValue: eventId }, { name: "payload", label: "Canonical result", type: "hidden", defaultValue: payload }]} submitLabel="Enter pending result" successMessage="Pending result version entered." disabledReason={disabledReason ?? (rows.length === 0 ? "No selections to result." : missing.length ? `${missing.length} selection(s) need a valid outcome.` : undefined)} />
   </div>;
 }

@@ -17,13 +17,13 @@ export async function TradingScreen({ searchParams }: { searchParams?: PlatformS
   const search = searchFrom(params);
   const status = allowedParam(params, "status", marketStatuses);
   const operator = await getOperatorContext("canTrade");
-  if (!operator) return <OperatorShell active="Trading" eyebrow="Trading operations" title="Markets and prices" description="Market status and prices, with suspend and reopen controls."><TenantRequired /></OperatorShell>;
+  if (!operator) return <OperatorShell active="Trading" title="Trading"><TenantRequired /></OperatorShell>;
   const formNow = new Date();
   const result = await getTradingBook({ page, pageSize: PLATFORM_PAGE_SIZE, search, status, now: formNow.toISOString() });
   // Exact per-market selection/priced counts, newest price, and tenant-wide unpriced selections in
   // OPEN markets (Selection has no GraphQL price relation): server-only, canTrade + tenant re-checked.
   const [summaries, unpriced] = result.success ? await Promise.all([marketPriceSummaries(operator, result.data.markets.map((market) => market.id)), unpricedOpenSelections(operator)]) : [new Map(), 0];
-  return <OperatorShell active="Trading" eyebrow="Trading operations" title="Markets and prices" description="Market status and prices, with suspend and reopen controls." tenantName={operator.tenantName}>
+  return <OperatorShell active="Trading" title="Trading" tone={result.success ? (result.data.suspended || unpriced ? "alert" : result.data.feedExceptions ? "wait" : "ok") : "alert"} meta={result.success ? `${result.data.allMarkets} markets · ${result.data.live} in-play · ${result.data.suspended} suspended · ${unpriced} unpriced` : undefined} tenantName={operator.tenantName}>
     {result.success ? <TradingPageClient data={{
       rows: result.data.markets.map((market) => { const summary = summaries.get(market.id) ?? { selections: 0, priced: 0, latest: null }; return { id: market.id, eventName: market.event?.name || "Event not visible", definitionKey: market.definitionKey || "—", selections: `${summary.selections} total · ${summary.priced} priced`, latestPrice: summary.latest ? `${summary.latest.decimalOdds} · ${dateTime(summary.latest.receivedAt)}` : "No price received", status: market.status }; }),
       total: result.data.total, allMarkets: result.data.allMarkets, live: result.data.live, suspended: result.data.suspended, priceSnapshots: result.data.priceSnapshots, feedExceptions: result.data.feedExceptions, activeOverrides: result.data.activeOverrides,

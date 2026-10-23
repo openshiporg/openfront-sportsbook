@@ -1,5 +1,6 @@
 import { MutationForm } from '../components/MutationForm'
 import { OperatorShell, TenantRequired } from '../components/OperatorShell'
+import { Mono, StatusDot } from '../components/kit'
 import { MetricGrid, RecordList, StatusBadge, WorkflowNote } from '../components/WorkflowUI'
 import { dateTime, shortId } from '../lib/format'
 import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
@@ -9,7 +10,7 @@ const gradeMutation = `mutation GradeSelection($marketId:ID!,$selectionId:ID!,$r
 
 export async function GradingScreen() {
   const operator = await getOperatorContext('canManageRisk')
-  if (!operator) return <OperatorShell active="Grading" eyebrow="Grading operations" title="Selection grading" description="Grade selections from approved results under the current house rules."><TenantRequired /></OperatorShell>
+  if (!operator) return <OperatorShell active="Grading" title="Grading"><TenantRequired /></OperatorShell>
 
   const [markets, grades] = await Promise.all([
     prisma.market.findMany({
@@ -43,27 +44,23 @@ export async function GradingScreen() {
     }),
   ))
 
-  return <OperatorShell active="Grading" eyebrow="Grading operations" title="Selection grading" description="Each selection is graded from its approved official result. A single result can’t be applied to every selection in a market." tenantName={operator.tenantName}>
+  const legsResolved = grades.reduce((sum: number, grade: any) => sum + grade.from_LegGrade_marketGrade.length, 0)
+  return <OperatorShell active="Grading" title="Grading" tone={actions.length ? 'wait' : 'ok'} meta={`${actions.length} ready · ${grades.length} graded · newest 100 markets`} tenantName={operator.tenantName}>
     <MetricGrid items={[
-      { label: 'Markets loaded', value: markets.length, detail: 'Newest 100' },
-      { label: 'Selection grades ready', value: actions.length, detail: 'Approved canonical fact + active rule' },
-      { label: 'Grades', value: grades.length, detail: 'Newest 100' },
-      { label: 'Wager legs resolved', value: grades.reduce((sum: number, grade: any) => sum + grade.from_LegGrade_marketGrade.length, 0), detail: 'Selection-specific' },
+      { label: 'Ready to grade', value: actions.length, tone: actions.length ? 'wait' : 'ok' },
+      { label: 'Grades', value: grades.length, detail: 'newest 100' },
+      { label: 'Legs resolved', value: legsResolved },
+      { label: 'Markets loaded', value: markets.length, detail: 'newest 100' },
     ]} />
-    <RecordList title="Grade evidence" description="Selection identity, canonical fact hash, result version and house-rule version are retained." columns={['Event / market / selection', 'Outcome', 'Rule / result', 'Created']} rows={grades.map((grade: any) => ({
-      id: grade.id,
-      href: grade.marketId ? `/dashboard/platform/trading/${grade.marketId}` : undefined,
-      cells: [<span key="market">{grade.market?.event?.name || 'Unknown event'}<span className="block text-xs text-muted-foreground">{grade.market?.definitionKey || shortId(grade.marketId || 'Unknown')} · {(grade.trace as any)?.selectionKey || 'selection unavailable'}</span></span>, <StatusBadge key="outcome" value={grade.outcome} />, `${grade.ruleVersion} · result v${grade.resultVersion?.version ?? '—'} · ${grade.from_LegGrade_marketGrade.length} legs`, dateTime(grade.createdAt)],
-    }))} emptyTitle="No selections graded" emptyDescription="Enter, approve and apply an official result before grading." />
-    <section className="space-y-4">
-      <div><h2 className="font-semibold">Canonical selection facts ready</h2><p className="mt-1 text-sm text-muted-foreground">A result/selection can be graded only once per version. The mutation derives outcome and dead-heat factors from the approved payload.</p></div>
+    <section className="space-y-3" aria-labelledby="grading-queue">
+      <h2 id="grading-queue" className="text-sm font-semibold"><StatusDot tone={actions.length ? 'wait' : 'ok'} />Ready to grade<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{actions.length}</span></h2>
       {actions.length === 0
-        ? <WorkflowNote title="No grade action available">No approved canonical selection facts remain ungraded. Unsupported or incomplete result payloads stay blocked.</WorkflowNote>
-        : actions.map(({ market, result, selection, fact }: any) => <MutationForm
+        ? <WorkflowNote title="No grades ready" />
+        : <div className="grid gap-4 xl:grid-cols-2">{actions.map(({ market, result, selection, fact }: any) => <MutationForm
           key={`${market.id}:${selection.id}:${result.id}`}
           compact
           title={`${market.event?.name} · ${market.definitionKey} · ${selection.label}`}
-          description={`Canonical result v${result.version} says ${fact.outcome}${fact.factorNumerator ? ` (${fact.factorNumerator}/${fact.factorDenominator})` : ''}. The active house rule and result hash are bound server-side.`}
+          description={`v${result.version} · ${fact.outcome}${fact.factorNumerator ? ` ${fact.factorNumerator}/${fact.factorDenominator}` : ''}`}
           mutation={gradeMutation}
           fields={[
             { name: 'marketId', label: 'Market', type: 'hidden', defaultValue: market.id },
@@ -73,8 +70,13 @@ export async function GradingScreen() {
           ]}
           submitLabel="Grade selection"
           successMessage="Selection and matching wager legs graded."
-          disabledReason={operator.capabilities.canManageRisk ? undefined : 'Your role does not include grading capability.'}
-        />)}
+          disabledReason={operator.capabilities.canManageRisk ? undefined : 'Grading permission required.'}
+        />)}</div>}
     </section>
+    <RecordList title="Grades" columns={['Event / market / selection', 'Outcome', 'Rule / result', 'Created']} rows={grades.map((grade: any) => ({
+      id: grade.id,
+      href: grade.marketId ? `/dashboard/platform/trading/${grade.marketId}` : undefined,
+      cells: [<span key="market">{grade.market?.event?.name || 'Unknown event'}<Mono className="block break-all text-xs text-muted-foreground">{grade.market?.definitionKey || shortId(grade.marketId || 'Unknown')} · {(grade.trace as any)?.selectionKey || 'selection unavailable'}</Mono></span>, <StatusBadge key="outcome" value={grade.outcome} />, <Mono key="rule" className="break-all text-xs">{grade.ruleVersion} · v{grade.resultVersion?.version ?? '—'} · {grade.from_LegGrade_marketGrade.length} legs</Mono>, dateTime(grade.createdAt)],
+    }))} emptyTitle="No grades" />
   </OperatorShell>
 }

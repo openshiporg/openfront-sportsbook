@@ -6,8 +6,9 @@ function getBaseUrlForEmails(): string {
     return process.env.SMTP_STORE_LINK;
   }
   
-  if(process.env.NODE_ENV==='production')throw new Error('SMTP_STORE_LINK is required')
-  return 'http://localhost:3000';
+  // Fallback warning - this should be set in production
+  console.warn('SMTP_STORE_LINK not set. Please add SMTP_STORE_LINK to your environment variables for email links to work properly.');
+  return '';
 }
 
 const transport = createTransport({

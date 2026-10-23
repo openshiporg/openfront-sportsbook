@@ -1,5 +1,6 @@
 import { MutationForm } from "../components/MutationForm";
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
+import { Mono, Pill, Track } from "../components/kit";
 import { MetricGrid, RecordList, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, money, shortId, windowState } from "../lib/format";
 import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
@@ -12,7 +13,7 @@ export async function ResponsibleGamingScreen({ searchParams }: { searchParams?:
   const rawSearch = (await searchParams)?.player;
   const playerSearch = (Array.isArray(rawSearch) ? rawSearch[0] : rawSearch ?? "").trim().slice(0, 100);
   const operator = await getOperatorContext("canManageCompliance");
-  if (!operator) return <OperatorShell active="RG" eyebrow="Player protection" title="Responsible gaming" description="Player limits, cool-offs and self-exclusions."><TenantRequired /></OperatorShell>;
+  if (!operator) return <OperatorShell active="RG" title="Responsible gaming"><TenantRequired /></OperatorShell>;
   const now = new Date();
   // Player picker: a bounded, searchable candidate list. Search matches the full player ID or part of the subject,
   // so every player is reachable without loading the whole tenant.
@@ -31,13 +32,78 @@ export async function ResponsibleGamingScreen({ searchParams }: { searchParams?:
   const limitState = (limit: any) => limit.effectiveFrom && new Date(limit.effectiveFrom) > now ? "SCHEDULED" : limit.effectiveTo && new Date(limit.effectiveTo) <= now ? "ENDED" : "EFFECTIVE";
   const limitValue = (limit: any) => limit.type === "SESSION" ? `${limit.amountMinor} minutes` : money(limit.amountMinor, limit.currency);
   const canCompliance = operator.capabilities.canManageCompliance;
-  return <OperatorShell active="RG" eyebrow="Player protection" title="Responsible gaming" description="Set player limits, cool-offs and self-exclusions." tenantName={operator.tenantName}>
-    <MetricGrid items={[{ label: "Player limits", value: limits.length, detail: "Newest 100" }, { label: "Effective exclusions", value: effectiveExclusions, detail: "ACTIVE and within start/end window now" }, { label: "Restrictions", value: restrictions, detail: "ACTIVE status (enforced by acceptance regardless of dates)" }, { label: "Players", value: playerTotal, detail: playerSearch ? `${players.length} match “${playerSearch}”` : "Search to find a player" }]} />
-    <RecordList title="Effective limits" description="Newest explicit limit records; prior effective records remain available as evidence." columns={["Player", "Type / period", "Limit", "Effective"]} rows={limits.map((limit: any) => ({ id: limit.id, href: limit.playerId ? `/dashboard/platform/customers/${limit.playerId}` : undefined, cells: [limit.player?.subject || shortId(limit.playerId || "Unknown"), `${limit.type} · ${limit.period}`, limitValue(limit), <span key="effective">{dateTime(limit.effectiveFrom)}{limit.effectiveTo ? ` → ${dateTime(limit.effectiveTo)}` : ""} <StatusBadge value={limitState(limit)} /></span>] }))} emptyTitle="No responsible-gaming limits" emptyDescription="No player limits have been set." />
-    <RecordList title="Self-exclusions" description="Active and historical exclusions are shown without destructive revoke controls." columns={["Player", "Scope", "Window", "Effective now / stored"]} rows={exclusions.map((item: any) => ({ id: item.id, href: item.playerId ? `/dashboard/platform/customers/${item.playerId}` : undefined, cells: [item.player?.subject || shortId(item.playerId || "Unknown"), item.scope, `${dateTime(item.startsAt)} → ${item.endsAt ? dateTime(item.endsAt) : "indefinite"}`, <span key="state" className="flex flex-wrap gap-2"><StatusBadge value={windowState(item, now)} /><span className="text-xs text-muted-foreground">stored {item.status}</span></span>] }))} emptyTitle="No self-exclusions" emptyDescription="No self-exclusions have been recorded." />
-    <form method="get" role="search" aria-label="Find player" className="flex flex-wrap items-end gap-2 rounded-xl border bg-card p-4"><label className="min-w-0 flex-1 text-sm font-medium">Find player<input name="player" defaultValue={playerSearch} placeholder="Player reference or ID" className="mt-1 block h-10 w-full rounded-md border border-input bg-background px-3 text-sm font-normal" /></label><button type="submit" className="h-10 rounded-md border px-4 text-sm font-medium hover:bg-muted">Search</button><p className="w-full text-xs text-muted-foreground">{playerSearch ? `Showing up to 50 players matching “${playerSearch}”.` : `Showing the first ${players.length} of ${playerTotal} players. Search to find others.`}</p></form>
-    {players.length ? <div className="grid gap-4 xl:grid-cols-2"><MutationForm title="Set money limit" description="Deposit, stake or loss cap in minor units of a configured currency. Applies immediately as a new effective record. Use zero only where policy treats it as a complete block." requireReview mutation={limitMutation} fields={[{ name: "playerId", label: "Player", type: "select", options: players.map((player: any) => ({ label: `${player.subject} · ${shortId(player.id)}`, value: player.id })) }, { name: "type", label: "Limit type", type: "select", options: ["DEPOSIT", "STAKE", "LOSS"].map((value) => ({ label: value, value })) }, { name: "period", label: "Period", type: "select", options: ["DAILY", "WEEKLY", "MONTHLY"].map((value) => ({ label: value, value })) }, { name: "amountMinor", label: "Amount (minor units of the currency)", type: "number", defaultValue: 10000 }, { name: "currency", label: "Currency", type: "select", options: currencies.map((item: any) => ({ label: `${item.currency?.code} (exponent ${item.currency?.exponent})`, value: item.currency?.code })) }]} submitLabel="Set money limit" successMessage="Responsible-gaming limit set." disabledReason={canCompliance ? undefined : "Your role does not include compliance capability."} />
-      <MutationForm title="Set session duration limit" description="Maximum elapsed minutes per customer session, enforced at wager acceptance. Not a money amount." requireReview mutation={limitMutation} fields={[{ name: "playerId", label: "Player", type: "select", options: players.map((player: any) => ({ label: `${player.subject} · ${shortId(player.id)}`, value: player.id })) }, { name: "type", label: "Limit type", type: "hidden", defaultValue: "SESSION" }, { name: "period", label: "Period", type: "select", options: ["DAILY", "WEEKLY", "MONTHLY"].map((value) => ({ label: value, value })) }, { name: "amountMinor", label: "Duration (minutes)", type: "number", defaultValue: 60 }, { name: "currency", label: "Unit", type: "hidden", defaultValue: "MIN" }]} submitLabel="Set session limit" successMessage="Session duration limit set." disabledReason={canCompliance ? undefined : "Your role does not include compliance capability."} />
-      <MutationForm title="Self-exclude player" description="Starts immediately and is checked by wager acceptance. Leave end blank for indefinite." requireReview mutation={excludeMutation} fields={[{ name: "playerId", label: "Player", type: "select", options: players.map((player: any) => ({ label: `${player.subject} · ${shortId(player.id)}`, value: player.id })) }, { name: "scope", label: "Scope", type: "select", options: [{ label: "All wagering", value: "ALL_WAGERING" }, { label: "All brands", value: "ALL_BRANDS" }] }, { name: "endsAt", label: "Ends at (optional)", type: "datetime-local", required: false }]} submitLabel="Activate self-exclusion" successMessage="Self-exclusion activated." disabledReason={canCompliance ? undefined : "Your role does not include compliance capability."} /></div> : <WorkflowNote title={playerSearch ? "No matching players" : "No players available"}>{playerSearch ? "No player matches this search. Check the reference and try again." : "A player record is required before a limit or exclusion can be set."}</WorkflowNote>}
+  const disabledReason = canCompliance ? undefined : "Your role does not include compliance capability.";
+  const playerOptions = players.map((player: any) => ({ label: `${player.subject} · ${shortId(player.id)}`, value: player.id }));
+  const periodOptions = ["DAILY", "WEEKLY", "MONTHLY"].map((value) => ({ label: value, value }));
+  const inForce = exclusions.filter((item: any) => windowState(item, now) === "EFFECTIVE");
+  const pastExclusions = exclusions.filter((item: any) => windowState(item, now) !== "EFFECTIVE");
+  const pendingLimits = limits.filter((limit: any) => limitState(limit) === "SCHEDULED");
+  const currentLimits = limits.filter((limit: any) => limitState(limit) === "EFFECTIVE");
+  const endedLimits = limits.filter((limit: any) => limitState(limit) === "ENDED");
+  const playerCell = (row: any) => <span key="player" className="break-all">{row.player?.subject || <Mono>{shortId(row.playerId || "Unknown")}</Mono>}</span>;
+  const limitRow = (limit: any) => ({
+    id: limit.id,
+    href: limit.playerId ? `/dashboard/platform/customers/${limit.playerId}` : undefined,
+    status: limitState(limit) === "EFFECTIVE" ? "ACTIVE" : limitState(limit),
+    cells: [
+      playerCell(limit),
+      `${limit.type} · ${limit.period}`,
+      <Mono key="limit">{limitValue(limit)}</Mono>,
+      <span key="effective" className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 md:justify-start"><Mono className="text-xs">{dateTime(limit.effectiveFrom)}{limit.effectiveTo ? ` → ${dateTime(limit.effectiveTo)}` : ""}</Mono><StatusBadge value={limitState(limit)} /></span>,
+    ],
+  });
+  const exclusionRow = (item: any) => ({
+    id: item.id,
+    href: item.playerId ? `/dashboard/platform/customers/${item.playerId}` : undefined,
+    status: windowState(item, now) === "EFFECTIVE" ? "ACTIVE" : windowState(item, now),
+    cells: [
+      playerCell(item),
+      item.scope,
+      <Mono key="window" className="text-xs">{dateTime(item.startsAt)} → {item.endsAt ? dateTime(item.endsAt) : "indefinite"}</Mono>,
+      <span key="state" className="flex flex-wrap items-center justify-end gap-2 md:justify-start"><StatusBadge value={windowState(item, now)} /><span className="text-xs text-muted-foreground">stored {item.status}</span></span>,
+    ],
+  });
+  const limitColumns = ["Player", "Type / period", "Limit", "Effective"];
+  const exclusionColumns = ["Player", "Scope", "Window", "Now / stored"];
+
+  return <OperatorShell
+    active="RG"
+    title="Responsible gaming"
+    tenantName={operator.tenantName}
+    tone={effectiveExclusions || pendingLimits.length ? "wait" : "ok"}
+    meta={`${effectiveExclusions} exclusions in force · ${pendingLimits.length} pending limits · ${restrictions} restrictions`}
+  >
+    <MetricGrid items={[
+      { label: "Exclusions in force", value: effectiveExclusions, tone: effectiveExclusions ? "wait" : "ok" },
+      { label: "Pending limits", value: pendingLimits.length, detail: "scheduled", tone: pendingLimits.length ? "wait" : "ok" },
+      { label: "Restrictions", value: restrictions, detail: "active" },
+      { label: "Limits", value: currentLimits.length, detail: `effective · newest ${limits.length}` },
+    ]} />
+
+    <RecordList title="Exclusions in force" tone={inForce.length ? "wait" : undefined} columns={exclusionColumns} rows={inForce.map(exclusionRow)} emptyTitle="No exclusions in force" />
+
+    <div className="grid gap-4 xl:grid-cols-2">
+      <RecordList title="Pending limit changes" tone={pendingLimits.length ? "wait" : undefined} columns={limitColumns} rows={pendingLimits.map(limitRow)} emptyTitle="No pending limit changes" />
+      <RecordList title="Effective limits" columns={limitColumns} rows={currentLimits.map(limitRow)} emptyTitle="No effective limits" />
+    </div>
+
+    <section className="min-w-0 space-y-4">
+      <form method="get" role="search" aria-label="Find player" className="flex flex-wrap items-center gap-2">
+        <label htmlFor="rg-player-search" className="sr-only">Find player</label>
+        <input id="rg-player-search" name="player" type="search" defaultValue={playerSearch} placeholder="Player reference or ID" className="h-9 min-w-0 flex-1 basis-56 rounded-full border bg-background px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+        <Track><Pill type="submit" size="sm" variant="primary">Find player</Pill></Track>
+        <p className="w-full font-mono text-xs tabular-nums text-muted-foreground">{playerSearch ? `${players.length} matching “${playerSearch}” · max 50` : `${players.length} of ${playerTotal} players`}</p>
+      </form>
+      {players.length ? <div className="grid gap-4 xl:grid-cols-3">
+        <MutationForm title="Set money limit" description="Deposit, stake or loss" requireReview mutation={limitMutation} fields={[{ name: "playerId", label: "Player", type: "select", options: playerOptions }, { name: "type", label: "Limit type", type: "select", options: ["DEPOSIT", "STAKE", "LOSS"].map((value) => ({ label: value, value })) }, { name: "period", label: "Period", type: "select", options: periodOptions }, { name: "amountMinor", label: "Amount (minor units of the currency)", type: "number", defaultValue: 10000 }, { name: "currency", label: "Currency", type: "select", options: currencies.map((item: any) => ({ label: `${item.currency?.code} (exponent ${item.currency?.exponent})`, value: item.currency?.code })) }]} submitLabel="Set money limit" successMessage="Responsible-gaming limit set." disabledReason={disabledReason} />
+        <MutationForm title="Set session duration limit" requireReview mutation={limitMutation} fields={[{ name: "playerId", label: "Player", type: "select", options: playerOptions }, { name: "type", label: "Limit type", type: "hidden", defaultValue: "SESSION" }, { name: "period", label: "Period", type: "select", options: periodOptions }, { name: "amountMinor", label: "Duration (minutes)", type: "number", defaultValue: 60 }, { name: "currency", label: "Unit", type: "hidden", defaultValue: "MIN" }]} submitLabel="Set session limit" successMessage="Session duration limit set." disabledReason={disabledReason} />
+        <MutationForm title="Self-exclude player" requireReview mutation={excludeMutation} fields={[{ name: "playerId", label: "Player", type: "select", options: playerOptions }, { name: "scope", label: "Scope", type: "select", options: [{ label: "All wagering", value: "ALL_WAGERING" }, { label: "All brands", value: "ALL_BRANDS" }] }, { name: "endsAt", label: "Ends at (optional)", type: "datetime-local", required: false, help: "Blank = indefinite" }]} submitLabel="Activate self-exclusion" successMessage="Self-exclusion activated." disabledReason={disabledReason} />
+      </div> : <WorkflowNote title={playerSearch ? "No matching players" : "No players"} />}
+    </section>
+
+    <div className="grid gap-4 xl:grid-cols-2">
+      <RecordList title="Scheduled & past exclusions" columns={exclusionColumns} rows={pastExclusions.map(exclusionRow)} emptyTitle="No other exclusions" />
+      <RecordList title="Ended limits" columns={limitColumns} rows={endedLimits.map(limitRow)} emptyTitle="No ended limits" />
+    </div>
   </OperatorShell>;
 }

@@ -1,32 +1,36 @@
 'use client'
 
-import { AlertCircle, LoaderCircle, ShieldCheck } from 'lucide-react'
-import Link from 'next/link'
+import { LoaderCircle, RefreshCw } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { customerApi, CustomerApiError } from '../lib/customer-api'
+import { Dot, Pill, PillLink, PageTitle, Track, type Tone } from './kit'
 
-export function AccountPageHeader({ title, description, aside }: { title: string; description: string; aside?: ReactNode }) {
-  return <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-    <div className="min-w-0">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-800">Player account</p>
-      <h1 className="mt-1 min-w-0 break-words text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">{title}</h1>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
-    </div>
-    {aside}
+export function AccountPageHeader({ title, tone, meta, aside }: { title: string; tone?: Tone; meta?: ReactNode; aside?: ReactNode }) {
+  return <PageTitle title={title} tone={tone} meta={meta} aside={aside} />
+}
+
+export function LoadingPanel({ label = 'Loading' }: { label?: string }) {
+  return <div role="status" className="mt-6 flex min-h-40 items-center justify-center rounded-2xl bg-sb-card text-sm text-sb-mute ring-1 ring-sb-line">
+    <LoaderCircle aria-hidden="true" className="mr-2 size-5 animate-spin motion-reduce:animate-none" />{label}
   </div>
 }
 
-export function LoadingPanel({ label = 'Loading account data' }: { label?: string }) {
-  return <div role="status" className="mt-6 flex min-h-40 items-center justify-center rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
-    <LoaderCircle aria-hidden="true" className="mr-2 size-5 animate-spin motion-reduce:animate-none" />{label}
+/** The API refuses every customer action while the operator's betting runtime is switched off. */
+export const isClosedError = (error: CustomerApiError | null | undefined) => Boolean(error && ['SANDBOX_DISABLED', 'SANDBOX_ISOLATION_REQUIRED'].includes(error.code))
+
+export function ClosedPanel() {
+  return <div role="status" className="mt-6 rounded-2xl bg-sb-night p-6 text-white sm:p-8">
+    <p className="font-sb-display text-3xl font-bold uppercase leading-none tracking-wide"><Dot tone="off" className="bg-white/40" />Betting closed</p>
+    <p className="mt-2 font-sb-mono text-xs uppercase tracking-wider text-white/50">Accounts, prices and bets are unavailable</p>
   </div>
 }
 
 export function ErrorPanel({ error, retry }: { error: CustomerApiError; retry: () => void }) {
   if (error.status === 401) return <AuthenticationRequired />
-  return <div role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-900">
-    <div className="flex items-start gap-3"><AlertCircle aria-hidden="true" className="mt-0.5 size-5 shrink-0" /><div><p className="font-semibold">Account data is unavailable</p><p className="mt-1">We couldn’t load this information. Nothing shown here is a guess, so please try again.</p></div></div>
-    <button type="button" onClick={retry} className="mt-4 min-h-10 rounded-lg bg-red-900 px-4 font-semibold text-white hover:bg-red-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-900">Retry</button>
+  if (isClosedError(error)) return <ClosedPanel />
+  return <div role="alert" className="mt-6 rounded-2xl bg-red-50 p-5 text-sm text-red-950 ring-1 ring-red-200">
+    <p className="font-semibold"><Dot tone="alert" />Couldn’t load this page</p>
+    <div className="mt-4"><Track><Pill size="sm" onClick={retry}><RefreshCw aria-hidden="true" />Retry</Pill></Track></div>
   </div>
 }
 
@@ -44,18 +48,21 @@ export function AuthenticationRequired() {
       setCreating(false)
     }
   }
-  return <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-6">
-    <ShieldCheck aria-hidden="true" className="size-6 text-emerald-800" />
-    <h2 className="mt-3 text-lg font-semibold text-emerald-950">Sign in to your account</h2>
-    <p className="mt-2 max-w-xl text-sm leading-6 text-emerald-900">You are signed out or your session ended. Sign in to return to your existing wallet, bets and history, or recover access by email if you no longer know your password.</p>
-    <div className="mt-4 flex flex-wrap gap-2">
-      <Link href="/account/auth" className="inline-flex min-h-11 items-center rounded-lg bg-emerald-800 px-4 text-sm font-semibold text-white hover:bg-emerald-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-800">Sign in or recover access</Link>
+  return <div className="mt-6 overflow-hidden rounded-2xl bg-sb-card ring-1 ring-sb-line">
+    <div className="bg-sb-night px-5 py-5 text-white sm:px-6">
+      <p className="font-sb-display text-3xl font-bold uppercase leading-none tracking-wide"><Dot tone="off" className="bg-white/40" />Signed out</p>
     </div>
-    <div className="mt-6 border-t border-emerald-200 pt-4">
-      <p className="text-sm font-medium text-emerald-950">New here?</p>
-      <p className="mt-1 max-w-xl text-xs leading-5 text-emerald-900">Starting a guest account creates a new, separate account. It does not restore or merge any account you used before.</p>
-      <button type="button" onClick={createAccount} disabled={creating} className="mt-3 min-h-11 rounded-lg border border-emerald-800 px-4 text-sm font-semibold text-emerald-900 hover:bg-emerald-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-800 disabled:cursor-wait disabled:opacity-60">{creating ? 'Creating account…' : 'Start a new guest account'}</button>
+    <div className="grid gap-5 p-5 sm:grid-cols-2 sm:p-6">
+      <div>
+        <p className="text-sm font-semibold">Existing account</p>
+        <div className="mt-3"><Track><PillLink href="/account/auth" variant="primary">Sign in or recover</PillLink></Track></div>
+      </div>
+      <div className="border-t border-sb-line pt-5 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
+        <p className="text-sm font-semibold">Guest account</p>
+        <p className="mt-1 text-xs text-sb-mute">New and separate. Not linked to earlier accounts.</p>
+        <div className="mt-3"><Track><Pill onClick={createAccount} disabled={creating}>{creating ? 'Creating…' : 'Start guest account'}</Pill></Track></div>
+      </div>
     </div>
-    {error && <p role="alert" className="mt-3 text-sm font-medium text-red-800">Could not create the account: {error}</p>}
+    {error && <p role="alert" className="border-t border-sb-line px-5 py-3 text-sm font-medium text-red-800 sm:px-6"><Dot tone="alert" />Couldn’t create the account: {error}</p>}
   </div>
 }

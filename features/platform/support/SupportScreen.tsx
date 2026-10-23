@@ -1,6 +1,5 @@
 import { ExternalGateNotice, OperatorShell, TenantRequired } from '../components/OperatorShell'
 import { ReadFailed } from '../components/ReadFailed'
-import { WorkflowNote } from '../components/WorkflowUI'
 import { dateTime, shortId } from '../lib/format'
 import { searchFrom } from '../lib/graphql'
 import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
@@ -43,10 +42,12 @@ export async function SupportScreen({ searchParams }: { searchParams?: PlatformS
   const disputeStatus = allowedParam(params, 'dstatus', disputeStatuses)
   const search = searchFrom(params)
   const operator = await getOperatorContext('canManageCompliance')
-  if (!operator) return <OperatorShell active="Support" eyebrow="Customer resolution" title="Support & disputes" description="Support cases, disputes, resolutions and appeals."><TenantRequired /></OperatorShell>
+  if (!operator) return <OperatorShell active="Support" title="Support & disputes"><TenantRequired /></OperatorShell>
   const [queue, register] = await Promise.all([getSupportQueue({ page: casePage, pageSize: PLATFORM_PAGE_SIZE, search, status: caseStatus }), getDisputeRegister(operator.tenantId, disputePage, disputeStatus)])
   const disputeOption = (item: any) => ({ label: `${shortId(item.id)} · ${item.category}`, value: item.id })
-  return <OperatorShell active="Support" eyebrow="Customer resolution" title="Support & disputes" description="Support cases, disputes, resolutions and appeals." tenantName={operator.tenantName}>
+  const meta = queue.success ? `${queue.data.openCases} open cases · ${register.open} open disputes · ${register.appeals} appeals` : undefined
+  const tone = !queue.success ? 'alert' : queue.data.openCases || register.open ? 'wait' : 'ok'
+  return <OperatorShell active="Support" title="Support & disputes" tenantName={operator.tenantName} tone={tone} meta={meta}>
     {queue.success ? <SupportPageClient data={{
       cases: queue.data.cases.map((item) => ({ id: item.id, subject: item.subject || shortId(item.id), reference: shortId(item.id), category: item.category || '—', player: item.player ? shortId(item.player.id) : 'Restricted', openedAt: dateTime(item.openedAt), slaDueAt: dateTime(item.slaDueAt), status: item.status })),
       casesTotal: queue.data.total, allCases: queue.data.allCases, openCases: queue.data.openCases, customerVisibleEvents: queue.data.customerVisibleEvents, casePage, caseStatus, search,
@@ -59,7 +60,6 @@ export async function SupportScreen({ searchParams }: { searchParams?: PlatformS
       proposedDisputeWithResolutionOptions: register.proposed.map((item: any) => ({ label: `${shortId(item.id)} · ${item.category} · ${item.resolution || 'proposal'}`, value: item.id })),
       approvalOptions: register.approvals.map((item: any) => ({ label: `${shortId(item.id)} · ${item.action}`, value: item.id })),
     }} /> : <ReadFailed subject="support cases" />}
-    <WorkflowNote title="No impersonation">This workbench is read/action scoped. It does not create a customer session or reveal restricted AML decision logic.</WorkflowNote>
     <ExternalGateNotice />
   </OperatorShell>
 }

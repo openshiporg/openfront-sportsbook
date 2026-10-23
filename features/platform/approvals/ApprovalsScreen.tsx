@@ -1,5 +1,4 @@
 import { OperatorShell, TenantRequired } from '../components/OperatorShell'
-import { WorkflowNote } from '../components/WorkflowUI'
 import { dateTime, jsonText, shortId } from '../lib/format'
 import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
 import { allowedParam, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from '../lib/paging'
@@ -38,11 +37,11 @@ export async function ApprovalsScreen({ searchParams }: { searchParams?: Platfor
   const pendingPage = pageFrom({ page: params.ppage })
   const status = allowedParam(params, 'status', approvalStatuses)
   const operator = await getOperatorContext('canApproveSensitiveActions')
-  if (!operator) return <OperatorShell active="Approvals" eyebrow="Independent control" title="Approval inbox" description="Approve or reject requests from other operators."><TenantRequired /></OperatorShell>
+  if (!operator) return <OperatorShell active="Approvals" eyebrow="Independent control" title="Approval inbox"><TenantRequired /></OperatorShell>
   const inbox = await getApprovalInbox(operator.tenantId, pendingPage, historyPage, status)
   const actorName = (id: string) => inbox.actors.find((actor: any) => actor.id === id)?.name ?? shortId(id)
   const now = new Date()
-  return <OperatorShell active="Approvals" eyebrow="Independent control" title="Approval inbox" description="Approve or reject requests from other operators. You can’t decide your own requests." tenantName={operator.tenantName}>
+  return <OperatorShell active="Approvals" eyebrow="Independent control" title="Approval inbox" tone={inbox.pendingTotal > 0 ? 'wait' : 'ok'} meta={`${inbox.pendingTotal} pending · ${inbox.historyTotal} in history`} tenantName={operator.tenantName}>
     <ApprovalsPageClient data={{
       pending: inbox.pending.map((item: any) => ({ id: item.id, title: String(item.action).split(':')[0].replaceAll('_', ' '), action: String(item.action), status: item.status, expired: Boolean(item.expiresAt && new Date(item.expiresAt) <= now), requester: actorName(item.requesterId), requestedAt: dateTime(item.createdAt), expiresAt: item.expiresAt ? dateTime(item.expiresAt) : 'Not recorded', reason: item.reason || '—', payloadHash: item.payloadHash, body: item.requestPayload !== null && item.requestPayload !== undefined ? jsonText(item.requestPayload) : null, self: item.requesterId === operator.userId })),
       pendingTotal: inbox.pendingTotal, pendingPage,
@@ -50,6 +49,5 @@ export async function ApprovalsScreen({ searchParams }: { searchParams?: Platfor
       historyTotal: inbox.historyTotal, historyPage, status, pageSize: PLATFORM_PAGE_SIZE,
       approved: inbox.approved, rejected: inbox.rejected, selfDecisions: inbox.selfDecisions, statuses: approvalStatuses,
     }} />
-    <WorkflowNote title="Approval is not application">Approval records one exact decision. The initiating workflow still performs a separate scoped apply command that re-hashes and matches the payload.</WorkflowNote>
   </OperatorShell>
 }

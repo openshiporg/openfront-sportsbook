@@ -1,8 +1,8 @@
 'use client';
 
 import type { ReactNode } from "react";
-import Link from "next/link";
-import { MetricGrid, RecordList, StatusBadge } from "../../components/WorkflowUI";
+import { Mono, PillLink, Track } from "../../components/kit";
+import { MetricGrid, RecordList, StatusBadge, statusDotTone } from "../../components/WorkflowUI";
 import { hrefWith } from "../../lib/paging";
 
 export type FinanceJournalRow = { id: string; reference: string; effectiveAt: string; type: string; amounts: string; state: string };
@@ -21,33 +21,44 @@ export type FinancePageData = {
 };
 
 const basePath = "/dashboard/platform/finance";
-const actionLink = "inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted";
+const toneRank = { alert: 0, live: 0, wait: 1, info: 2, ok: 3, off: 4 } as const;
+/** Exceptions and pending items lead each page; ties keep the server's newest-first order. */
+function needsAttentionFirst<T>(rows: T[], status: (row: T) => string | null) {
+  return rows.map((row, index) => ({ row, index })).sort((a, b) => toneRank[statusDotTone(status(a.row))] - toneRank[statusDotTone(status(b.row))] || a.index - b.index).map(({ row }) => row);
+}
 
 /** Finance lists with independent URL pages (?jpage, ?rpage, ?ppage); forms are rendered by the server screen. */
 export function FinancePageClient({ data, forms }: { data: FinancePageData; forms: ReactNode }) {
   const pages = { jpage: data.journalPage.page, rpage: data.runPage.page, ppage: data.paymentPage.page };
   const hrefFor = (key: keyof typeof pages) => (next: number) => hrefWith(basePath, { ...pages, [key]: next === 1 ? undefined : next });
+  const pendingPayments = data.payments.filter((payment) => statusDotTone(payment.status) === "wait").length;
+  const unbalanced = data.journals.filter((journal) => journal.state === "UNBALANCED").length;
   return <>
     <MetricGrid items={[
-      { label: "Journal transactions", value: data.metrics.journalTotal, detail: `Showing ${data.journals.length} on page ${data.journalPage.page}` },
-      { label: "Balanced on page", value: data.metrics.balanced, detail: data.metrics.balancedDetail },
+      { label: "Recon exceptions", value: data.metrics.openReconItems, detail: "open", tone: data.metrics.openReconItems ? "alert" : "ok" },
+      { label: "Pending payments", value: pendingPayments, detail: "on page", tone: pendingPayments ? "wait" : "ok" },
+      { label: "Balanced journals", value: data.metrics.balanced, detail: data.metrics.balancedDetail, tone: unbalanced ? "alert" : "ok" },
       { label: "Player available", value: data.metrics.available, detail: data.metrics.availableDetail },
-      { label: "Recon exceptions", value: data.metrics.openReconItems, detail: "Open items" },
     ]} />
-    <RecordList title="Journal transactions" description="Newest first. Totals are calculated from each journal's ledger entries." columns={["Transaction", "Type", "Debits / credits", "State"]}
-      rows={data.journals.map((journal) => ({ id: journal.id, href: `${basePath}/journals/${journal.id}`, cells: [<span key="id">{journal.reference}<span className="block text-xs text-muted-foreground">{journal.effectiveAt}</span></span>, journal.type, journal.amounts, <StatusBadge key="status" value={journal.state} />] }))}
-      emptyTitle="No journal transactions" emptyDescription="Ledger journals appear here as wagers and payments are posted."
-      emptyAction={<Link href="/dashboard/platform/wagers" className={actionLink}>Open wagers</Link>}
-      pagination={{ ...data.journalPage, hrefForPage: hrefFor("jpage") }} />
-    <RecordList title="Reconciliation runs" description={`${data.metrics.openReconItems} unresolved item(s) across tenant runs.`} columns={["Run", "Type / window", "Difference", "State"]}
-      rows={data.runs.map((run) => ({ id: run.id, href: `${basePath}/reconciliation/runs/${run.id}`, cells: [run.reference, run.window, run.difference, <StatusBadge key="status" value={run.status} />] }))}
-      emptyTitle="No reconciliation runs" emptyDescription="Run a ledger check below to see its results here."
-      emptyAction={<Link href={`${basePath}/reconciliation`} className={actionLink}>Open reconciliation</Link>}
-      pagination={{ ...data.runPage, hrefForPage: hrefFor("rpage") }} />
-    <RecordList title="Payment intents" description="Sandbox adapter operations are labeled and remain separate from production funding." columns={["Player", "Type", "Amount", "State"]}
-      rows={data.payments.map((payment) => ({ id: payment.id, href: `${basePath}/payments/${payment.id}`, cells: [payment.player, payment.type, payment.amount, <StatusBadge key="state" value={payment.status} />] }))}
-      emptyTitle="No payments" emptyDescription="No payments have been made yet. Use the sandbox payment action below to post one."
+    <div className="flex flex-wrap items-center gap-2">
+      <Track label="Finance areas">
+        <PillLink size="sm" href={`${basePath}/reconciliation`}>Reconciliation</PillLink>
+      </Track>
+    </div>
+    <RecordList title="Payments" tone={pendingPayments ? "wait" : undefined} columns={["Player", "Type", "Amount", "State"]}
+      rows={needsAttentionFirst(data.payments, (payment) => payment.status).map((payment) => ({ id: payment.id, href: `${basePath}/payments/${payment.id}`, status: payment.status ?? undefined, cells: [<span key="player" className="break-all">{payment.player}</span>, <Mono key="type" className="break-all">{payment.type}</Mono>, <Mono key="amount">{payment.amount}</Mono>, <StatusBadge key="state" value={payment.status} />] }))}
+      emptyTitle="No payments"
       pagination={{ ...data.paymentPage, hrefForPage: hrefFor("ppage") }} />
+    <RecordList title="Reconciliation runs" tone={data.metrics.openReconItems ? "alert" : undefined} columns={["Run", "Type / window", "Difference", "State"]}
+      rows={needsAttentionFirst(data.runs, (run) => run.status).map((run) => ({ id: run.id, href: `${basePath}/reconciliation/runs/${run.id}`, status: run.status ?? undefined, cells: [<Mono key="ref" className="break-all">{run.reference}</Mono>, <Mono key="window" className="text-xs">{run.window}</Mono>, <Mono key="diff">{run.difference}</Mono>, <StatusBadge key="status" value={run.status} />] }))}
+      emptyTitle="No reconciliation runs"
+      emptyAction={<Track><PillLink size="sm" href={`${basePath}/reconciliation`}>Reconciliation</PillLink></Track>}
+      pagination={{ ...data.runPage, hrefForPage: hrefFor("rpage") }} />
+    <RecordList title="Journals" tone={unbalanced ? "alert" : undefined} columns={["Transaction", "Type", "Debits / credits", "State"]}
+      rows={needsAttentionFirst(data.journals, (journal) => journal.state).map((journal) => ({ id: journal.id, href: `${basePath}/journals/${journal.id}`, status: journal.state, cells: [<span key="id"><Mono className="break-all">{journal.reference}</Mono><span className="block font-mono text-xs font-normal tabular-nums text-muted-foreground">{journal.effectiveAt}</span></span>, journal.type, <Mono key="amounts">{journal.amounts}</Mono>, <StatusBadge key="status" value={journal.state} />] }))}
+      emptyTitle="No journal transactions"
+      emptyAction={<Track><PillLink size="sm" href="/dashboard/platform/wagers">Wagers</PillLink></Track>}
+      pagination={{ ...data.journalPage, hrefForPage: hrefFor("jpage") }} />
     {forms}
   </>;
 }

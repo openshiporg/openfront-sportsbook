@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useOnboardingApi, type SportsbookOnboardingInput } from "./hooks/useOnboardingApi";
 import { useUnsavedChangesGuard } from "../components/useUnsavedChangesGuard";
+import { Pill, StatusDot, Track } from "../components/kit";
 
 /**
  * New setup edits the seed; resume replays the exact persisted setup manifest for the operator's own
@@ -31,11 +32,20 @@ export function OnboardingForm({ resumeInput }: { resumeInput?: SportsbookOnboar
     }
   }
   const fields = [["operatorName", "Operator name"], ["brandName", "Brand name"], ["slug", "Tenant slug"], ["domain", "Brand domain"], ["currency", "Currency"], ["jurisdictionCode", "Jurisdiction policy"], ["timezone", "Time zone"]] as const;
-  return <form onSubmit={submit} className="rounded-xl border bg-card p-5 shadow-sm">
-    <h2 className="font-semibold">{resuming ? "Resume sandbox setup" : "Sandbox operator configuration"}</h2><p className="mt-1 text-sm text-muted-foreground">{resuming ? "Setup stopped before every stage finished. Resuming replays your original settings and only completes the missing stages." : "Creates a new tenant for your account. An existing tenant slug can't be joined from here."}</p>
-    <div className="mt-4 grid gap-4 md:grid-cols-2">{fields.map(([key, label]) => <label key={key} className="text-sm font-medium">{label}<input required readOnly={resuming} value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className="mt-1 block min-h-10 w-full rounded-md border px-3 py-2 font-normal" /></label>)}<label className="text-sm font-medium">Currency exponent<input required readOnly={resuming} type="number" min={0} max={6} value={form.currencyExponent} onChange={(event) => setForm({ ...form, currencyExponent: Number.parseInt(event.target.value, 10) })} className="mt-1 block min-h-10 w-full rounded-md border px-3 py-2 font-normal" /><span className="mt-1 block text-xs font-normal text-muted-foreground">2 for cents-based currencies such as USD.</span></label></div>
-    <div className="mt-5 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-900 dark:text-amber-200">Creates tenant-owned local fixtures and sandbox adapters. It does not certify a licence, jurisdiction, payment provider, data rights, or production launch.</div>
-    <button type="submit" disabled={state.busy || Boolean(state.hash)} className="mt-4 min-h-10 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">{state.busy ? "Applying safely…" : state.hash ? "Sandbox configured" : resuming ? "Resume setup" : "Configure sandbox operator"}</button>{dirty && !state.busy ? <><span className="ml-3 rounded-full border px-2 py-0.5 text-xs text-muted-foreground">Unsaved changes</span><button type="button" onClick={() => setForm({ ...baseline })} className="ml-2 text-xs font-medium underline underline-offset-2">Discard changes</button></> : null}
-    <div aria-live="polite" className="mt-3 min-h-5">{state.error ? <p role="alert" className="text-sm text-red-700 dark:text-red-400">{state.error}</p> : null}{state.hash ? <p role="status" className="break-all text-xs text-emerald-700 dark:text-emerald-400">Configuration evidence: {state.hash}</p> : null}</div>
+  const inputClass = "mt-1.5 block h-9 w-full min-w-0 rounded-md border bg-background px-3 text-sm font-normal shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring read-only:bg-muted/60 read-only:text-muted-foreground";
+  return <form onSubmit={submit} className="min-w-0 overflow-hidden rounded-xl border bg-card text-card-foreground">
+    <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+      <h2 className="text-sm font-semibold"><StatusDot tone={state.hash ? "ok" : state.error ? "alert" : resuming ? "wait" : "info"} />{resuming ? "Resume setup" : "New operator"}</h2>
+      <span className="font-mono text-xs tabular-nums text-muted-foreground">{resuming ? "saved manifest · read-only" : "sandbox"}</span>
+    </header>
+    <div className="grid gap-4 p-4 sm:grid-cols-2">{fields.map(([key, label]) => <label key={key} className="min-w-0 text-sm font-medium">{label}<input required readOnly={resuming} value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className={`${inputClass}${key === "slug" || key === "domain" || key === "currency" || key === "jurisdictionCode" || key === "timezone" ? " font-mono" : ""}`} /></label>)}<label className="min-w-0 text-sm font-medium">Currency exponent<input required readOnly={resuming} type="number" min={0} max={6} value={form.currencyExponent} onChange={(event) => setForm({ ...form, currencyExponent: Number.parseInt(event.target.value, 10) })} className={`${inputClass} font-mono tabular-nums`} /><span className="mt-1 block text-xs font-normal text-muted-foreground">0–6 · USD is 2</span></label></div>
+    <div className="flex flex-wrap items-center gap-3 border-t px-4 py-3">
+      <Track>
+        <Pill type="submit" variant="primary" disabled={state.busy || Boolean(state.hash)}>{state.busy ? "Applying…" : state.hash ? "Configured" : resuming ? "Resume setup" : "Configure sandbox operator"}</Pill>
+        {dirty && !state.busy ? <Pill variant="flat" onClick={() => setForm({ ...baseline })}>Discard changes</Pill> : null}
+      </Track>
+      {dirty && !state.busy ? <span className="text-xs text-muted-foreground"><StatusDot tone="wait" />Unsaved changes</span> : null}
+    </div>
+    <div aria-live="polite" className="px-4">{state.error ? <p role="alert" className="pb-3 text-sm text-red-700 dark:text-red-400"><StatusDot tone="alert" />{state.error}</p> : null}{state.hash ? <p role="status" className="break-all pb-3 font-mono text-xs text-emerald-700 dark:text-emerald-400"><StatusDot tone="ok" />{state.hash}</p> : null}</div>
   </form>;
 }

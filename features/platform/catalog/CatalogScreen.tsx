@@ -17,10 +17,10 @@ export async function CatalogScreen({ searchParams }: { searchParams?: PlatformS
   const status = allowedParam(params, "status", eventStatuses);
   const competitionSearch = searchFrom(params, "competition");
   const operator = await getOperatorContext("canTrade");
-  if (!operator) return <OperatorShell active="Catalog" eyebrow="Catalog operations" title="Events and market catalog" description="Create and manage events, markets and selections."><TenantRequired /></OperatorShell>;
+  if (!operator) return <OperatorShell active="Catalog" title="Catalog"><TenantRequired /></OperatorShell>;
   const result = await getCatalog({ page, pageSize: PLATFORM_PAGE_SIZE, search, status, competitionSearch });
   const formNow = new Date();
-  return <OperatorShell active="Catalog" eyebrow="Catalog operations" title="Events and market catalog" description="Your events and markets. New events are created with an initial market and its selections." tenantName={operator.tenantName}>
+  return <OperatorShell active="Catalog" title="Catalog" tone={result.success ? (result.data.pendingMappings ? "wait" : "ok") : "alert"} meta={result.success ? `${result.data.allEvents} events · ${result.data.markets} markets · ${result.data.pendingMappings} mappings pending` : undefined} tenantName={operator.tenantName}>
     {result.success ? <CatalogPageClient data={{
       rows: result.data.events.map((event) => ({ id: event.id, name: event.name || shortId(event.id), reference: shortId(event.externalKey || event.id), competition: event.competition?.name || "Unassigned", startsAt: dateTime(event.startAt), status: event.status })),
       total: result.data.total, allEvents: result.data.allEvents, markets: result.data.markets, allCompetitions: result.data.allCompetitions, pendingMappings: result.data.pendingMappings,

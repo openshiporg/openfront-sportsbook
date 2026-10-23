@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { Pill, pillClass, Track } from "../../components/kit";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 /** Family layout-level dialog. Operator setup stays on the onboarding page, whose server-side
@@ -13,11 +13,13 @@ export default function OnboardingDialog({ isOpen, onClose }: {
     <DialogContent>
       <DialogHeader>
         <DialogTitle>Operator setup</DialogTitle>
-        <DialogDescription>Create the first tenant, brand, pending jurisdiction, sandbox adapters, catalog root, and limit profile. Setup requires an MFA-assured operator session.</DialogDescription>
+        <DialogDescription>MFA-verified session required</DialogDescription>
       </DialogHeader>
       <DialogFooter>
-        <Button variant="ghost" onClick={onClose}>Not now</Button>
-        <Button asChild><Link href="/dashboard/platform/onboarding" onClick={onClose}>Open onboarding</Link></Button>
+        <Track>
+          <Pill variant="flat" onClick={onClose}>Not now</Pill>
+          <Link href="/dashboard/platform/onboarding" onClick={onClose} className={pillClass("primary")}>Open onboarding</Link>
+        </Track>
       </DialogFooter>
     </DialogContent>
   </Dialog>;

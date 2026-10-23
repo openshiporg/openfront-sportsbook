@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { MutationForm } from "../components/MutationForm";
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
-import { DetailGrid, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
+import { Mono, PillLink, Track } from "../components/kit";
+import { DetailGrid, StatusBadge, statusDotTone, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, shortId } from "../lib/format";
 import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
 
@@ -15,7 +16,7 @@ const PAGE = 100;
  */
 export async function SupportCaseDetailScreen({ caseId, page = 1 }: { caseId: string; page?: number }) {
   const operator = await getOperatorContext("canManageCompliance");
-  if (!operator) return <OperatorShell active="Support" detail title="Support case" description="Case conversation and next actions."><TenantRequired /></OperatorShell>;
+  if (!operator) return <OperatorShell active="Support" detail title="Support case"><TenantRequired /></OperatorShell>;
   const tenantId = operator.tenantId;
   const item = await prisma.supportCase.findFirst({ where: { id: caseId, tenantId }, include: { player: true, dispute: true } });
   if (!item) notFound();
@@ -29,26 +30,40 @@ export async function SupportCaseDetailScreen({ caseId, page = 1 }: { caseId: st
   const staffName = (id: string) => staff.find((user: any) => user.id === id)?.name ?? shortId(id);
   const closed = ["RESOLVED", "CLOSED"].includes(item.status);
   const pages = Math.max(1, Math.ceil(total / PAGE));
-  return <OperatorShell active="Support" detail title={item.subject} description="Case conversation, linked records and next actions." tenantName={operator.tenantName}>
+  const linkClass = "font-mono underline underline-offset-2 hover:text-foreground";
+  return <OperatorShell
+    active="Support"
+    detail
+    title={item.subject}
+    tenantName={operator.tenantName}
+    tone={statusDotTone(item.status)}
+    meta={`${String(item.status ?? "unknown").replaceAll("_", " ").toLowerCase()} · SLA ${dateTime(item.slaDueAt)} · ${total} messages`}
+  >
     <DetailGrid items={[
       { label: "Status", value: <StatusBadge value={item.status} /> },
       { label: "Category · priority", value: `${item.category} · ${item.priority}` },
-      { label: "Player", value: item.player ? <Link className="underline" href={`/dashboard/platform/customers/${item.playerId}`}>{shortId(item.playerId)}</Link> : shortId(item.playerId || "") },
       { label: "Owner", value: item.ownerId ? staffName(item.ownerId) : "Unassigned" },
-      { label: "Opened", value: dateTime(item.openedAt) },
-      { label: "SLA due", value: dateTime(item.slaDueAt) },
-      { label: "Wager", value: item.wagerId ? <Link className="underline" href={`/dashboard/platform/wagers/${item.wagerId}`}>{shortId(item.wagerId)}</Link> : "—" },
-      { label: "Dispute", value: item.dispute ? <span className="flex flex-wrap items-center gap-2">{shortId(item.dispute.id)} <StatusBadge value={item.dispute.status} /></span> : "—" },
-      { label: "Payment", value: item.paymentIntentId ? shortId(item.paymentIntentId) : "—" },
+      { label: "Player", value: item.player ? <Link className={linkClass} href={`/dashboard/platform/customers/${item.playerId}`}>{shortId(item.playerId)}</Link> : <Mono>{shortId(item.playerId || "")}</Mono> },
+      { label: "Opened", value: <Mono>{dateTime(item.openedAt)}</Mono> },
+      { label: "SLA due", value: <Mono>{dateTime(item.slaDueAt)}</Mono> },
+      { label: "Wager", value: item.wagerId ? <Link className={linkClass} href={`/dashboard/platform/wagers/${item.wagerId}`}>{shortId(item.wagerId)}</Link> : "—" },
+      { label: "Dispute", value: item.dispute ? <span className="flex flex-wrap items-center gap-2"><Mono>{shortId(item.dispute.id)}</Mono> <StatusBadge value={item.dispute.status} /></span> : "—" },
+      { label: "Payment", value: item.paymentIntentId ? <Mono>{shortId(item.paymentIntentId)}</Mono> : "—" },
     ]} />
-    <section aria-labelledby="case-timeline" className="space-y-3">
-      <div><h2 id="case-timeline" className="font-semibold">Conversation</h2><p className="mt-1 text-sm text-muted-foreground">Oldest first. Customer-visible and internal entries are labelled; restricted entries stay sealed.</p></div>
-      {events.length === 0 ? <WorkflowNote title="No messages yet">This case has no recorded events.</WorkflowNote> : <ol className="space-y-3">{events.map((event: any) => <li key={event.id} className="rounded-xl border bg-card p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"><span>{event.actorType === "STAFF" ? staffName(event.actorId) : event.actorType === "PLAYER" ? "Customer" : event.actorType} · {event.type.replaceAll("_", " ").toLowerCase()}</span><span className="flex items-center gap-2"><StatusBadge value={event.visibility} />{dateTime(event.createdAt)}</span></div>
-        {event.visibility === "RESTRICTED" ? <p className="mt-2 text-sm italic text-muted-foreground">Restricted entry. Open the compliance record with the appropriate access to review it.</p> : <p className="mt-2 whitespace-pre-wrap text-sm">{event.body || "—"}</p>}
+    <section aria-labelledby="case-timeline" className="min-w-0 space-y-3">
+      <h2 id="case-timeline" className="text-sm font-semibold">Conversation<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{total}</span></h2>
+      {events.length === 0 ? <WorkflowNote title="No messages yet" /> : <ol className="space-y-3">{events.map((event: any) => <li key={event.id} className={`min-w-0 rounded-xl border p-4 ${event.actorType === "PLAYER" ? "bg-card" : "bg-muted/40"}`}>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"><span className="font-medium text-foreground">{event.actorType === "STAFF" ? staffName(event.actorId) : event.actorType === "PLAYER" ? "Customer" : event.actorType}<span className="font-normal text-muted-foreground"> · {event.type.replaceAll("_", " ").toLowerCase()}</span></span><span className="flex flex-wrap items-center gap-2"><StatusBadge value={event.visibility} /><Mono>{dateTime(event.createdAt)}</Mono></span></div>
+        {event.visibility === "RESTRICTED" ? <p className="mt-2 text-sm italic text-muted-foreground">Restricted entry</p> : <p className="mt-2 whitespace-pre-wrap break-words text-sm">{event.body || "—"}</p>}
       </li>)}</ol>}
-      {pages > 1 ? <nav aria-label="Conversation pages" className="flex gap-3 text-sm">{current > 1 ? <Link className="underline" href={`?page=${current - 1}`}>Earlier</Link> : null}<span className="text-muted-foreground">Page {current} of {pages}</span>{current < pages ? <Link className="underline" href={`?page=${current + 1}`}>Later</Link> : null}</nav> : null}
+      {pages > 1 ? <nav aria-label="Conversation pages" className="flex items-center justify-between gap-3">
+        <Track>
+          {current > 1 ? <PillLink size="sm" href={`?page=${current - 1}`}>Earlier</PillLink> : <span aria-disabled="true" className="inline-flex h-8 items-center px-3 text-xs text-muted-foreground/60">Earlier</span>}
+          {current < pages ? <PillLink size="sm" href={`?page=${current + 1}`}>Later</PillLink> : <span aria-disabled="true" className="inline-flex h-8 items-center px-3 text-xs text-muted-foreground/60">Later</span>}
+        </Track>
+        <Mono className="text-xs text-muted-foreground">{current} / {pages}</Mono>
+      </nav> : null}
     </section>
-    {closed ? <WorkflowNote title="Case closed">This case is {item.status.toLowerCase()}. The conversation remains as evidence.</WorkflowNote> : <MutationForm title="Reply and update status" description="Adds a customer-visible message to this conversation and records your internal reason in the audit trail." mutation={updateMutation} fields={[{ name: "caseId", label: "Case", type: "hidden", defaultValue: item.id }, { name: "status", label: "New status", type: "select", options: ["TRIAGED", "WAITING_CUSTOMER", "WAITING_OPERATOR", "RESOLVED", "CLOSED"].map((value) => ({ label: value.replaceAll("_", " "), value })) }, { name: "customerMessage", label: "Message to customer", type: "textarea", placeholder: "Message the customer will see" }, { name: "reason", label: "Internal reason", placeholder: "What you reviewed" }]} submitLabel="Send and update" successMessage="Case updated." />}
+    {closed ? <WorkflowNote title={`Case ${item.status.toLowerCase()}`} /> : <MutationForm title="Reply and update status" mutation={updateMutation} fields={[{ name: "caseId", label: "Case", type: "hidden", defaultValue: item.id }, { name: "status", label: "New status", type: "select", options: ["TRIAGED", "WAITING_CUSTOMER", "WAITING_OPERATOR", "RESOLVED", "CLOSED"].map((value) => ({ label: value.replaceAll("_", " "), value })) }, { name: "customerMessage", label: "Message to customer", type: "textarea" }, { name: "reason", label: "Internal reason" }]} submitLabel="Send and update" successMessage="Case updated." />}
   </OperatorShell>;
 }

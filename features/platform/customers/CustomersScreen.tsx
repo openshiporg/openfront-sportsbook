@@ -16,9 +16,11 @@ export async function CustomersScreen({ searchParams }: { searchParams?: Platfor
   const search = searchFrom(params);
   const kycStatus = allowedParam(params, "kyc", kycStatuses);
   const operator = await getOperatorContext("canManageCompliance");
-  if (!operator) return <OperatorShell active="Customers" eyebrow="Customer compliance" title="Customers, KYC and AML" description="Review players, identity verification and AML cases."><TenantRequired /></OperatorShell>;
+  if (!operator) return <OperatorShell active="Customers" title="Customers"><TenantRequired /></OperatorShell>;
   const result = await getCustomers({ page, pageSize: PLATFORM_PAGE_SIZE, search, kycStatus });
-  return <OperatorShell active="Customers" eyebrow="Customer compliance" title="Customers, KYC and AML" description="Review players, identity verification and AML cases." tenantName={operator.tenantName}>
+  const meta = result.success ? `${result.data.total} ${search || kycStatus ? "matching" : "players"} · ${result.data.pendingKyc} KYC pending · ${result.data.openAml} AML open · ${result.data.restricted} restricted` : undefined;
+  const tone = result.success ? (result.data.pendingKyc || result.data.openAml ? "wait" : "ok") : "alert";
+  return <OperatorShell active="Customers" title="Customers" tenantName={operator.tenantName} tone={tone} meta={meta}>
     {result.success ? <CustomersPageClient data={{
       rows: result.data.players.map((player) => ({ id: player.id, subject: player.subject || shortId(player.id), reference: shortId(player.id), createdAt: dateTime(player.createdAt), kycStatus: player.kycStatus, riskBand: player.riskBand || "UNKNOWN", verificationCases: player.verificationCases, amlCases: player.amlCases, status: player.status, restricted: player.activeRestrictions > 0 })),
       total: result.data.total, pendingKyc: result.data.pendingKyc, openAml: result.data.openAml, restricted: result.data.restricted,

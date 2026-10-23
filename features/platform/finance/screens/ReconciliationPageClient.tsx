@@ -1,9 +1,9 @@
 'use client';
 
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { ListFilters } from "../../components/ListFilters";
-import { MetricGrid, RecordList, StatusBadge } from "../../components/WorkflowUI";
+import { Mono, PillLink, Track } from "../../components/kit";
+import { MetricGrid, RecordList, StatusBadge, statusDotTone } from "../../components/WorkflowUI";
 import { hrefWith } from "../../lib/paging";
 
 export type ReconciliationItemRow = { id: string; run: string; runId: string | null; createdAt: string; internalReference: string; providerReference: string; difference: string; status: string | null; resolution: string | null };
@@ -26,43 +26,66 @@ export type ReconciliationPageData = {
 };
 
 const basePath = "/dashboard/platform/finance/reconciliation";
-const actionLink = "inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted";
-const statusOptions = ["OPEN", "MATCHED", "RESOLVED"].map((value) => ({ label: value.toLowerCase(), value }));
+const statusValues = ["OPEN", "MATCHED", "RESOLVED"] as const;
+const toneRank = { alert: 0, live: 0, wait: 1, info: 2, ok: 3, off: 4 } as const;
+/** Shortfalls, open and pending rows lead each page; ties keep the server order. */
+function needsAttentionFirst<T>(rows: T[], status: (row: T) => string | null) {
+  return rows.map((row, index) => ({ row, index })).sort((a, b) => toneRank[statusDotTone(status(a.row))] - toneRank[statusDotTone(status(b.row))] || a.index - b.index).map(({ row }) => row);
+}
+// OPEN reconciliation items are unmatched differences: dot them as waiting, not as neutral "open".
+const itemDot = (status: string | null) => (status === "OPEN" ? "UNMATCHED" : status ?? undefined);
 
 /** Exception worklist (URL search/status/page), safeguarding register and controls, adjustment requests. */
 export function ReconciliationPageClient({ data, forms, trailing }: { data: ReconciliationPageData; forms: ReactNode; trailing: ReactNode }) {
   const state = { q: data.search, status: data.status, page: data.itemPage.page, cpage: data.controlPage.page, apage: data.adjustmentPage.page };
   const hrefFor = (key: "page" | "cpage" | "apage") => (next: number) => { const pages = { ...state, [key]: next }; return hrefWith(basePath, { ...pages, cpage: pages.cpage === 1 ? undefined : pages.cpage, apage: pages.apage === 1 ? undefined : pages.apage }); };
+  const statusHref = (status?: string) => hrefWith(basePath, { q: data.search, status, cpage: data.controlPage.page === 1 ? undefined : data.controlPage.page, apage: data.adjustmentPage.page === 1 ? undefined : data.adjustmentPage.page });
   const filtered = Boolean(data.search || data.status);
   return <>
     <MetricGrid items={[
-      { label: "Reconciliation runs", value: data.metrics.runCount, detail: `${data.metrics.completedRuns} complete` },
-      { label: "Open differences", value: data.metrics.openItems, detail: data.metrics.openDifferences },
-      { label: "Safeguarding controls", value: data.metrics.controlTotal, detail: `${data.metrics.shortfalls} shortfalls` },
-      { label: "Adjustment requests", value: data.metrics.adjustmentTotal, detail: `${data.metrics.pendingAdjustments} pending` },
+      { label: "Open items", value: data.metrics.openItems, detail: data.metrics.openDifferences, tone: data.metrics.openItems ? "alert" : "ok" },
+      { label: "Shortfalls", value: data.metrics.shortfalls, detail: `${data.metrics.controlTotal} controls`, tone: data.metrics.shortfalls ? "alert" : "ok" },
+      { label: "Pending adjustments", value: data.metrics.pendingAdjustments, detail: `${data.metrics.adjustmentTotal} requests`, tone: data.metrics.pendingAdjustments ? "wait" : "ok" },
+      { label: "Runs", value: data.metrics.runCount, detail: `${data.metrics.completedRuns} complete` },
     ]} />
-    {forms}
-    <RecordList title="Safeguarding account register" description="Database labels do not substitute for approved bank and legal arrangements." columns={["Account", "Classification", "Currency", "State"]}
-      rows={data.accounts.map((item) => ({ id: item.id, cells: [<div key="id"><p className="font-semibold">{item.reference}</p><p className="text-xs text-muted-foreground">{item.shortId}</p></div>, item.classification, item.currency, <StatusBadge key="state" value={item.status} />] }))}
-      emptyTitle="No safeguarding account" emptyDescription="Funds protection is configured during onboarding."
-      emptyAction={<Link href="/dashboard/platform/onboarding" className={actionLink}>Open onboarding</Link>} />
-    <RecordList title="Reconciliation exception worklist" description="Open an item for its run, references and resolution. Resolve it by requesting a ledger adjustment linked to the item; the approved adjustment posts its journal and resolves the item atomically."
-      action={<ListFilters searchLabel="Search exceptions" searchPlaceholder="Internal or provider reference, or item ID" filters={[{ key: "status", label: "State", options: statusOptions }]} />}
+
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <div className="min-w-0 flex-1"><ListFilters searchLabel="Search exceptions" searchPlaceholder="Internal or provider reference, or item ID" /></div>
+      <Track label="Item state">
+        <PillLink size="sm" variant="flat" href={statusHref()} current={!data.status}>All</PillLink>
+        {statusValues.map((value) => <PillLink key={value} size="sm" variant="flat" href={statusHref(value)} current={data.status === value}>{value === "OPEN" ? "unmatched" : value.toLowerCase()}</PillLink>)}
+      </Track>
+    </div>
+    <RecordList title="Exceptions" tone={data.metrics.openItems ? "alert" : undefined}
       columns={["Item", "References", "Difference", "State"]}
-      rows={data.items.map((item) => ({ id: item.id, href: `${basePath}/items/${item.id}`, cells: [<div key="id"><p className="font-mono text-xs">{item.id}</p><p className="text-xs text-muted-foreground">Run {item.run} · {item.createdAt}</p></div>, <div key="refs" className="text-xs"><p className="break-all">Internal {item.internalReference}</p><p className="break-all">Provider {item.providerReference}</p></div>, item.difference, <div key="state"><StatusBadge value={item.status} />{item.resolution ? <p className="mt-1 text-xs text-muted-foreground">Journal {item.resolution}</p> : null}</div>] }))}
+      rows={needsAttentionFirst(data.items, (item) => itemDot(item.status) ?? null).map((item) => ({ id: item.id, href: `${basePath}/items/${item.id}`, status: itemDot(item.status), cells: [
+        <span key="id"><Mono className="break-all text-xs">{item.id}</Mono><span className="block font-mono text-xs font-normal tabular-nums text-muted-foreground">run {item.run} · {item.createdAt}</span></span>,
+        <span key="refs" className="block font-mono text-xs"><span className="block break-all">int {item.internalReference}</span><span className="block break-all">prov {item.providerReference}</span></span>,
+        <Mono key="diff">{item.difference}</Mono>,
+        <span key="state" className="block"><StatusBadge value={item.status} />{item.resolution ? <span className="mt-1 block font-mono text-xs text-muted-foreground">journal {item.resolution}</span> : null}</span>,
+      ] }))}
       filtered={filtered}
       emptyTitle={filtered ? "No matching exceptions" : "No reconciliation items"}
-      emptyDescription={filtered ? "No exception matches this search or state." : "Run a journal control above to compare the ledger for a window."}
-      emptyAction={filtered ? <Link href={basePath} className={actionLink}>Clear search and filters</Link> : undefined}
+      emptyAction={filtered ? <Track><PillLink size="sm" href={basePath}>Clear filters</PillLink></Track> : undefined}
       pagination={{ ...data.itemPage, hrefForPage: hrefFor("page") }} />
-    <RecordList title="Control history" description="Operator-attested asset, ledger liability and difference amounts are immutable evidence; they do not certify a bank balance." columns={["Control", "As of", "Difference", "State"]}
-      rows={data.controls.map((item) => ({ id: item.id, href: `/dashboard/platform/finance/safeguarding/${item.id}`, cells: [<span key="id">{item.reference}<span className="block text-xs text-muted-foreground">{item.account}</span></span>, item.asOf, item.difference, <StatusBadge key="state" value={item.status} />] }))}
-      emptyTitle="No safeguarding controls" emptyDescription="Run a safeguarding comparison above."
-      pagination={{ ...data.controlPage, hrefForPage: hrefFor("cpage") }} />
-    <RecordList title="Ledger adjustment requests" description="Each request posts nothing until another operator approves its exact payload; open one for approval and journal linkage." columns={["Request", "Account", "Amount / reason", "State"]}
-      rows={data.adjustments.map((item) => ({ id: item.id, href: `/dashboard/platform/finance/adjustments/${item.id}`, cells: [<span key="id">{item.reference}<span className="block text-xs text-muted-foreground">{item.createdAt}</span></span>, item.account, <span key="amount">{item.amount}<span className="block text-xs text-muted-foreground">{item.reason}</span></span>, <div key="state"><StatusBadge value={item.status} />{item.journal ? <p className="mt-1 text-xs text-muted-foreground">Journal {item.journal}</p> : null}</div>] }))}
-      emptyTitle="No adjustment requests" emptyDescription="Request a ledger adjustment above, or open an exception to request one linked to it."
-      pagination={{ ...data.adjustmentPage, hrefForPage: hrefFor("apage") }} />
+
+    <div className="grid gap-4 xl:grid-cols-2">
+      <RecordList title="Safeguarding controls" tone={data.metrics.shortfalls ? "alert" : undefined} columns={["Control", "As of", "Difference", "State"]}
+        rows={needsAttentionFirst(data.controls, (item) => item.status).map((item) => ({ id: item.id, href: `/dashboard/platform/finance/safeguarding/${item.id}`, status: item.status ?? undefined, cells: [<span key="id"><Mono className="break-all">{item.reference}</Mono><span className="block break-all text-xs font-normal text-muted-foreground">{item.account}</span></span>, <Mono key="asof" className="text-xs">{item.asOf}</Mono>, <Mono key="diff">{item.difference}</Mono>, <StatusBadge key="state" value={item.status} />] }))}
+        emptyTitle="No safeguarding controls"
+        pagination={{ ...data.controlPage, hrefForPage: hrefFor("cpage") }} />
+      <RecordList title="Adjustment requests" tone={data.metrics.pendingAdjustments ? "wait" : undefined} columns={["Request", "Account", "Amount / reason", "State"]}
+        rows={needsAttentionFirst(data.adjustments, (item) => item.status).map((item) => ({ id: item.id, href: `/dashboard/platform/finance/adjustments/${item.id}`, status: item.status ?? undefined, cells: [<span key="id"><Mono className="break-all">{item.reference}</Mono><span className="block font-mono text-xs font-normal tabular-nums text-muted-foreground">{item.createdAt}</span></span>, <Mono key="account" className="break-all text-xs">{item.account}</Mono>, <span key="amount"><Mono>{item.amount}</Mono><span className="block text-xs text-muted-foreground">{item.reason}</span></span>, <span key="state" className="block"><StatusBadge value={item.status} />{item.journal ? <span className="mt-1 block font-mono text-xs text-muted-foreground">journal {item.journal}</span> : null}</span>] }))}
+        emptyTitle="No adjustment requests"
+        pagination={{ ...data.adjustmentPage, hrefForPage: hrefFor("apage") }} />
+    </div>
+
+    {forms}
+
+    <RecordList title="Safeguarding accounts" columns={["Account", "Classification", "Currency", "State"]}
+      rows={data.accounts.map((item) => ({ id: item.id, status: item.status ?? undefined, cells: [<span key="id"><span className="break-all font-semibold">{item.reference}</span><span className="block break-all font-mono text-xs font-normal text-muted-foreground">{item.shortId}</span></span>, item.classification, <Mono key="cur">{item.currency}</Mono>, <StatusBadge key="state" value={item.status} />] }))}
+      emptyTitle="No safeguarding account"
+      emptyAction={<Track><PillLink size="sm" href="/dashboard/platform/onboarding">Onboarding</PillLink></Track>} />
     {trailing}
   </>;
 }

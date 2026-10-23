@@ -2,6 +2,7 @@ import { MutationForm } from "../components/MutationForm";
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { MetricGrid, RecordList, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, shortId } from "../lib/format";
+import { Mono, StatusDot } from "../components/kit";
 import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
 import { hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { replaySourceModel, replayUnavailableReason } from "../../sportsbook/workers/replay-contract";
@@ -12,7 +13,7 @@ export async function RecoveryScreen({ searchParams }: { searchParams?: Platform
   const params = (await searchParams) ?? {};
   const page = pageFrom(params), deadPage = pageFrom({ page: params.dpage });
   const operator = await getOperatorContext("canManageIntegrations");
-  if (!operator) return <OperatorShell active="Recovery" eyebrow="Worker operations" title="Queue and worker recovery" description="Background jobs, failed work and retries."><TenantRequired /></OperatorShell>;
+  if (!operator) return <OperatorShell active="Recovery" eyebrow="Worker operations" title="Queue and worker recovery"><TenantRequired /></OperatorShell>;
   const tenantWhere = { tenantId: operator.tenantId }, asOf = new Date();
   // Lists are paged and every metric is a count over all rows; recoverable work is queried by state
   // (oldest first) instead of being filtered out of a recent window.
@@ -52,10 +53,33 @@ export async function RecoveryScreen({ searchParams }: { searchParams?: Platform
     if (!replaySourceModel(item.sourceType)) return replayUnavailableReason({ kind: item.sourceType });
     return replayUnavailableReason(row ? { kind: item.sourceType, status: row.status, eventType: row.eventType, jobType: row.type } : null);
   };
-  return <OperatorShell active="Recovery" eyebrow="Worker operations" title="Queue and worker recovery" description="Background jobs, failed work and retries." tenantName={operator.tenantName}>
-    <MetricGrid items={[{ label: "Outbox pending", value: outboxPending, detail: "All pending outbox work" }, { label: "Processing", value: liveLeases, detail: processingTotal - liveLeases ? `Live leases · ${processingTotal - liveLeases} expired, awaiting reclaim` : "Live leases" }, { label: "Dead letters", value: unresolvedTotal, detail: "Unresolved" }, { label: "Completed outbox", value: outboxCompleted, detail: "All time" }]} />
-    <RecordList title="Outbox worker queue" description="Lease, attempts, errors, and availability are real stored worker state." columns={["Event", "Aggregate", "Attempts / available", "State"]} rows={outbox.map((item: any) => ({ id: item.id, cells: [<span key="event">{item.eventType}<span className="block font-mono text-xs text-muted-foreground">{shortId(item.id)}</span></span>, `${item.aggregateType} · ${shortId(item.aggregateId)}`, `${item.attempts ?? 0}/${item.maxAttempts ?? 10} · ${dateTime(item.availableAt)}`, <StatusBadge key="state" value={item.status} />] }))} emptyTitle="Outbox is empty" emptyDescription="No background jobs have been queued." pagination={{ page, pageSize: PLATFORM_PAGE_SIZE, total: outboxTotal, hrefForPage: (next) => hrefWith("/dashboard/platform/recovery", { page: next, dpage: deadPage }) }} />
-    <RecordList title="Dead-letter evidence" description="Resolved records remain visible after a replay is requested." columns={["Source", "Reason", "Attempts", "State"]} rows={dead.map((item: any) => ({ id: item.id, cells: [`${item.sourceType} · ${shortId(item.sourceId)}`, item.reason, item.attempts ?? 0, <StatusBadge key="state" value={item.resolvedAt ? "RESOLVED" : "DEAD"} />] }))} emptyTitle="No dead letters" emptyDescription="No jobs have failed." pagination={{ page: deadPage, pageSize: PLATFORM_PAGE_SIZE, total: deadTotal, hrefForPage: (next) => hrefWith("/dashboard/platform/recovery", { page, dpage: next }) }} />
-    <section className="space-y-4"><div><h2 className="font-semibold">Recoverable items</h2><p className="mt-1 text-sm text-muted-foreground">Replay resets only the selected queue item and records an audit reason.{recoverableTotal > recoverable.length ? ` Showing the oldest ${recoverable.length} of ${recoverableTotal} recoverable items.` : ""}</p></div>{recoverable.length === 0 ? <WorkflowNote title="No replay action available">There is no unresolved dead letter or dead queue item. Pending work should be left for the worker lease process.</WorkflowNote> : recoverable.map((item: any) => <MutationForm key={`${item.sourceKind}:${item.id}`} compact title={`${item.sourceKind} · ${shortId(item.id)}`} description={item.label} mutation={replayMutation} fields={[{ name: "sourceType", label: "Source", type: "hidden", defaultValue: item.sourceKind }, { name: "sourceId", label: "Source ID", type: "hidden", defaultValue: item.id }, { name: "reason", label: "Replay reason", placeholder: "Root cause fixed; safe to replay once" }]} submitLabel="Replay selected item" successMessage="Selected queue item reset for replay." disabledReason={replayBlocked(item) ? `Replay unavailable for this source: ${replayBlocked(item)}` : operator.capabilities.canManageIntegrations ? undefined : "Your role does not include recovery capability."} />)}</section>
+  const expiredLeases = processingTotal - liveLeases;
+  const outboxState = (item: any) => item.status === "PROCESSING" && !(item.leaseUntil && new Date(item.leaseUntil) > asOf) ? "LEASE_EXPIRED" : item.status;
+  return <OperatorShell
+    active="Recovery"
+    eyebrow="Worker operations"
+    title="Queue and worker recovery"
+    tone={recoverableTotal ? "alert" : expiredLeases ? "wait" : "ok"}
+    meta={`${expiredLeases} stuck leases · ${recoverableTotal} recoverable · ${outboxPending} pending · as of ${dateTime(asOf)}`}
+    tenantName={operator.tenantName}
+  >
+    <MetricGrid items={[
+      { label: "Stuck leases", value: expiredLeases, tone: expiredLeases ? "wait" : "ok" },
+      { label: "Recoverable", value: recoverableTotal, detail: `${unresolvedTotal} dead letters · ${outboxDeadTotal + inboxDeadTotal} dead queue`, tone: recoverableTotal ? "alert" : "ok" },
+      { label: "Processing", value: liveLeases, detail: "live leases" },
+      { label: "Outbox pending", value: outboxPending, detail: `${outboxCompleted} completed` },
+    ]} />
+    <section className="space-y-3">
+      <h2 className="text-sm font-semibold">{recoverableTotal ? <StatusDot tone="alert" /> : null}Recoverable<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{recoverableTotal > recoverable.length ? `oldest ${recoverable.length} of ${recoverableTotal}` : recoverable.length}</span></h2>
+      {recoverable.length === 0 ? <WorkflowNote title="No replay action available" /> : <div className="grid gap-4 lg:grid-cols-2">{recoverable.map((item: any) => {
+        const blocked = replayBlocked(item);
+        return <MutationForm key={`${item.sourceKind}:${item.id}`} compact title={`${item.sourceKind} · ${shortId(item.id)}`} description={item.label} mutation={replayMutation} fields={[{ name: "sourceType", label: "Source", type: "hidden", defaultValue: item.sourceKind }, { name: "sourceId", label: "Source ID", type: "hidden", defaultValue: item.id }, { name: "reason", label: "Replay reason", placeholder: "Root cause fixed" }]} submitLabel="Replay selected item" successMessage="Queue item reset for replay." disabledReason={blocked ? `Replay unavailable: ${blocked}` : operator.capabilities.canManageIntegrations ? undefined : "Your role does not include recovery capability."} />;
+      })}</div>}
+    </section>
+    <RecordList title="Outbox queue" tone={expiredLeases ? "wait" : undefined} columns={["Event", "Aggregate", "Attempts · available", "State"]} rows={outbox.map((item: any) => {
+      const state = outboxState(item);
+      return { id: item.id, status: state === "LEASE_EXPIRED" ? "STALE" : state, cells: [<span key="event"><span className="break-all">{item.eventType}</span><span className="block font-mono text-xs font-normal text-muted-foreground">{shortId(item.id)}</span></span>, <span key="aggregate">{item.aggregateType} · <Mono>{shortId(item.aggregateId)}</Mono></span>, <Mono key="attempts">{`${item.attempts ?? 0}/${item.maxAttempts ?? 10} · ${dateTime(item.availableAt)}`}</Mono>, <StatusBadge key="state" value={state} />] };
+    })} emptyTitle="Outbox is empty" pagination={{ page, pageSize: PLATFORM_PAGE_SIZE, total: outboxTotal, hrefForPage: (next) => hrefWith("/dashboard/platform/recovery", { page: next, dpage: deadPage }) }} />
+    <RecordList title="Dead letters" columns={["Source", "Reason", "Attempts", "State"]} rows={dead.map((item: any) => ({ id: item.id, status: item.resolvedAt ? "RESOLVED" : "DEAD", cells: [<span key="source">{item.sourceType} · <Mono>{shortId(item.sourceId)}</Mono></span>, <span key="reason" className="break-words">{item.reason}</span>, <Mono key="attempts">{item.attempts ?? 0}</Mono>, <StatusBadge key="state" value={item.resolvedAt ? "RESOLVED" : "DEAD"} />] }))} emptyTitle="No dead letters" pagination={{ page: deadPage, pageSize: PLATFORM_PAGE_SIZE, total: deadTotal, hrefForPage: (next) => hrefWith("/dashboard/platform/recovery", { page, dpage: next }) }} />
   </OperatorShell>;
 }

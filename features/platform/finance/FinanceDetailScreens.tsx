@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
-import { DetailGrid, RecordList, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
+import { Mono, PillLink, Track } from "../components/kit";
+import { DetailGrid, RecordList, StatusBadge, statusDotTone, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, jsonText, money, moneyTotals, sumByCurrency } from "../lib/format";
 import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
 import { MutationForm } from "../components/MutationForm";
@@ -24,7 +25,7 @@ function perCurrencySides(entries: any[]) {
 /** One journal transaction with its exact entries, per-currency balance and linked business records. */
 export async function JournalDetailScreen({ journalId }: { journalId: string }) {
   const operator = await getOperatorContext("canManageFinance");
-  if (!operator) return <OperatorShell active="Finance" detail eyebrow="Journal" title="Journal transaction" description="Append-only ledger evidence."><TenantRequired /></OperatorShell>;
+  if (!operator) return <OperatorShell active="Finance" detail title="Journal transaction"><TenantRequired /></OperatorShell>;
   const journal = await prisma.journalTransaction.findFirst({ where: { id: journalId, tenantId: operator.tenantId }, include: { from_JournalEntry_transaction: { include: { account: true } }, reversalOf: true, from_JournalTransaction_reversalOf: true, from_Settlement_journalTransaction: true, from_LedgerAdjustmentRequest_journalTransaction: true, from_ReconciliationItem_resolutionJournal: true, from_CashOutAcceptance_journalTransaction: true } });
   if (!journal) notFound();
   const payment = journal.correlationId ? await prisma.paymentIntent.findFirst({ where: { id: journal.correlationId, tenantId: operator.tenantId }, select: { id: true, type: true } }) : null;
@@ -39,40 +40,40 @@ export async function JournalDetailScreen({ journalId }: { journalId: string }) 
     ...journal.from_ReconciliationItem_resolutionJournal.map((item: any) => ({ label: "Resolves reconciliation item", href: item.runId ? `/dashboard/platform/finance/reconciliation/runs/${item.runId}` : undefined, detail: item.id })),
     ...journal.from_CashOutAcceptance_journalTransaction.map((item: any) => ({ label: "Cash-out acceptance", href: item.wagerId ? `/dashboard/platform/wagers/${item.wagerId}` : undefined, detail: item.id })),
   ];
-  return <OperatorShell active="Finance" detail eyebrow="Journal transaction" title={`${journal.type} journal`} description="Exact persisted entries; debits and credits are compared per currency." tenantName={operator.tenantName}>
-    <DetailGrid items={[{ label: "Journal ID", value: <code className="text-xs">{journal.id}</code> }, { label: "State", value: <StatusBadge value={balanced ? journal.status : "UNBALANCED"} /> }, { label: "Effective", value: dateTime(journal.effectiveAt) }, { label: "Recorded", value: dateTime(journal.createdAt) }, { label: "Idempotency key", value: <code className="break-all text-xs">{journal.idempotencyKey}</code> }, { label: "Correlation", value: <code className="break-all text-xs">{journal.correlationId || "—"}</code> }, { label: "Debits / credits", value: [...sides.entries()].map(([currency, side]) => `${money(side.debit, currency || null)} / ${money(side.credit, currency || null)}`).join(" · ") || "No entries" }]} />
-    <RecordList title="Entries" description="Account, side and exact minor-unit amount of every entry." columns={["Account", "Side", "Amount", "Minor units"]} rows={journal.from_JournalEntry_transaction.map((entry: any) => ({ id: entry.id, cells: [<span key="account">{entry.account?.key || "Unknown account"}<span className="block font-mono text-xs text-slate-500">{entry.accountId}</span></span>, entry.side, money(entry.amountMinor, entry.currency || null), <code key="raw" className="text-xs">{entry.amountMinor} {entry.currency}</code>] }))} emptyTitle="No entries" emptyDescription="A journal without entries is an evidence gap." />
-    <RecordList title="Linked records" description="Business records that reference or are referenced by this journal." columns={["Record", "Reference"]} rows={links.map((link, index) => ({ id: `${index}`, href: link.href, cells: [link.label, <code key="ref" className="break-all text-xs">{link.detail}</code>] }))} emptyTitle="No linked records" emptyDescription="No payment, settlement, adjustment, reconciliation or cash-out record references this journal." />
+  return <OperatorShell active="Finance" detail title={`${journal.type} journal`} tenantName={operator.tenantName} tone={balanced ? statusDotTone(journal.status) : "alert"} meta={`${balanced ? "balanced" : "unbalanced"} · ${journal.from_JournalEntry_transaction.length} entries · ${dateTime(journal.effectiveAt)}`}>
+    <DetailGrid items={[{ label: "Journal ID", value: <code className="text-xs">{journal.id}</code> }, { label: "State", value: <StatusBadge value={balanced ? journal.status : "UNBALANCED"} /> }, { label: "Effective", value: <Mono>{dateTime(journal.effectiveAt)}</Mono> }, { label: "Recorded", value: <Mono>{dateTime(journal.createdAt)}</Mono> }, { label: "Idempotency key", value: <code className="break-all text-xs">{journal.idempotencyKey}</code> }, { label: "Correlation", value: <code className="break-all text-xs">{journal.correlationId || "—"}</code> }, { label: "Debits / credits", value: <Mono>{[...sides.entries()].map(([currency, side]) => `${money(side.debit, currency || null)} / ${money(side.credit, currency || null)}`).join(" · ") || "No entries"}</Mono> }]} />
+    <RecordList title="Entries" columns={["Account", "Side", "Amount", "Minor units"]} rows={journal.from_JournalEntry_transaction.map((entry: any) => ({ id: entry.id, cells: [<span key="account">{entry.account?.key || "Unknown account"}<span className="block break-all font-mono text-xs font-normal text-muted-foreground">{entry.accountId}</span></span>, entry.side, <Mono key="amount">{money(entry.amountMinor, entry.currency || null)}</Mono>, <Mono key="raw" className="text-xs">{entry.amountMinor} {entry.currency}</Mono>] }))} emptyTitle="No entries" />
+    <RecordList title="Linked records" columns={["Record", "Reference"]} rows={links.map((link, index) => ({ id: `${index}`, href: link.href, cells: [link.label, <Mono key="ref" className="break-all text-xs">{link.detail}</Mono>] }))} emptyTitle="No linked records" />
   </OperatorShell>;
 }
 
 /** One payment intent with attempts, posted journals and provider evidence references, under finance capability. */
 export async function PaymentDetailScreen({ paymentId }: { paymentId: string }) {
   const operator = await getOperatorContext("canManageFinance");
-  if (!operator) return <OperatorShell active="Finance" detail eyebrow="Payment" title="Payment intent" description="Payment evidence."><TenantRequired /></OperatorShell>;
+  if (!operator) return <OperatorShell active="Finance" detail title="Payment intent"><TenantRequired /></OperatorShell>;
   const payment = await prisma.paymentIntent.findFirst({ where: { id: paymentId, tenantId: operator.tenantId }, include: { player: { select: { id: true, subject: true } }, from_PaymentAttempt_paymentIntent: { orderBy: { attempt: "asc" } } } });
   if (!payment) notFound();
   const journals = await prisma.journalTransaction.findMany({ where: { tenantId: operator.tenantId, correlationId: payment.id }, orderBy: { effectiveAt: "asc" }, include: { from_JournalEntry_transaction: true } });
-  return <OperatorShell active="Finance" detail eyebrow="Payment intent" title={`${payment.type} · ${money(payment.amountMinor, payment.currency)}`} description="Intent, attempts and the balanced journals it posted." tenantName={operator.tenantName}>
-    <DetailGrid items={[{ label: "Payment ID", value: <code className="text-xs">{payment.id}</code> }, { label: "State", value: <StatusBadge value={payment.status} /> }, { label: "Player", value: payment.player?.subject || payment.playerId || "—" }, { label: "Amount", value: `${money(payment.amountMinor, payment.currency)} (${payment.amountMinor} minor ${payment.currency})` }, { label: "Fee", value: money(payment.feeMinor || null, payment.currency) }, { label: "Created", value: dateTime(payment.createdAt) }, { label: "Completed", value: dateTime(payment.completedAt) }, { label: "Idempotency key", value: <code className="break-all text-xs">{payment.idempotencyKey}</code> }, { label: "Provider session", value: <code className="break-all text-xs">{payment.providerSessionReference || "—"}</code> }]} />
-    <RecordList title="Attempts" description="Provider attempts in order, with external reference and reason." columns={["Attempt", "External reference", "Reason", "State"]} rows={payment.from_PaymentAttempt_paymentIntent.map((attempt: any) => ({ id: attempt.id, cells: [`#${attempt.attempt ?? "—"} · ${dateTime(attempt.createdAt)}`, <code key="ref" className="break-all text-xs">{attempt.externalReference || "—"}</code>, attempt.reasonCode || "—", <StatusBadge key="state" value={attempt.status} />] }))} emptyTitle="No attempts" emptyDescription="No provider attempt has been recorded for this intent." />
-    <RecordList title="Posted journals" description="Journals correlated to this payment intent." columns={["Journal", "Type", "Amounts", "State"]} rows={journals.map((journal: any) => { const totals = sumByCurrency(journal.from_JournalEntry_transaction.filter((entry: any) => entry.side === "DEBIT"), (entry: any) => entry.amountMinor, (entry: any) => entry.currency); return { id: journal.id, href: journalHref(journal.id), cells: [<span key="id" className="font-mono text-xs">{journal.id}<span className="block font-sans text-slate-500">{dateTime(journal.effectiveAt)}</span></span>, journal.type, `Debits ${moneyTotals(totals)}`, <StatusBadge key="state" value={journal.status} />] }; })} emptyTitle="No journal posted" emptyDescription="A pending or failed payment posts no ledger journal." />
-    {payment.riskEvidence ? <section className="rounded-xl border bg-white p-5 shadow-sm"><h2 className="font-semibold">Risk evidence</h2><pre className="mt-3 max-h-80 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">{jsonText(payment.riskEvidence)}</pre></section> : null}
-    {payment.playerId ? <WorkflowNote title="Customer record">Customer compliance detail requires compliance capability: <Link className="underline" href={`/dashboard/platform/customers/${payment.playerId}`}>open customer</Link>.</WorkflowNote> : null}
+  return <OperatorShell active="Finance" detail title={`${payment.type} · ${money(payment.amountMinor, payment.currency)}`} tenantName={operator.tenantName} tone={statusDotTone(payment.status)} meta={`${String(payment.status ?? "unknown").toLowerCase()} · ${payment.from_PaymentAttempt_paymentIntent.length} attempts · ${journals.length} journals`}>
+    <DetailGrid items={[{ label: "Payment ID", value: <code className="text-xs">{payment.id}</code> }, { label: "State", value: <StatusBadge value={payment.status} /> }, { label: "Player", value: payment.player?.subject || payment.playerId || "—" }, { label: "Amount", value: <Mono>{money(payment.amountMinor, payment.currency)} ({payment.amountMinor} minor {payment.currency})</Mono> }, { label: "Fee", value: <Mono>{money(payment.feeMinor || null, payment.currency)}</Mono> }, { label: "Created", value: <Mono>{dateTime(payment.createdAt)}</Mono> }, { label: "Completed", value: <Mono>{dateTime(payment.completedAt)}</Mono> }, { label: "Idempotency key", value: <code className="break-all text-xs">{payment.idempotencyKey}</code> }, { label: "Provider session", value: <code className="break-all text-xs">{payment.providerSessionReference || "—"}</code> }]} />
+    <RecordList title="Attempts" columns={["Attempt", "External reference", "Reason", "State"]} rows={payment.from_PaymentAttempt_paymentIntent.map((attempt: any) => ({ id: attempt.id, status: attempt.status, cells: [<Mono key="n" className="text-xs">#{attempt.attempt ?? "—"} · {dateTime(attempt.createdAt)}</Mono>, <code key="ref" className="break-all text-xs">{attempt.externalReference || "—"}</code>, attempt.reasonCode || "—", <StatusBadge key="state" value={attempt.status} />] }))} emptyTitle="No attempts" />
+    <RecordList title="Posted journals" columns={["Journal", "Type", "Amounts", "State"]} rows={journals.map((journal: any) => { const totals = sumByCurrency(journal.from_JournalEntry_transaction.filter((entry: any) => entry.side === "DEBIT"), (entry: any) => entry.amountMinor, (entry: any) => entry.currency); return { id: journal.id, href: journalHref(journal.id), status: journal.status, cells: [<span key="id" className="break-all font-mono text-xs">{journal.id}<span className="block text-muted-foreground">{dateTime(journal.effectiveAt)}</span></span>, journal.type, <Mono key="amounts">Debits {moneyTotals(totals)}</Mono>, <StatusBadge key="state" value={journal.status} />] }; })} emptyTitle="No journal posted" />
+    {payment.riskEvidence ? <section className="min-w-0 rounded-xl border bg-card p-4"><h2 className="text-sm font-semibold">Risk evidence</h2><pre className="mt-3 max-h-80 overflow-auto rounded-lg bg-muted p-4 text-xs">{jsonText(payment.riskEvidence)}</pre></section> : null}
+    {payment.playerId ? <Track><PillLink size="sm" href={`/dashboard/platform/customers/${payment.playerId}`}>Customer</PillLink></Track> : null}
   </OperatorShell>;
 }
 
 /** One reconciliation run with its per-currency exception items and resolution journals. */
 export async function ReconciliationRunDetailScreen({ runId }: { runId: string }) {
   const operator = await getOperatorContext("canManageFinance");
-  if (!operator) return <OperatorShell active="Reconciliation" detail eyebrow="Reconciliation run" title="Reconciliation run" description="Control evidence."><TenantRequired /></OperatorShell>;
+  if (!operator) return <OperatorShell active="Reconciliation" detail title="Reconciliation run"><TenantRequired /></OperatorShell>;
   const run = await prisma.reconciliationRun.findFirst({ where: { id: runId, tenantId: operator.tenantId }, include: { from_ReconciliationItem_run: { orderBy: { createdAt: "asc" } } } });
   if (!run) notFound();
   const items = run.from_ReconciliationItem_run;
   const open = sumByCurrency(items.filter((item: any) => item.status === "OPEN"), (item: any) => { const value = BigInt(item.differenceMinor || "0"); return value < 0n ? -value : value; }, (item: any) => item.currency);
-  return <OperatorShell active="Reconciliation" detail eyebrow="Reconciliation run" title={`${run.type} run`} description="Window, input hash and every exception item, per currency." tenantName={operator.tenantName}>
-    <DetailGrid items={[{ label: "Run ID", value: <code className="text-xs">{run.id}</code> }, { label: "State", value: <StatusBadge value={run.status} /> }, { label: "Window", value: `${dateTime(run.windowFrom)} → ${dateTime(run.windowTo)}` }, { label: "Exact window (ISO)", value: <code className="text-xs">{run.windowFrom?.toISOString?.() ?? "—"} → {run.windowTo?.toISOString?.() ?? "—"}</code> }, { label: "Open differences", value: open.size ? moneyTotals(open) : "None" }, { label: "Input hash", value: <code className="break-all text-xs">{run.inputHash}</code> }]} />
-    <RecordList title="Exception items" description="Each item names the internal record and the exact signed difference in its own currency." columns={["Internal reference", "Provider reference", "Difference", "State"]} rows={items.map((item: any) => { const journalId = String(item.internalReference || "").startsWith("journal:") ? String(item.internalReference).slice("journal:".length) : null; return { id: item.id, href: journalId ? journalHref(journalId) : item.resolutionJournalId ? journalHref(item.resolutionJournalId) : undefined, cells: [<code key="internal" className="break-all text-xs">{item.internalReference}</code>, item.providerReference || "—", money(item.differenceMinor, item.currency || null), <span key="state" className="flex flex-wrap gap-2"><StatusBadge value={item.status} />{item.resolutionJournalId ? <span className="text-xs text-slate-500">resolved by {item.resolutionJournalId}</span> : null}</span>] }; })} emptyTitle="No exception items" emptyDescription="Every journal in the window balanced per currency." />
+  return <OperatorShell active="Reconciliation" detail title={`${run.type} run`} tenantName={operator.tenantName} tone={open.size ? "alert" : statusDotTone(run.status)} meta={`${items.length} items · ${items.filter((item: any) => item.status === "OPEN").length} open`}>
+    <DetailGrid items={[{ label: "Run ID", value: <code className="text-xs">{run.id}</code> }, { label: "State", value: <StatusBadge value={run.status} /> }, { label: "Window", value: <Mono>{dateTime(run.windowFrom)} → {dateTime(run.windowTo)}</Mono> }, { label: "Exact window (ISO)", value: <code className="text-xs">{run.windowFrom?.toISOString?.() ?? "—"} → {run.windowTo?.toISOString?.() ?? "—"}</code> }, { label: "Open differences", value: <Mono>{open.size ? moneyTotals(open) : "None"}</Mono> }, { label: "Input hash", value: <code className="break-all text-xs">{run.inputHash}</code> }]} />
+    <RecordList title="Exception items" columns={["Internal reference", "Provider reference", "Difference", "State"]} rows={items.map((item: any) => { const journalId = String(item.internalReference || "").startsWith("journal:") ? String(item.internalReference).slice("journal:".length) : null; return { id: item.id, href: journalId ? journalHref(journalId) : item.resolutionJournalId ? journalHref(item.resolutionJournalId) : undefined, status: item.status === "OPEN" ? "UNMATCHED" : item.status, cells: [<code key="internal" className="break-all text-xs">{item.internalReference}</code>, <span key="provider" className="break-all">{item.providerReference || "—"}</span>, <Mono key="diff">{money(item.differenceMinor, item.currency || null)}</Mono>, <span key="state" className="flex flex-wrap gap-2"><StatusBadge value={item.status} />{item.resolutionJournalId ? <span className="break-all font-mono text-xs text-muted-foreground">resolved by {item.resolutionJournalId}</span> : null}</span>] }; })} emptyTitle="No exception items" />
   </OperatorShell>;
 }
 
@@ -82,90 +83,89 @@ const absoluteMinor = (value: string | null | undefined) => { const amount = Big
 /** One reconciliation exception: its run, the internal journal it names, provider reference, resolution and a request linked to this exact item. */
 export async function ReconciliationItemDetailScreen({ itemId }: { itemId: string }) {
   const operator = await getOperatorContext("canManageFinance");
-  if (!operator) return <OperatorShell active="Reconciliation" detail eyebrow="Reconciliation exception" title="Reconciliation exception" description="Exception evidence and resolution."><TenantRequired /></OperatorShell>;
+  if (!operator) return <OperatorShell active="Reconciliation" detail title="Reconciliation exception"><TenantRequired /></OperatorShell>;
   const result = await getReconciliationItem(itemId);
-  if (!result.success) return <OperatorShell active="Reconciliation" detail eyebrow="Reconciliation exception" title="Reconciliation exception" description="Exception evidence and resolution." tenantName={operator.tenantName}><ReadFailed subject="this reconciliation exception" /></OperatorShell>;
+  if (!result.success) return <OperatorShell active="Reconciliation" detail title="Reconciliation exception" tenantName={operator.tenantName}><ReadFailed subject="this reconciliation exception" /></OperatorShell>;
   const { item, internalJournal, resolvingAdjustments, candidateAccounts } = result.data;
   if (!item) notFound();
   const open = item.status === "OPEN";
-  return <OperatorShell active="Reconciliation" detail eyebrow="Reconciliation exception" title={`${item.currency || "Unknown currency"} difference ${money(item.differenceMinor, item.currency)}`} description="Original references, signed difference and how this exception was or can be resolved." tenantName={operator.tenantName}>
+  return <OperatorShell active="Reconciliation" detail title={`${item.currency || "Unknown currency"} difference ${money(item.differenceMinor, item.currency)}`} tenantName={operator.tenantName} tone={open ? "alert" : statusDotTone(item.status)} meta={open ? "unmatched" : item.resolutionJournal ? "resolved" : String(item.status ?? "unknown").toLowerCase()}>
     <DetailGrid items={[
       { label: "Item ID", value: <code className="break-all text-xs">{item.id}</code> },
       { label: "State", value: <StatusBadge value={item.status} /> },
-      { label: "Difference", value: `${money(item.differenceMinor, item.currency)} (${item.differenceMinor ?? "—"} minor ${item.currency ?? ""})` },
+      { label: "Difference", value: <Mono>{money(item.differenceMinor, item.currency)} ({item.differenceMinor ?? "—"} minor {item.currency ?? ""})</Mono> },
       { label: "Internal reference", value: internalJournal ? <Link className="break-all underline" href={journalHref(internalJournal.id)}>{item.internalReference}</Link> : <code className="break-all text-xs">{item.internalReference || "—"}</code> },
       { label: "Provider reference", value: <code className="break-all text-xs">{item.providerReference || "—"}</code> },
       { label: "Run", value: item.run ? <Link className="underline" href={`${reconciliationHref}/runs/${item.run.id}`}>{item.run.type} · {item.run.status}</Link> : "—" },
-      { label: "Run window", value: item.run ? `${dateTime(item.run.windowFrom)} → ${dateTime(item.run.windowTo)}` : "—" },
-      { label: "Recorded", value: dateTime(item.createdAt) },
+      { label: "Run window", value: item.run ? <Mono>{dateTime(item.run.windowFrom)} → {dateTime(item.run.windowTo)}</Mono> : "—" },
+      { label: "Recorded", value: <Mono>{dateTime(item.createdAt)}</Mono> },
       { label: "Resolution journal", value: item.resolutionJournal ? <Link className="break-all underline" href={journalHref(item.resolutionJournal.id)}>{item.resolutionJournal.id}</Link> : "Not resolved" },
     ]} />
-    {internalJournal ? <RecordList title="Internal journal" description="The ledger record this exception names." columns={["Journal", "Type", "Effective", "State"]} rows={[{ id: internalJournal.id, href: journalHref(internalJournal.id), cells: [<code key="id" className="break-all text-xs">{internalJournal.id}</code>, internalJournal.type || "—", dateTime(internalJournal.effectiveAt), <StatusBadge key="state" value={internalJournal.status} />] }]} emptyTitle="No journal" emptyDescription="" /> : null}
-    <RecordList title="Resolving adjustment" description="The approved ledger adjustment whose journal resolved this item." columns={["Request", "Amount", "Reason", "State"]} rows={resolvingAdjustments.map((adjustment) => ({ id: adjustment.id, href: `/dashboard/platform/finance/adjustments/${adjustment.id}`, cells: [<code key="id" className="break-all text-xs">{adjustment.id}</code>, `${adjustment.direction || "—"} ${money(adjustment.amountMinor, adjustment.currency)}`, adjustment.reasonCode || "—", <StatusBadge key="state" value={adjustment.status} />] }))} emptyTitle={open ? "Not resolved yet" : "No linked adjustment"} emptyDescription={open ? "Request an adjustment linked to this item below; it resolves the item when the approved adjustment is posted." : "This item was not resolved by a ledger adjustment."} emptyAction={open ? undefined : <Link href={reconciliationHref} className="inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">Back to worklist</Link>} />
-    {open ? <MutationForm requireReview title="Request adjustment for this exception" description="Creates no money until another operator approves the exact payload. The request is bound to this item: when the approved adjustment is posted, its journal resolves this item in the same transaction, and posting is refused if the item is no longer open or the account currency differs." mutation={`mutation($accountId:ID!,$amountMinor:String!,$direction:String!,$reasonCode:String!,$evidence:String!){requestLedgerAdjustment(accountId:$accountId,amountMinor:$amountMinor,direction:$direction,reasonCode:$reasonCode,evidence:$evidence)}`} fields={[
+    {internalJournal ? <RecordList title="Internal journal" columns={["Journal", "Type", "Effective", "State"]} rows={[{ id: internalJournal.id, href: journalHref(internalJournal.id), cells: [<code key="id" className="break-all text-xs">{internalJournal.id}</code>, internalJournal.type || "—", dateTime(internalJournal.effectiveAt), <StatusBadge key="state" value={internalJournal.status} />] }]} emptyTitle="No journal" /> : null}
+    <RecordList title="Resolving adjustment" columns={["Request", "Amount", "Reason", "State"]} rows={resolvingAdjustments.map((adjustment) => ({ id: adjustment.id, href: `/dashboard/platform/finance/adjustments/${adjustment.id}`, status: adjustment.status ?? undefined, cells: [<code key="id" className="break-all text-xs">{adjustment.id}</code>, <Mono key="amount">{adjustment.direction || "—"} {money(adjustment.amountMinor, adjustment.currency)}</Mono>, adjustment.reasonCode || "—", <StatusBadge key="state" value={adjustment.status} />] }))} emptyTitle={open ? "Not resolved yet" : "No linked adjustment"} emptyAction={open ? undefined : <Track><PillLink size="sm" href={reconciliationHref}>Worklist</PillLink></Track>} />
+    {open ? <MutationForm requireReview title="Request adjustment for this exception" mutation={`mutation($accountId:ID!,$amountMinor:String!,$direction:String!,$reasonCode:String!,$evidence:String!){requestLedgerAdjustment(accountId:$accountId,amountMinor:$amountMinor,direction:$direction,reasonCode:$reasonCode,evidence:$evidence)}`} fields={[
       { name: "accountId", label: `Ledger account (${item.currency || "same currency"})`, type: "select", options: candidateAccounts.map((account) => ({ label: `${account.key || "Account"}${account.player?.subject ? ` · ${account.player.subject}` : ""} · ${account.id}`, value: account.id })), emptyOptionsMessage: `No active ledger account in ${item.currency || "this currency"}.` },
       { name: "amountMinor", label: "Amount (minor units)", defaultValue: absoluteMinor(item.differenceMinor).toString() },
       { name: "direction", label: "Direction", type: "select", options: ["CREDIT", "DEBIT"].map((value) => ({ label: value, value })) },
       { name: "reasonCode", label: "Reason code", defaultValue: "RECONCILIATION_CORRECTION" },
       { name: "evidence", label: "Evidence", type: "hidden", defaultValue: JSON.stringify({ reconciliationItemId: item.id, internalReference: item.internalReference, providerReference: item.providerReference }) },
     ]} submitLabel="Request linked adjustment" successMessage="Adjustment approval requested for this exception." resultHref="/dashboard/platform/finance/adjustments/{id}" /> : null}
-    <WorkflowNote title="Pending linked requests">Requests already raised for this item are listed under Ledger adjustment requests on the reconciliation page; a pending request is matched to its item only when it is posted.</WorkflowNote>
   </OperatorShell>;
 }
 
 /** One safeguarding comparison: attested asset, ledger liability, difference, account and recent history. */
 export async function SafeguardingControlDetailScreen({ controlId }: { controlId: string }) {
   const operator = await getOperatorContext("canManageFinance");
-  if (!operator) return <OperatorShell active="Reconciliation" detail eyebrow="Safeguarding control" title="Safeguarding control" description="Safeguarding comparison evidence."><TenantRequired /></OperatorShell>;
+  if (!operator) return <OperatorShell active="Reconciliation" detail title="Safeguarding control"><TenantRequired /></OperatorShell>;
   const result = await getSafeguardingControl(controlId);
-  if (!result.success) return <OperatorShell active="Reconciliation" detail eyebrow="Safeguarding control" title="Safeguarding control" description="Safeguarding comparison evidence." tenantName={operator.tenantName}><ReadFailed subject="this safeguarding control" /></OperatorShell>;
+  if (!result.success) return <OperatorShell active="Reconciliation" detail title="Safeguarding control" tenantName={operator.tenantName}><ReadFailed subject="this safeguarding control" /></OperatorShell>;
   const { control, history } = result.data;
   if (!control) notFound();
   const currency = control.safeguardingAccount?.currency ?? null;
-  return <OperatorShell active="Reconciliation" detail eyebrow="Safeguarding control" title={`${control.safeguardingAccount?.accountReference || "Safeguarding account"} · ${dateTime(control.asOf)}`} description="Operator-attested asset compared with ledger player liability at one instant. It does not certify a bank balance." tenantName={operator.tenantName}>
+  return <OperatorShell active="Reconciliation" detail title={`${control.safeguardingAccount?.accountReference || "Safeguarding account"} · ${dateTime(control.asOf)}`} tenantName={operator.tenantName} tone={statusDotTone(control.status)} meta={`${String(control.status ?? "unknown").toLowerCase()} · difference ${money(control.differenceMinor, currency)}`}>
+    {control.status === "SHORTFALL" ? <WorkflowNote title="Shortfall · readiness blocked" tone="warning"><Link className="underline underline-offset-2" href="/dashboard/platform/incidents">Incidents</Link></WorkflowNote> : null}
     <DetailGrid items={[
       { label: "Control ID", value: <code className="break-all text-xs">{control.id}</code> },
       { label: "State", value: <StatusBadge value={control.status} /> },
-      { label: "As of", value: dateTime(control.asOf) },
-      { label: "Attested asset", value: money(control.safeguardedAssetMinor, currency) },
-      { label: "Player liability (ledger)", value: money(control.playerLiabilityMinor, currency) },
-      { label: "Difference", value: `${money(control.differenceMinor, currency)} (${control.differenceMinor ?? "—"} minor ${currency ?? ""})` },
+      { label: "As of", value: <Mono>{dateTime(control.asOf)}</Mono> },
+      { label: "Attested asset", value: <Mono>{money(control.safeguardedAssetMinor, currency)}</Mono> },
+      { label: "Player liability (ledger)", value: <Mono>{money(control.playerLiabilityMinor, currency)}</Mono> },
+      { label: "Difference", value: <Mono>{money(control.differenceMinor, currency)} ({control.differenceMinor ?? "—"} minor {currency ?? ""})</Mono> },
       { label: "Account", value: control.safeguardingAccount ? `${control.safeguardingAccount.accountReference} · ${control.safeguardingAccount.classification} · ${control.safeguardingAccount.status}` : "—" },
       { label: "Disclosure version", value: control.safeguardingAccount?.disclosureVersion || "—" },
       { label: "Reconciliation run", value: control.reconciliationRun ? <Link className="underline" href={`${reconciliationHref}/runs/${control.reconciliationRun.id}`}>{control.reconciliationRun.type} · {control.reconciliationRun.status}</Link> : "None linked" },
       { label: "Evidence hash", value: <code className="break-all text-xs">{control.evidenceHash || "—"}</code> },
-      { label: "Recorded", value: dateTime(control.createdAt) },
+      { label: "Recorded", value: <Mono>{dateTime(control.createdAt)}</Mono> },
     ]} />
-    <RecordList title="Recent controls for this account" description="Newest 20 comparisons for the same safeguarding account." columns={["Control", "As of", "Difference", "State"]} rows={history.map((item) => ({ id: item.id, href: item.id === control.id ? undefined : `/dashboard/platform/finance/safeguarding/${item.id}`, cells: [<code key="id" className="break-all text-xs">{item.id}</code>, dateTime(item.asOf), money(item.differenceMinor, currency), <StatusBadge key="state" value={item.status} />] }))} emptyTitle="No history" emptyDescription="No other comparison has been recorded for this account." />
-    {control.status === "SHORTFALL" ? <WorkflowNote title="Shortfall response" tone="warning">A negative difference blocks readiness for the scope, opens an incident and requires finance/compliance ownership. <Link className="underline" href="/dashboard/platform/incidents">Open incidents</Link>.</WorkflowNote> : null}
+    <RecordList title="Recent controls" columns={["Control", "As of", "Difference", "State"]} rows={history.map((item) => ({ id: item.id, href: item.id === control.id ? undefined : `/dashboard/platform/finance/safeguarding/${item.id}`, status: item.status ?? undefined, cells: [<code key="id" className="break-all text-xs">{item.id}</code>, <Mono key="asof" className="text-xs">{dateTime(item.asOf)}</Mono>, <Mono key="diff">{money(item.differenceMinor, currency)}</Mono>, <StatusBadge key="state" value={item.status} />] }))} emptyTitle="No history" />
   </OperatorShell>;
 }
 
 /** One ledger adjustment request: exact amount and evidence, approval decision, posted journal and the exception it resolves. */
 export async function LedgerAdjustmentDetailScreen({ adjustmentId }: { adjustmentId: string }) {
   const operator = await getOperatorContext("canManageFinance");
-  if (!operator) return <OperatorShell active="Reconciliation" detail eyebrow="Ledger adjustment" title="Ledger adjustment request" description="Adjustment request evidence."><TenantRequired /></OperatorShell>;
+  if (!operator) return <OperatorShell active="Reconciliation" detail title="Ledger adjustment request"><TenantRequired /></OperatorShell>;
   const result = await getLedgerAdjustment(adjustmentId);
-  if (!result.success) return <OperatorShell active="Reconciliation" detail eyebrow="Ledger adjustment" title="Ledger adjustment request" description="Adjustment request evidence." tenantName={operator.tenantName}><ReadFailed subject="this adjustment request" /></OperatorShell>;
+  if (!result.success) return <OperatorShell active="Reconciliation" detail title="Ledger adjustment request" tenantName={operator.tenantName}><ReadFailed subject="this adjustment request" /></OperatorShell>;
   const { adjustment, linkedItem } = result.data;
   if (!adjustment) notFound();
   const approval = adjustment.approvalRequest;
-  return <OperatorShell active="Reconciliation" detail eyebrow="Ledger adjustment" title={`${adjustment.direction || "—"} ${money(adjustment.amountMinor, adjustment.currency)}`} description="Exact requested payload, independent approval and the journal it posted." tenantName={operator.tenantName}>
+  return <OperatorShell active="Reconciliation" detail title={`${adjustment.direction || "—"} ${money(adjustment.amountMinor, adjustment.currency)}`} tenantName={operator.tenantName} tone={statusDotTone(adjustment.status)} meta={`${String(adjustment.status ?? "unknown").toLowerCase()} · ${adjustment.journalTransaction ? "posted" : "not posted"}`}>
+    {adjustment.status === "APPROVED" && !adjustment.journalTransaction ? <WorkflowNote title="Approved · not posted"><Link className="underline underline-offset-2" href={reconciliationHref}>Post from Reconciliation</Link></WorkflowNote> : null}
     <DetailGrid items={[
       { label: "Request ID", value: <code className="break-all text-xs">{adjustment.id}</code> },
       { label: "State", value: <StatusBadge value={adjustment.status} /> },
-      { label: "Amount", value: `${money(adjustment.amountMinor, adjustment.currency)} (${adjustment.amountMinor ?? "—"} minor ${adjustment.currency ?? ""})` },
-      { label: "Account", value: adjustment.account ? `${adjustment.account.key} · ${adjustment.account.id}` : "—" },
-      { label: "Player", value: adjustment.player?.subject || (operator.capabilities.canManageCompliance ? "—" : "Hidden (needs compliance access)") },
+      { label: "Amount", value: <Mono>{money(adjustment.amountMinor, adjustment.currency)} ({adjustment.amountMinor ?? "—"} minor {adjustment.currency ?? ""})</Mono> },
+      { label: "Account", value: adjustment.account ? <Mono className="break-all">{adjustment.account.key} · {adjustment.account.id}</Mono> : "—" },
+      { label: "Player", value: adjustment.player?.subject || (operator.capabilities.canManageCompliance ? "—" : "Hidden") },
       { label: "Reason code", value: adjustment.reasonCode || "—" },
       { label: "Requested by", value: <code className="break-all text-xs">{adjustment.requesterId || "—"}</code> },
-      { label: "Requested", value: dateTime(adjustment.createdAt) },
-      { label: "Approval", value: approval ? <span className="flex flex-wrap items-center gap-2"><StatusBadge value={approval.status} />{approval.decidedAt ? dateTime(approval.decidedAt) : "Undecided"}{approval.consumedAt ? ` · applied ${dateTime(approval.consumedAt)}` : ""}</span> : operator.capabilities.canManageRoles ? "Not linked" : "Hidden (approval records need role-management access)" },
+      { label: "Requested", value: <Mono>{dateTime(adjustment.createdAt)}</Mono> },
+      { label: "Approval", value: approval ? <span className="flex flex-wrap items-center gap-2"><StatusBadge value={approval.status} />{approval.decidedAt ? dateTime(approval.decidedAt) : "Undecided"}{approval.consumedAt ? ` · applied ${dateTime(approval.consumedAt)}` : ""}</span> : operator.capabilities.canManageRoles ? "Not linked" : "Hidden (role-management access)" },
       { label: "Approval fingerprint", value: <code className="break-all text-xs">{approval?.payloadHash || "—"}</code> },
       { label: "Posted journal", value: adjustment.journalTransaction ? <Link className="break-all underline" href={journalHref(adjustment.journalTransaction.id)}>{adjustment.journalTransaction.type} · {adjustment.journalTransaction.id}</Link> : "Not posted" },
       { label: "Resolves exception", value: linkedItem ? <Link className="break-all underline" href={`${reconciliationHref}/items/${linkedItem.id}`}>{linkedItem.id} ({linkedItem.status})</Link> : "No linked reconciliation item" },
     ]} />
-    <section className="rounded-xl border bg-card p-5 shadow-sm"><h2 className="font-semibold">Evidence (exact submitted)</h2><pre className="mt-3 max-h-80 overflow-auto rounded-lg bg-muted p-4 text-xs">{jsonText(adjustment.evidence)}</pre></section>
-    {adjustment.status === "APPROVED" && !adjustment.journalTransaction ? <WorkflowNote title="Ready to post">This request is approved but not posted. Post it from <Link className="underline" href={reconciliationHref}>Reconciliation</Link> with this request ID and its approved request ID.</WorkflowNote> : null}
+    <section className="min-w-0 rounded-xl border bg-card p-4"><h2 className="text-sm font-semibold">Evidence</h2><pre className="mt-3 max-h-80 overflow-auto rounded-lg bg-muted p-4 text-xs">{jsonText(adjustment.evidence)}</pre></section>
   </OperatorShell>;
 }

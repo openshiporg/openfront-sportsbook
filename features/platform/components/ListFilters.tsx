@@ -33,14 +33,14 @@ export function ListFilters({ searchKey = "q", searchLabel, searchPlaceholder, f
   };
 
   return <div className="flex flex-wrap items-end gap-2">
-    {searchLabel ? <form role="search" className="relative min-w-56 flex-1" onSubmit={(event) => { event.preventDefault(); navigate({ [searchKey]: text.trim() || null }); }}>
+    {searchLabel ? <form role="search" className="relative min-w-0 flex-1 basis-56" onSubmit={(event) => { event.preventDefault(); navigate({ [searchKey]: text.trim() || null }); }}>
       <label className="sr-only" htmlFor={`list-search-${searchKey}`}>{searchLabel}</label>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-      <Input id={`list-search-${searchKey}`} type="search" value={text} onChange={(event) => setText(event.target.value)} placeholder={searchPlaceholder ?? searchLabel} className="h-9 pl-9" />
+      <Input id={`list-search-${searchKey}`} type="search" value={text} onChange={(event) => setText(event.target.value)} placeholder={searchPlaceholder ?? searchLabel} className="h-9 rounded-full pl-9" />
     </form> : null}
-    {filters.map((filter) => <label key={filter.key} className="grid gap-1 text-xs font-medium text-muted-foreground">
+    {filters.map((filter) => <label key={filter.key} className="grid min-w-0 gap-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
       {filter.label}
-      <select value={searchParams?.get(filter.key) ?? ""} onChange={(event) => navigate({ [filter.key]: event.target.value || null })} className="h-9 rounded-md border bg-background px-2 text-sm text-foreground">
+      <select value={searchParams?.get(filter.key) ?? ""} onChange={(event) => navigate({ [filter.key]: event.target.value || null })} className="h-9 rounded-full border bg-background px-3 text-sm text-foreground">
         <option value="">{filter.allLabel ?? "All"}</option>
         {filter.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>

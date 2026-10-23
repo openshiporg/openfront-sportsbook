@@ -1,8 +1,8 @@
 'use client';
 
-import Link from "next/link";
 import { ListFilters } from "../../components/ListFilters";
-import { MetricGrid, RecordList, StatusBadge } from "../../components/WorkflowUI";
+import { Mono, PillLink, Track } from "../../components/kit";
+import { RecordList, StatusBadge } from "../../components/WorkflowUI";
 import { hrefWith } from "../../lib/paging";
 
 export type CustomerRow = {
@@ -31,36 +31,38 @@ export type CustomersPageData = {
 };
 
 const basePath = "/dashboard/platform/customers";
-const kycOptions = ["REQUIRED", "PENDING", "APPROVED", "REJECTED"].map((value) => ({ label: value.toLowerCase(), value }));
+const kycValues = ["PENDING", "REQUIRED", "REJECTED", "APPROVED"] as const;
 
 export function CustomersPageClient({ data }: { data: CustomersPageData }) {
   const filtered = Boolean(data.search || data.kycStatus);
   return <>
-    <MetricGrid items={[
-      { label: filtered ? "Matching players" : "Players", value: data.total, detail: `Showing ${data.rows.length} on page ${data.page}` },
-      { label: "KYC pending", value: data.pendingKyc, detail: "Verification cases" },
-      { label: "AML open", value: data.openAml, detail: "Open or in review" },
-      { label: "Restrictions", value: data.restricted, detail: "Stored ACTIVE; enforced by acceptance regardless of dates" },
-    ]} />
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <div className="min-w-0 flex-1"><ListFilters searchLabel="Search players" searchPlaceholder="Player reference or ID" /></div>
+      <Track label="KYC">
+        <PillLink size="sm" variant="flat" href={hrefWith(basePath, { q: data.search })} current={!data.kycStatus}>All</PillLink>
+        {kycValues.map((value) => <PillLink key={value} size="sm" variant="flat" href={hrefWith(basePath, { q: data.search, kyc: value })} current={data.kycStatus === value}>
+          {value.toLowerCase()}{value === "PENDING" ? <Mono className="text-muted-foreground">{data.pendingKyc}</Mono> : null}
+        </PillLink>)}
+      </Track>
+    </div>
     <RecordList
-      title="Customer review queue"
-      description="Player references, verification status and AML status. Search by player reference or exact ID."
-      action={<ListFilters searchLabel="Search players" searchPlaceholder="Player reference or ID" filters={[{ key: "kyc", label: "KYC", options: kycOptions }]} />}
-      columns={["Customer", "KYC", "Risk / cases", "State"]}
+      title={filtered ? "Matching players" : "Players"}
+      tone={data.restricted ? "wait" : undefined}
+      columns={["Player", "KYC", "Account", "Risk / cases"]}
       rows={data.rows.map((player) => ({
         id: player.id,
         href: `${basePath}/${player.id}`,
+        status: player.restricted ? "RESTRICTED" : player.status ?? undefined,
         cells: [
-          <span key="subject">{player.subject}<span className="block font-mono text-xs text-muted-foreground">{player.reference} · {player.createdAt}</span></span>,
+          <span key="subject" className="break-all">{player.subject}<span className="block font-mono text-xs font-normal text-muted-foreground">{player.reference} · {player.createdAt}</span></span>,
           <StatusBadge key="kyc" value={player.kycStatus} />,
-          `${player.riskBand} · ${player.verificationCases} KYC · ${player.amlCases} AML`,
-          <span key="state" className="flex flex-wrap gap-2"><StatusBadge value={player.status} />{player.restricted ? <StatusBadge value="RESTRICTED" /> : null}</span>,
+          <span key="state" className="flex flex-wrap gap-x-3 gap-y-1"><StatusBadge value={player.status} />{player.restricted ? <StatusBadge value="RESTRICTED" /> : null}</span>,
+          <span key="risk" className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 md:justify-start"><StatusBadge value={player.riskBand} /><Mono className="text-xs">{player.verificationCases} KYC · {player.amlCases} AML</Mono></span>,
         ],
       }))}
       filtered={filtered}
-      emptyTitle={filtered ? "No matching customers" : "No customers"}
-      emptyDescription={filtered ? "No player matches this search or KYC filter." : "Players appear here after they register."}
-      emptyAction={filtered ? <Link href={basePath} className="inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">Clear search and filters</Link> : <Link href="/dashboard/platform/compliance" className="inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">Review compliance setup</Link>}
+      emptyTitle={filtered ? "No matching players" : "No players"}
+      emptyAction={filtered ? <Track><PillLink size="sm" href={basePath}>Clear filters</PillLink></Track> : <Track><PillLink size="sm" href="/dashboard/platform/compliance">Compliance</PillLink></Track>}
       pagination={{ page: data.page, pageSize: data.pageSize, total: data.total, hrefForPage: (next) => hrefWith(basePath, { q: data.search, kyc: data.kycStatus, page: next }) }}
     />
   </>;

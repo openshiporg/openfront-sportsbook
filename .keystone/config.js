@@ -164,10 +164,10 @@ var User = (0, import_core.list)({
     hideDelete: (args) => !permissions.canManagePeople(args),
     listView: {
       initialColumns: ["name", "email", "role", "tenant"]
+    },
+    itemView: {
+      defaultFieldMode: ({ session, item }) => session?.data.role?.canEditOtherPeople || session?.itemId === item?.id ? "edit" : "read"
     }
-  },
-  fieldDefaults: {
-    ui: { itemView: { fieldMode: ({ session, item }) => session?.data.role?.canEditOtherPeople || session?.itemId === item?.id ? "edit" : "read" } }
   },
   fields: {
     name: (0, import_fields2.text)({
@@ -238,9 +238,9 @@ var Role = (0, import_core2.list)({
     hideDelete: true,
     listView: {
       initialColumns: ["name", "assignedTo"]
-    }
+    },
+    itemView: { defaultFieldMode: "read" }
   },
-  fieldDefaults: { ui: { itemView: { fieldMode: "read" } } },
   fields: {
     tenant: (0, import_fields3.relationship)({ ref: "Tenant", access: { create: import_access3.denyAll, update: import_access3.denyAll } }),
     name: (0, import_fields3.text)({ validation: { isRequired: true } }),
@@ -307,7 +307,7 @@ var import_access5 = require("@keystone-6/core/access");
 var import_fields4 = require("@keystone-6/core/fields");
 
 // features/platform/store-settings/lib/store-logo.ts
-var DEFAULT_STORE_LOGO_ICON = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" height="100%" width="100%" viewBox="0 0 42 48"><path fill="#155eef" fill-rule="evenodd" d="m22.102 20.86 9.9-9.9L29.88 8.84l-7.339 7.339V3h-3v13.178l-7.339-7.34-2.121 2.122 9.9 9.9 1.06 1.06zm2.12 2.121 9.9-9.9 2.121 2.122-7.339 7.339H42v3H28.904l7.34 7.339L34.121 35l-9.9-9.899-1.06-1.06zM7.96 35.001l9.9-9.899 1.06-1.06-1.06-1.061-9.9-9.9-2.121 2.122 7.339 7.339H.002v3h13.176l-7.34 7.339zm12.02-7.777-9.9 9.9 2.122 2.12 7.339-7.338V45h3V31.906l7.339 7.338L32 37.124l-9.9-9.9-1.06-1.061z" clip-rule="evenodd"/></svg>';
+var DEFAULT_STORE_LOGO_ICON = '<svg fill="none" height="100%" viewBox="0 0 36 48" width="100%" xmlns="http://www.w3.org/2000/svg"><g fill="#155eef"><path d="m0 7.5h28.8c2.5202 0 3.7804 0 4.743.49047.8467.43143 1.5351 1.11984 1.9665 1.96657.4905.96256.4905 2.22276.4905 4.74296v1.8h-28.8c-2.52024 0-3.78035 0-4.74296-.4905-.84673-.4314-1.535139-1.1198-1.966569-1.9665-.490471-.9626-.490471-2.2228-.490471-4.743z"/><path d="m0 28.5h28.8c2.5202 0 3.7804 0 4.743-.4905.8467-.4314 1.5351-1.1198 1.9665-1.9665.4905-.9626.4905-2.2228.4905-4.743v-1.8h-28.8c-2.52024 0-3.78035 0-4.74296.4905-.84673.4314-1.535139 1.1198-1.966569 1.9665-.490471.9626-.490471 2.2228-.490471 4.743z"/><path d="m14 31.5h14.8c2.5202 0 3.7804 0 4.743.4905.8467.4314 1.5351 1.1198 1.9665 1.9665.4905.9626.4905 2.2228.4905 4.743v1.8h-14.8c-2.5202 0-3.7804 0-4.743-.4905-.8467-.4314-1.5351-1.1198-1.9665-1.9665-.4905-.9626-.4905-2.2228-.4905-4.743z"/></g></svg>';
 var DEFAULT_STORE_LOGO_COLOR = "0";
 function normalizeStoreLogoColor(value) {
   const numeric = Number.parseFloat(String(value ?? DEFAULT_STORE_LOGO_COLOR));
@@ -1684,8 +1684,8 @@ function getBaseUrlForEmails() {
   if (process.env.SMTP_STORE_LINK) {
     return process.env.SMTP_STORE_LINK;
   }
-  if (process.env.NODE_ENV === "production") throw new Error("SMTP_STORE_LINK is required");
-  return "http://localhost:3000";
+  console.warn("SMTP_STORE_LINK not set. Please add SMTP_STORE_LINK to your environment variables for email links to work properly.");
+  return "";
 }
 var transport = (0, import_nodemailer.createTransport)({
   host: process.env.SMTP_HOST,

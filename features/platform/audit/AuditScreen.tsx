@@ -11,10 +11,10 @@ import { AuditPageClient } from "./screens/AuditPageClient";
 export async function AuditScreen({ searchParams }: { searchParams?: PlatformSearchParams } = {}) {
   const page = pageFrom((await searchParams) ?? {});
   const operator = await getOperatorContext("canReadAudit");
-  if (!operator) return <OperatorShell active="Audit" eyebrow="Audit evidence" title="Audit trail" description="History of privileged operator actions."><TenantRequired /></OperatorShell>;
-  if (!operator.capabilities.canReadAudit) return <OperatorShell active="Audit" eyebrow="Audit evidence" title="Audit trail" description="History of privileged operator actions." tenantName={operator.tenantName}><WorkflowNote title="Audit access denied" tone="warning">Your role does not include audit-read capability. No event data was queried.</WorkflowNote></OperatorShell>;
+  if (!operator) return <OperatorShell active="Audit" eyebrow="Audit evidence" title="Audit trail"><TenantRequired /></OperatorShell>;
+  if (!operator.capabilities.canReadAudit) return <OperatorShell active="Audit" eyebrow="Audit evidence" title="Audit trail" tenantName={operator.tenantName}><WorkflowNote title="Audit access denied" tone="warning">No audit-read capability.</WorkflowNote></OperatorShell>;
   const result = await getAuditEvents({ page, pageSize: PLATFORM_PAGE_SIZE });
-  if (!result.success) return <OperatorShell active="Audit" eyebrow="Audit evidence" title="Audit trail" description="Who did what, when, why and to which record." tenantName={operator.tenantName}><ReadFailed subject="audit events" /></OperatorShell>;
+  if (!result.success) return <OperatorShell active="Audit" eyebrow="Audit evidence" title="Audit trail" tenantName={operator.tenantName}><ReadFailed subject="audit events" /></OperatorShell>;
   const { events, total, operatorEvents, workerEvents } = result.data;
   // Follow each record's explicit previousHash link instead of assuming timestamp order is chain order
   // (several records can share one timestamp). Links leaving the loaded window were looked up before
@@ -25,7 +25,8 @@ export async function AuditScreen({ searchParams }: { searchParams?: PlatformSea
   const successors = new Map<string, number>();
   for (const event of events) successors.set(event.previousHash || "", (successors.get(event.previousHash || "") ?? 0) + 1);
   const forks = [...successors.values()].filter((count) => count > 1).length;
-  return <OperatorShell active="Audit" eyebrow="Audit evidence" title="Audit trail" description="Who did what, when, why and to which record." tenantName={operator.tenantName}>
+  const chainIssues = brokenPointers + forks;
+  return <OperatorShell active="Audit" eyebrow="Audit evidence" title="Audit trail" tone={chainIssues ? "alert" : "ok"} meta={`${chainIssues ? `${chainIssues} chain issues` : "Chain intact"} · ${total} events · page ${page}`} tenantName={operator.tenantName}>
     <AuditPageClient data={{ rows: events.map((event) => ({ id: event.id, action: event.action || "—", target: `${event.targetType || "—"} · ${shortId(event.targetId || "")}`, actor: `${shortId(event.actorId || "")} · ${event.reason || "No reason"}`, recorded: dateTime(event.createdAt) })), page, pageSize: PLATFORM_PAGE_SIZE, total, operatorEvents, workerEvents, brokenPointers, forks }} />
   </OperatorShell>;
 }
