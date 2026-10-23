@@ -359,7 +359,7 @@ export function Sidebar({ adminMeta, user, onOpenDialog }: SidebarProps) {
             steps={[{
               href: '#onboarding',
               title: 'Welcome to Openfront Sportsbook',
-              description: 'Your sportsbook is empty. Click get started to configure your operator tenant, brand, jurisdictions, and sandbox adapters.',
+              description: 'Your sportsbook is empty. Set up the operator tenant, brand, jurisdictions and sandbox adapters.',
             }]}
             onboardingStatus={user?.onboardingStatus}
             userRole={user?.role}

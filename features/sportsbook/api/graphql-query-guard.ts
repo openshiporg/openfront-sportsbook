@@ -156,13 +156,19 @@ function analyzeQuery(query: unknown, operationName: unknown): QueryShape {
   let aliases = 0
   let depth = 0
   let expandedSelections = 0
-  const pending: Array<{ selection: SelectionNode; depth: number }> = selected.selectionSet.selections
+  // Aliases amplify cost when they repeat a field within one selection set, or carry arguments or a sub-selection.
+  // A bare alias of a distinct argument-free leaf (e.g. one `<list>Count` per list) asks for nothing an unaliased
+  // query couldn't, so it is not counted. Each selection set gets an id so repeats are tracked per parent.
+  let nextScope = 0
+  const seenFields = new Set<string>()
+  const rootScope = nextScope++
+  const pending: Array<{ selection: SelectionNode; depth: number; scope: number }> = selected.selectionSet.selections
     .slice()
     .reverse()
-    .map(selection => ({ selection, depth: 0 }))
+    .map(selection => ({ selection, depth: 0, scope: rootScope }))
 
   while (pending.length) {
-    const { selection, depth: parentDepth } = pending.pop()!
+    const { selection, depth: parentDepth, scope } = pending.pop()!
     expandedSelections++
     if (expandedSelections > MAX_GRAPHQL_EXPANDED_SELECTIONS) rejectQueryLimit()
 
@@ -170,24 +176,28 @@ function analyzeQuery(query: unknown, operationName: unknown): QueryShape {
       const fieldDepth = parentDepth + 1
       if (fieldDepth > MAX_GRAPHQL_QUERY_DEPTH) rejectQueryLimit()
       depth = Math.max(depth, fieldDepth)
-      if (selection.alias) {
+      const fieldKey = `${scope}:${selection.name.value}`
+      const repeated = seenFields.has(fieldKey)
+      seenFields.add(fieldKey)
+      if (selection.alias && (repeated || selection.arguments?.length || selection.selectionSet)) {
         aliases++
         if (aliases > MAX_GRAPHQL_QUERY_ALIASES) rejectQueryLimit()
       }
       if (selection.selectionSet) {
+        const childScope = nextScope++
         for (let index = selection.selectionSet.selections.length - 1; index >= 0; index--) {
-          pending.push({ selection: selection.selectionSet.selections[index], depth: fieldDepth })
+          pending.push({ selection: selection.selectionSet.selections[index], depth: fieldDepth, scope: childScope })
         }
       }
     } else if (selection.kind === 'InlineFragment') {
       for (let index = selection.selectionSet.selections.length - 1; index >= 0; index--) {
-        pending.push({ selection: selection.selectionSet.selections[index], depth: parentDepth })
+        pending.push({ selection: selection.selectionSet.selections[index], depth: parentDepth, scope })
       }
     } else {
       const fragment = fragments.get(selection.name.value)
       if (!fragment) rejectInvalidQuery()
       for (let index = fragment.selectionSet.selections.length - 1; index >= 0; index--) {
-        pending.push({ selection: fragment.selectionSet.selections[index], depth: parentDepth })
+        pending.push({ selection: fragment.selectionSet.selections[index], depth: parentDepth, scope })
       }
     }
   }

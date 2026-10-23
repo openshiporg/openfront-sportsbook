@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowDownToLine, FileText, LoaderCircle, RefreshCw } from 'lucide-react'
 import type { CustomerSessionSummary, FundingResult, WalletResponse } from '@/features/sportsbook/customer/contracts'
-import { AccountPageHeader, ErrorPanel, LoadingPanel } from '../../components/AccountStates'
+import { AccountPageHeader, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
 import { CustomerShell } from '../../components/CustomerShell'
 import { Card, Dot, Empty, Notice, Pill, Section, Track, fieldClass, label, toneFor } from '../../components/kit'
-import { amountInputToMinor, customerApi, CustomerApiError, formatDate, formatMinor, minorToAmountInput, shortId, useCustomerResource, useFrozenSubmission } from '../../lib/customer-api'
+import { amountInputToMinor, customerApi, CustomerApiError, formatDate, formatMinor, minorToAmountInput, shortId, useCustomerResource, useFrozenSubmission, customerMessage } from '../../lib/customer-api'
 import { clearPersistedFundingIntent, fundingRequestInit, loadPersistedFundingIntent, persistFundingIntent, resolveFundingIntent, type FundingIntent } from '../funding-intent'
 
 type Statements={statements:Array<{id:string;periodStart:string;periodEnd:string;openingMinor:string;closingMinor:string;currency:string;journalHash:string;artifactReference:string;status:string}>;nextCursor:string|null}
@@ -15,7 +15,7 @@ export function WalletScreen() {
   const wallet = useCustomerResource<WalletResponse>('/api/sandbox/sportsbook/wallet')
   const [statementCursors,setStatementCursors]=useState<string[]>([])
   const statementCursor=statementCursors[statementCursors.length-1]
-  const statements = useCustomerResource<Statements>(`/api/sandbox/sportsbook/statements${statementCursor?`?cursor=${encodeURIComponent(statementCursor)}`:''}`)
+  const statements = useCustomerResource<Statements>(session.data?.authenticated ? `/api/sandbox/sportsbook/statements${statementCursor?`?cursor=${encodeURIComponent(statementCursor)}`:''}` : null)
   const [amount, setAmount] = useState('')
   const [action, setAction] = useState<'DEPOSIT'|'WITHDRAWAL'>('DEPOSIT')
   const [funding, setFunding] = useState(false)
@@ -86,18 +86,16 @@ export function WalletScreen() {
     } catch (reason) {
       if (reason instanceof CustomerApiError && reason.payload.state === 'REJECTED') {
         // A definitive server receipt for this key: nothing was moved, so a new draft is allowed.
-        setError(`The server rejected this ${String(reason.payload.rejectionCode ?? reason.code).replaceAll('_', ' ').toLowerCase()} request. No funds were moved.`)
+        setError(`${customerMessage(reason, 'This request was declined.')} No funds were moved.`)
         pendingIntentRef.current = null
         setPendingIntent(null)
         clearPersistedFundingIntent(owner)
         wallet.reload()
         return
       }
-      const responseCode = reason instanceof CustomerApiError
-        ? String(reason.payload.rejectionCode ?? reason.code).replaceAll('_', ' ').toLowerCase()
-        : null
+      const responseCode = reason instanceof CustomerApiError ? customerMessage(reason, 'The request was declined.') : null
       setError(responseCode
-        ? `Server responded: ${responseCode}. The original request stays locked; retry repeats it exactly.`
+        ? `${responseCode} The original request stays locked; retry repeats it exactly.`
         : requestStarted
           ? 'No response received. The original request stays locked; retry repeats it exactly.'
           : 'The request wasn’t sent. Check the amount and try again.')
@@ -107,10 +105,10 @@ export function WalletScreen() {
     }
   }
 
-  async function generateStatement(){setStatementPending(true);setError('');try{const end=new Date(),start=new Date(end.getTime()-30*86_400_000);await frozen.submit('statement','/api/sandbox/sportsbook/statements','POST',idempotencyKey=>({periodStart:start.toISOString(),periodEnd:end.toISOString(),idempotencyKey}));setStatus('30-day statement ready.');if(statementCursors.length)setStatementCursors([]);else statements.reload()}catch(reason){setError(reason instanceof CustomerApiError?reason.code:'Statement generation failed.')}finally{setStatementPending(false)}}
+  async function generateStatement(){setStatementPending(true);setError('');try{const end=new Date(),start=new Date(end.getTime()-30*86_400_000);await frozen.submit('statement','/api/sandbox/sportsbook/statements','POST',idempotencyKey=>({periodStart:start.toISOString(),periodEnd:end.toISOString(),idempotencyKey}));setStatus('30-day statement ready.');if(statementCursors.length)setStatementCursors([]);else statements.reload()}catch(reason){setError(customerMessage(reason,'The statement couldn’t be prepared. Try again.'))}finally{setStatementPending(false)}}
 
   const enabled = wallet.data ? (action==='DEPOSIT'?wallet.data.depositsEnabled:wallet.data.withdrawalsEnabled) : false
-  return <CustomerShell current="wallet" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference}>
+  return <CustomerShell current="wallet" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference} closed={isClosedError(session.error)}>
     <AccountPageHeader title="Wallet" meta={wallet.data ? `Practice funds · as of ${formatDate(wallet.data.asOf)}` : 'Practice funds'} />
     {wallet.loading && <LoadingPanel label="Loading wallet" />}
     {wallet.error && <ErrorPanel error={wallet.error} retry={wallet.reload} />}

@@ -3,10 +3,10 @@
 import { useState } from 'react'
 import { LoaderCircle } from 'lucide-react'
 import type { CustomerSessionSummary, LimitActionResult, LimitsResponse } from '@/features/sportsbook/customer/contracts'
-import { AccountPageHeader, ErrorPanel, LoadingPanel } from '../../components/AccountStates'
+import { AccountPageHeader, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
 import { CustomerShell } from '../../components/CustomerShell'
 import { Card, Dot, Empty, Notice, Pill, Section, Track, fieldClass, label, toneFor } from '../../components/kit'
-import { amountInputToMinor, currencyExponent, CustomerApiError, formatDate, formatMinor, useCustomerResource, useFrozenSubmission } from '../../lib/customer-api'
+import { amountInputToMinor, currencyExponent, CustomerApiError, formatDate, formatMinor, useCustomerResource, useFrozenSubmission, customerMessage } from '../../lib/customer-api'
 
 const SESSION_PERIOD_MINUTES: Record<'DAILY' | 'WEEKLY' | 'MONTHLY', number> = { DAILY: 1_440, WEEKLY: 10_080, MONTHLY: 43_200 }
 
@@ -47,7 +47,7 @@ export function LimitsScreen() {
     } catch (reason) {
       const definitive = reason instanceof CustomerApiError && reason.status >= 400 && reason.status < 500 && reason.status !== 408 && reason.status !== 429
       if (reason instanceof CustomerApiError && reason.payload.state === 'IN_PROGRESS') setError('The original request is still processing. Retry to check the same request.')
-      else if (definitive) setError(`The limit was not saved (${reason.code.replaceAll('_', ' ').toLowerCase()}).`)
+      else if (definitive) setError(customerMessage(reason, 'The limit wasn’t saved. Check the amount and try again.'))
       else setError('No response received. Retry sends the original request unchanged.')
     } finally {
       setSaving(false)
@@ -56,7 +56,7 @@ export function LimitsScreen() {
 
   const types = [['STAKE', 'Stake'], ['DEPOSIT', 'Deposit'], ['LOSS', 'Net loss'], ['SESSION', 'Session']] as const
   const periods = [['DAILY', '24 hours'], ['WEEKLY', '7 days'], ['MONTHLY', '30 days']] as const
-  return <CustomerShell current="limits" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference}>
+  return <CustomerShell current="limits" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference} closed={isClosedError(session.error)}>
     <AccountPageHeader title="Limits" meta={limits.data ? `Increases wait ${limits.data.coolingOffHours} h · decreases apply now` : undefined} />
     {limits.loading && <LoadingPanel label="Loading limits" />}
     {limits.error && <ErrorPanel error={limits.error} retry={limits.reload} />}

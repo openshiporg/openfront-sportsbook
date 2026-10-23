@@ -26,15 +26,17 @@ export async function customerApi<T>(path: string, init?: RequestInit): Promise<
   return payload as T
 }
 
-export function useCustomerResource<T>(path: string) {
+/** Pass `null` to skip the request (e.g. customer-scoped data while signed out). */
+export function useCustomerResource<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(path !== null)
   const [error, setError] = useState<CustomerApiError | null>(null)
   const [version, setVersion] = useState(0)
   const reload = useCallback(() => { setLoading(true); setError(null); setVersion(value => value + 1) }, [])
-  const [loadedPath, setLoadedPath] = useState(path)
+  const [loadedPath, setLoadedPath] = useState<string | null>(path)
 
   useEffect(() => {
+    if (path === null) { setData(null); setError(null); setLoading(false); setLoadedPath(path); return }
     const controller = new AbortController()
     setLoading(true)
     // A different resource (filters, cursor, account) never shows the previous resource's rows as current.
@@ -182,4 +184,33 @@ export function useFrozenSubmission() {
     }
   }, [])
   return { submit, isUnresolved: (slot: string) => unresolved.includes(slot) }
+}
+
+const customerCopy: Record<string, string> = {
+  SANDBOX_DISABLED: 'Betting is closed right now.',
+  SANDBOX_ISOLATION_REQUIRED: 'Betting is closed right now.',
+  SANDBOX_OPERATOR_NOT_CONFIGURED: 'This sportsbook isn’t open yet.',
+  SANDBOX_BRAND_NOT_CONFIGURED: 'This sportsbook isn’t open yet.',
+  SANDBOX_TENANT_NOT_CONFIGURED: 'This sportsbook isn’t open yet.',
+  ORIGIN_DENIED: 'The request was blocked. Reload the page and try again.',
+  UNAUTHENTICATED: 'Sign in to continue.',
+  AUTHENTICATION_REQUIRED: 'Sign in to continue.',
+  RATE_LIMITED: 'Too many attempts. Wait a moment and try again.',
+  PAYLOAD_TOO_LARGE: 'That’s too long. Shorten it and try again.',
+  INVALID_REQUEST: 'Check the details and try again.',
+  INVALID_JSON: 'Check the details and try again.',
+  INSUFFICIENT_FUNDS: 'Your available balance is too low.',
+  SELF_EXCLUDED: 'Unavailable while self-exclusion is active.',
+  ACCOUNT_RESTRICTED: 'Unavailable while your account is restricted.',
+  VERIFICATION_REQUIRED: 'Verify your identity in Profile first.',
+  LIMIT_EXCEEDED: 'This would exceed one of your limits.',
+  OFFER_EXPIRED: 'The offer expired. Get a new one.',
+  REQUEST_FAILED: 'Something went wrong. Try again.',
+}
+
+/** Customer-facing copy for an API refusal; internal codes are never shown raw. */
+export function customerMessage(error: unknown, fallback = 'Something went wrong. Try again.') {
+  if (!(error instanceof CustomerApiError)) return fallback
+  const code = String(error.payload.rejectionCode ?? error.code)
+  return customerCopy[code] ?? fallback
 }

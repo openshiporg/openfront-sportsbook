@@ -95,5 +95,7 @@ export function WorkflowNote({ title, children, tone = "neutral" }: { title: str
 }
 
 export function DetailGrid({ items }: { items: { label: string; value: ReactNode }[] }) {
-  return <dl className="grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <div key={item.label} className="min-w-0 bg-card px-4 py-3"><dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{item.label}</dt><dd className="mt-1 break-words text-sm text-foreground">{item.value}</dd></div>)}</dl>;
+  // Columns follow the item count so the last row never leaves an empty filler cell.
+  const columns = items.length === 3 ? "sm:grid-cols-3" : items.length % 6 === 0 ? "sm:grid-cols-2 xl:grid-cols-3" : items.length % 4 === 0 ? "sm:grid-cols-2 xl:grid-cols-4" : items.length % 2 === 0 ? "sm:grid-cols-2" : items.length === 1 ? "" : "sm:grid-cols-2 xl:grid-cols-3";
+  return <dl className={`grid gap-px overflow-hidden rounded-xl border bg-border ${columns}`}>{items.map((item) => <div key={item.label} className="min-w-0 bg-card px-4 py-3"><dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{item.label}</dt><dd className="mt-1 break-words text-sm text-foreground">{item.value}</dd></div>)}</dl>;
 }

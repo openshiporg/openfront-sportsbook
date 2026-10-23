@@ -16,7 +16,8 @@ export function assertSandboxEnabled() {
     assertSandboxRuntime()
   } catch (error) {
     const code = error instanceof Error ? error.message : 'SANDBOX_DISABLED'
-    throw new CustomerError(code, code === 'SANDBOX_DISABLED' ? 404 : 503)
+    // Closed is a service state, not a missing route.
+    throw new CustomerError(code, 503, { closed: true })
   }
 }
 
@@ -46,8 +47,10 @@ export function assertCustomerMutationRequest(request: Request) {
     throw new CustomerError('ORIGIN_DENIED', 403)
   }
 
+  // request.url is the server's own bind address (http://localhost:<port>) behind a proxy, so the browser's
+  // Origin is compared with the Host it addressed; a cross-site page cannot set either header.
   const origin = request.headers.get('origin')
-  if (origin && !process.env.SANDBOX_PUBLIC_ORIGIN && origin !== new URL(request.url).origin) {
+  if (origin && !process.env.SANDBOX_PUBLIC_ORIGIN && !sameHost(origin, request)) {
     throw new CustomerError('ORIGIN_DENIED', 403)
   }
 
@@ -79,4 +82,13 @@ export async function readJsonObject(request: Request): Promise<Record<string, u
     if (error instanceof CustomerError) throw error
     throw new CustomerError('INVALID_JSON', 400)
   }
+}
+
+function sameHost(origin: string, request: Request) {
+  let originHost: string
+  try { originHost = new URL(origin).host.toLowerCase() } catch { return false }
+  // x-forwarded-host is only honoured as the proxy's record of the same Host; setting it cross-site needs a CORS
+  // preflight this API never grants.
+  const hosts = [request.headers.get('host'), request.headers.get('x-forwarded-host')?.split(',')[0]?.trim()]
+  return hosts.some(host => Boolean(host) && host!.toLowerCase() === originHost)
 }

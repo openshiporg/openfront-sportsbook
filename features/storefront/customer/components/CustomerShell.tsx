@@ -8,6 +8,7 @@ import { customerApi } from '../lib/customer-api'
 import { DEFAULT_STORE_LOGO_ICON } from '@/features/platform/store-settings/lib/store-logo'
 import { brandHue, useStorefrontBrand } from './StorefrontBrand'
 import { Track, pillClass } from './kit'
+import { ClosedPanel } from './AccountStates'
 import { cn } from '@/lib/utils'
 
 const accountLinks = [
@@ -33,11 +34,14 @@ export function CustomerShell({
   current,
   authenticated = false,
   accountReference,
+  closed = false,
 }: {
   children: ReactNode
   current?: string
   authenticated?: boolean
   accountReference?: string
+  /** The customer API is switched off: every page shows the same closed state. */
+  closed?: boolean
 }) {
   const pathname = usePathname() ?? '/'
   const [menuOpen, setMenuOpen] = useState(false)
@@ -135,9 +139,9 @@ export function CustomerShell({
               </div>
             </div>
           </nav>
-          <main id="main-content" className="min-w-0">{children}</main>
+          <main id="main-content" className="min-w-0">{closed ? <ClosedState /> : children}</main>
         </div>
-      ) : <main id="main-content" className="flex-1">{children}</main>}
+      ) : <main id="main-content" className="flex-1">{closed ? <div className="mx-auto w-full max-w-3xl px-4 py-6"><ClosedState /></div> : children}</main>}
 
       <footer className="bg-sb-night px-4 py-6 text-xs text-white/60">
         <div className="mx-auto flex max-w-[1560px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:px-2">
@@ -151,6 +155,13 @@ export function CustomerShell({
       </footer>
     </div>
   )
+}
+
+function ClosedState() {
+  return <>
+    <ClosedPanel />
+    <div className="mt-4"><Track label="Independent help"><a href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noreferrer" className={pillClass('raised', 'sm')}>NCPG help and treatment</a><a href="https://www.gamblersanonymous.org/" target="_blank" rel="noreferrer" className={pillClass('raised', 'sm')}>Gamblers Anonymous</a></Track></div>
+  </>
 }
 
 export const customerAccountLinks = accountLinks

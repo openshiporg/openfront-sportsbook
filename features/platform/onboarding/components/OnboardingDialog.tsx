@@ -13,11 +13,12 @@ export default function OnboardingDialog({ isOpen, onClose }: {
     <DialogContent>
       <DialogHeader>
         <DialogTitle>Operator setup</DialogTitle>
-        <DialogDescription>MFA-verified session required</DialogDescription>
+        <DialogDescription>Tenant, brand, jurisdictions and adapters · needs an MFA-verified session</DialogDescription>
       </DialogHeader>
       <DialogFooter>
         <Track>
           <Pill variant="flat" onClick={onClose}>Not now</Pill>
+          <Link href="/dashboard/platform/security" onClick={onClose} className={pillClass("raised")}>Operator security</Link>
           <Link href="/dashboard/platform/onboarding" onClick={onClose} className={pillClass("primary")}>Open onboarding</Link>
         </Track>
       </DialogFooter>

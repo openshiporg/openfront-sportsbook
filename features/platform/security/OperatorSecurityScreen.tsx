@@ -1,6 +1,7 @@
 import { OperatorShell, TenantRequired } from '../components/OperatorShell'
 import { Mono } from '../components/kit'
 import { DetailGrid, StatusBadge } from '../components/WorkflowUI'
+import { dateTime } from '../lib/format'
 import { getOperatorSession, platformPrisma as prisma } from '../lib/operator'
 import { MfaEnrollment } from './MfaEnrollment'
 import { sanitizeDashboardRedirect } from '@/features/dashboard/lib/security'
@@ -41,7 +42,7 @@ export async function OperatorSecurityScreen({ returnTo }: { returnTo?: string }
     <DetailGrid items={[
       { label: 'Operator', value: <span className="break-all">{user.email}</span> },
       { label: 'MFA', value: <StatusBadge value={enrolled ? 'ENABLED' : 'NOT_ENROLLED'} /> },
-      { label: 'Enrolled', value: <Mono>{user.operatorMfaEnrolledAt?.toISOString() ?? '—'}</Mono> },
+      { label: 'Enrolled', value: <Mono>{user.operatorMfaEnrolledAt ? dateTime(user.operatorMfaEnrolledAt) : '—'}</Mono> },
       { label: 'Failed attempts', value: <Mono className={failed > 0 ? 'text-red-600 dark:text-red-400' : undefined}>{failed}</Mono> },
     ]} />
   </OperatorShell>

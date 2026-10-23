@@ -17,6 +17,8 @@ export async function startOperatorMfaSession(context: any, itemId: string, now 
   const token = await context.sessionStrategy.start({
     context,
     data: {
+      // @keystone-6/auth only resolves sessions sealed for its list.
+      listKey: 'User',
       itemId,
       operatorMfaAssurance: {
         issuedAt: now,

@@ -2,10 +2,10 @@
 import { useState } from 'react'
 import { Send } from 'lucide-react'
 import type { BetsResponse, CustomerSessionSummary, WalletResponse } from '@/features/sportsbook/customer/contracts'
-import { AccountPageHeader, ClosedPanel, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
+import { AccountPageHeader, AuthenticationRequired, ClosedPanel, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
 import { Card, Dot, Empty, Notice, Pill, Section, Track, fieldClass, labelClass, toneFor } from '../../components/kit'
 import { CustomerShell } from '../../components/CustomerShell'
-import { customerApi, CustomerApiError, formatDate, shortId, useCustomerResource, useFrozenSubmission } from '../../lib/customer-api'
+import { customerApi, CustomerApiError, formatDate, shortId, useCustomerResource, useFrozenSubmission, customerMessage } from '../../lib/customer-api'
 
 type SupportCase = { id: string; wagerId: string | null; paymentIntentId: string | null; category: string; status: string; subject: string; openedAt: string; resolvedAt: string | null; dispute: null | { id: string; topic: string; status: string; resolution: string | null }; messages: Array<{ id: string; type: string; from: 'YOU' | 'SUPPORT'; body: string; createdAt: string }> }
 type Cases = { supportCases: SupportCase[]; nextCursor: string | null }
@@ -26,9 +26,10 @@ export function DisputesScreen() {
   const [casesCursors, setCasesCursors] = useState<string[]>([])
   const casesCursor = casesCursors[casesCursors.length - 1]
   const session = useCustomerResource<CustomerSessionSummary>('/api/sandbox/sportsbook/session')
-  const cases = useCustomerResource<Cases>(`/api/sandbox/sportsbook/disputes${casesCursor ? `?cursor=${encodeURIComponent(casesCursor)}` : ''}`)
-  const bets = useCustomerResource<BetsResponse>('/api/sandbox/sportsbook/bets')
-  const wallet = useCustomerResource<WalletResponse>('/api/sandbox/sportsbook/wallet')
+  const signedIn = Boolean(session.data?.authenticated)
+  const cases = useCustomerResource<Cases>(signedIn ? `/api/sandbox/sportsbook/disputes${casesCursor ? `?cursor=${encodeURIComponent(casesCursor)}` : ''}` : null)
+  const bets = useCustomerResource<BetsResponse>(signedIn ? '/api/sandbox/sportsbook/bets' : null)
+  const wallet = useCustomerResource<WalletResponse>(signedIn ? '/api/sandbox/sportsbook/wallet' : null)
   const [olderBets, setOlderBets] = useState<{ bets: Bet[]; nextCursor: string | null } | null>(null)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [form, setForm] = useState({ category: 'ACCOUNT', topic: 'SETTLEMENT', wagerId: '', paymentIntentId: '', subject: '', details: '' })
@@ -57,7 +58,7 @@ export function DisputesScreen() {
       setForm(v => ({ ...v, subject: '', details: '' }))
       setCasesCursors([]); cases.reload()
     } catch (error) {
-      setMessage(error instanceof CustomerApiError ? (frozen.isUnresolved('support-case') ? 'We couldn’t confirm your request was sent. Submit again to retry the same request.' : `We couldn’t open the case (${error.code.replaceAll('_', ' ').toLowerCase()}).`) : 'We couldn’t open the case. Try again.')
+      setMessage(error instanceof CustomerApiError ? (frozen.isUnresolved('support-case') ? 'We couldn’t confirm your request was sent. Submit again to retry the same request.' : customerMessage(error, 'We couldn’t open the case. Try again.')) : 'We couldn’t open the case. Try again.')
     } finally { setPending('') }
   }
 
@@ -70,13 +71,14 @@ export function DisputesScreen() {
       setReplies(current => ({ ...current, [caseId]: '' }))
       cases.reload()
     } catch (error) {
-      setMessage(error instanceof CustomerApiError ? `Your reply wasn’t sent (${error.code.replaceAll('_', ' ').toLowerCase()}).` : 'Your reply wasn’t sent. Try again.')
+      setMessage(customerMessage(error, 'Your reply wasn’t sent. Try again.'))
     } finally { setPending('') }
   }
 
   const wagerCase = form.category === 'WAGER'
-  return <CustomerShell current="disputes" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference}>
+  return <CustomerShell current="disputes" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference} closed={isClosedError(session.error)}>
     <AccountPageHeader title="Support" meta="Account, payments, safer play, privacy and bet disputes" />
+    {session.data && !session.data.authenticated ? <AuthenticationRequired /> : <>
     {isClosedError(cases.error) ? <ClosedPanel /> : <form onSubmit={submit} className="mt-6 rounded-3xl bg-sb-card p-5 ring-1 ring-sb-line sm:p-6">
       <h2 className="font-sb-display text-2xl font-bold uppercase tracking-wide">{wagerCase ? 'Dispute a bet' : 'New request'}</h2>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -109,5 +111,6 @@ export function DisputesScreen() {
         </Card>)}</div>)}
       {cases.data && (casesCursors.length > 0 || cases.data.nextCursor) && <nav aria-label="Case pages" className="mt-4"><Track><Pill size="sm" disabled={casesCursors.length === 0} onClick={() => setCasesCursors(current => current.slice(0, -1))}>Newer</Pill><Pill size="sm" disabled={!cases.data.nextCursor} onClick={() => { const next = cases.data?.nextCursor; if (next) setCasesCursors(current => [...current, next]) }}>Older</Pill></Track></nav>}
     </Section>
+    </>}
   </CustomerShell>
 }

@@ -13,10 +13,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { AccountPageHeader, ErrorPanel, LoadingPanel } from '../../components/AccountStates'
+import { AccountPageHeader, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
 import { CustomerShell } from '../../components/CustomerShell'
 import { Card, Dot, Notice, Pill, Readouts, Section, Track, label, pillClass, toneFor } from '../../components/kit'
-import { CustomerApiError, formatDate, useCustomerResource, useFrozenSubmission } from '../../lib/customer-api'
+import { CustomerApiError, formatDate, useCustomerResource, useFrozenSubmission, customerMessage } from '../../lib/customer-api'
 
 const durationLabel = (days: number | null) => days === null ? 'permanent self-exclusion' : days === 1 ? '24-hour break' : days === 7 ? '7-day break' : '6-week break'
 
@@ -69,7 +69,7 @@ export function ResponsiblePlayScreen() {
       const definitive = reason instanceof CustomerApiError && reason.status >= 400 && reason.status < 500 && reason.status !== 408 && reason.status !== 429
       if (definitive) setFrozenDuration(undefined)
       if (reason instanceof CustomerApiError && reason.payload.state === 'IN_PROGRESS') setError('The original exclusion request is still processing. Activate again to check that same request.')
-      else if (definitive) setError(`The control was not activated (${reason.code.replaceAll('_', ' ').toLowerCase()}).`)
+      else if (definitive) setError(customerMessage(reason, 'The break wasn’t started. Try again.'))
       else setError('No response received. Activate again to retry the same request.')
     } finally {
       setSaving(false)
@@ -78,7 +78,7 @@ export function ResponsiblePlayScreen() {
 
   const active = responsible.data?.selfExclusion
 
-  return <CustomerShell current="responsible-play" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference}>
+  return <CustomerShell current="responsible-play" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference} closed={isClosedError(session.error)}>
     <AccountPageHeader title="Safer play" tone={responsible.data ? (responsible.data.wageringRestricted ? 'alert' : 'win') : undefined} meta={responsible.data ? (responsible.data.wageringRestricted ? 'Betting restricted' : 'Betting available') : undefined} />
     {responsible.loading && <LoadingPanel label="Loading controls" />}
     {responsible.error && <ErrorPanel error={responsible.error} retry={responsible.reload} />}

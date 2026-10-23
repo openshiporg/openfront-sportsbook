@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { CustomerShell } from '../../components/CustomerShell'
-import { customerApi, CustomerApiError } from '../../lib/customer-api'
+import { customerApi, CustomerApiError, useCustomerResource } from '../../lib/customer-api'
+import { isClosedError } from '../../components/AccountStates'
 import { Notice, Pill, Track, checkClass, fieldClass, labelClass } from '../../components/kit'
 
 type Mode = 'register' | 'login' | 'recover'
@@ -12,6 +13,7 @@ type Terms = { termsVersion: string; termsContentHash: string }
 const MODES = [['register', 'Create'], ['login', 'Sign in'], ['recover', 'Recover']] as const
 
 export function AuthScreen() {
+  const session = useCustomerResource<{ authenticated?: boolean }>('/api/sandbox/sportsbook/session')
   const [mode, setMode] = useState<Mode>('register')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -89,7 +91,7 @@ export function AuthScreen() {
   }
 
   const title = mode==='register' ? 'Create account' : mode==='login' ? 'Sign in' : recoveryToken ? 'New password' : 'Recover access'
-  return <CustomerShell>
+  return <CustomerShell closed={isClosedError(session.error)}>
     <div className="mx-auto w-full max-w-md px-4 py-10 sm:py-16">
       <section className="overflow-hidden rounded-3xl bg-sb-card shadow-[0_12px_32px_-12px_rgb(16_20_27/0.25)] ring-1 ring-sb-line" aria-labelledby="auth-heading">
         <div className="bg-sb-night px-5 pb-5 pt-6 text-white sm:px-7">

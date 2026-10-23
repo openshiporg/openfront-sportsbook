@@ -2,7 +2,7 @@
 
 import { LoaderCircle, RefreshCw } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import { customerApi, CustomerApiError } from '../lib/customer-api'
+import { customerApi, CustomerApiError, customerMessage } from '../lib/customer-api'
 import { Dot, Pill, PillLink, PageTitle, Track, type Tone } from './kit'
 
 export function AccountPageHeader({ title, tone, meta, aside }: { title: string; tone?: Tone; meta?: ReactNode; aside?: ReactNode }) {
@@ -44,7 +44,7 @@ export function AuthenticationRequired() {
       await customerApi('/api/sandbox/sportsbook/register', { method: 'POST', body: '{}' })
       window.location.reload()
     } catch (reason) {
-      setError(reason instanceof CustomerApiError ? reason.code : 'REQUEST_FAILED')
+      setError(customerMessage(reason, 'The account couldn’t be created. Try again.'))
       setCreating(false)
     }
   }
@@ -63,6 +63,6 @@ export function AuthenticationRequired() {
         <div className="mt-3"><Track><Pill onClick={createAccount} disabled={creating}>{creating ? 'Creating…' : 'Start guest account'}</Pill></Track></div>
       </div>
     </div>
-    {error && <p role="alert" className="border-t border-sb-line px-5 py-3 text-sm font-medium text-red-800 sm:px-6"><Dot tone="alert" />Couldn’t create the account: {error}</p>}
+    {error && <p role="alert" className="border-t border-sb-line px-5 py-3 text-sm font-medium text-red-800 sm:px-6"><Dot tone="alert" />{error}</p>}
   </div>
 }

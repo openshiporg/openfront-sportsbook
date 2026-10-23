@@ -5,7 +5,7 @@ import { resolveSandboxTenant } from '../api/sandbox-tenant'
 import { resolveTenantCurrency } from './currency'
 
 const MAX_PRICE_AGE_MS = () => Number(process.env.MAX_PRICE_AGE_MS ?? 30_000)
-const PUBLIC_EVENT_STATUSES = ['SCHEDULED', 'LIVE', 'SUSPENDED'] as const
+export const PUBLIC_EVENT_STATUSES = ['SCHEDULED', 'LIVE', 'SUSPENDED'] as const
 const DEFAULT_PAGE_SIZE = 20
 const MAX_PAGE_SIZE = 50
 const MAX_FILTER_IDS = 100

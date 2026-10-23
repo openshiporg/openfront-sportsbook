@@ -1,2 +1,18 @@
+import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
+import { storefrontTitle } from '@/features/storefront/lib/data/brand'
 import { SportsbookHome } from '@/features/storefront/sportsbook/screens/SportsbookHome'
-export default async function Page({params}:{params:Promise<{event:string}>}){const value=await params;return <SportsbookHome initialEventId={value.event}/>}
+import { findPublishedEvent } from '@/features/storefront/lib/data/catalog-route'
+
+type Params = { params: Promise<{ event: string }> }
+
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  const match = await findPublishedEvent((await params).event)
+  return { title: await storefrontTitle(match ? match.name : 'Not found') }
+}
+
+export default async function Page({ params }: Params) {
+  const value = await params
+  if (!(await findPublishedEvent(value.event))) notFound()
+  return <SportsbookHome initialEventId={value.event} />
+}

@@ -14,3 +14,9 @@ export const getStorefrontBrand = cache(async function (): Promise<StorefrontBra
     return null
   }
 })
+
+/** Page title with the brand's name, e.g. "My bets · Northline". */
+export async function storefrontTitle(page?: string) {
+  const name = (await getStorefrontBrand())?.name || 'Sportsbook'
+  return page ? `${page} · ${name}` : name
+}

@@ -2,10 +2,10 @@
 
 import { useState } from 'react'
 import type { BetsResponse, CustomerSessionSummary } from '@/features/sportsbook/customer/contracts'
-import { AccountPageHeader, ErrorPanel, LoadingPanel } from '../../components/AccountStates'
+import { AccountPageHeader, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
 import { CustomerShell } from '../../components/CustomerShell'
 import { Dot, Empty, Ledger, Notice, Pill, PillLink, Track, label, toneFor } from '../../components/kit'
-import { customerApi, CustomerApiError, formatDate, formatMinor, formatOdds, shortId, useCustomerResource, useFrozenSubmission } from '../../lib/customer-api'
+import { customerApi, formatDate, formatMinor, formatOdds, shortId, useCustomerResource, useFrozenSubmission, customerMessage } from '../../lib/customer-api'
 
 type CashOffer={offerId:string;wagerId:string;amountMinor:string;currency:string;portionNumerator:string;portionDenominator:string;feeMinor:string;valuationHash:string;expiresAt:string}
 export function BetsScreen() {
@@ -15,10 +15,10 @@ export function BetsScreen() {
   // Paged with a stable server cursor so older bets stay reachable.
   const bets = useCustomerResource<BetsResponse>(`/api/sandbox/sportsbook/bets${betCursors.length ? `?cursor=${encodeURIComponent(betCursors[betCursors.length - 1])}` : ''}`)
   const [cashOffers,setCashOffers]=useState<Record<string,CashOffer>>({}),[cashPending,setCashPending]=useState(''),[cashMessage,setCashMessage]=useState('')
-  async function requestCashOut(wagerId:string,portionBps:number){setCashPending(wagerId);setCashMessage('');try{const offer=await customerApi<CashOffer>('/api/sandbox/sportsbook/cashout',{method:'POST',body:JSON.stringify({wagerId,portionBps})});setCashOffers(current=>({...current,[wagerId]:offer}))}catch(error){setCashMessage(error instanceof CustomerApiError?error.code.replaceAll('_',' ').toLowerCase():'Cash-out quote failed.')}finally{setCashPending('')}}
-  async function acceptCashOut(wagerId:string){const offer=cashOffers[wagerId];if(!offer)return;setCashPending(wagerId);setCashMessage('');try{const result=await frozen.submit<{amountMinor:string;currency:string;fullyClosed:boolean}>(`cashout:${offer.offerId}`,'/api/sandbox/sportsbook/cashout','PUT',idempotencyKey=>({offerId:offer.offerId,idempotencyKey}),'cashout');setCashMessage(`${result.fullyClosed?'Full':'Partial'} cash-out accepted for ${formatMinor(result.amountMinor,result.currency)}.`);setCashOffers(current=>{const next={...current};delete next[wagerId];return next});bets.reload();session.reload()}catch(error){setCashMessage(error instanceof CustomerApiError?error.code.replaceAll('_',' ').toLowerCase():'Cash-out acceptance failed.')}finally{setCashPending('')}}
+  async function requestCashOut(wagerId:string,portionBps:number){setCashPending(wagerId);setCashMessage('');try{const offer=await customerApi<CashOffer>('/api/sandbox/sportsbook/cashout',{method:'POST',body:JSON.stringify({wagerId,portionBps})});setCashOffers(current=>({...current,[wagerId]:offer}))}catch(error){setCashMessage(customerMessage(error,'No cash-out offer is available right now.'))}finally{setCashPending('')}}
+  async function acceptCashOut(wagerId:string){const offer=cashOffers[wagerId];if(!offer)return;setCashPending(wagerId);setCashMessage('');try{const result=await frozen.submit<{amountMinor:string;currency:string;fullyClosed:boolean}>(`cashout:${offer.offerId}`,'/api/sandbox/sportsbook/cashout','PUT',idempotencyKey=>({offerId:offer.offerId,idempotencyKey}),'cashout');setCashMessage(`${result.fullyClosed?'Full':'Partial'} cash-out accepted for ${formatMinor(result.amountMinor,result.currency)}.`);setCashOffers(current=>{const next={...current};delete next[wagerId];return next});bets.reload();session.reload()}catch(error){setCashMessage(customerMessage(error,'The cash-out wasn’t accepted. Get a new offer.'))}finally{setCashPending('')}}
 
-  return <CustomerShell current="bets" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference}>
+  return <CustomerShell current="bets" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference} closed={isClosedError(session.error)}>
     <AccountPageHeader title="My bets" meta={bets.data ? `${bets.data.bets.length} on this page` : undefined} />
     {bets.loading && <LoadingPanel label="Loading your bets" />}
     {bets.error && <ErrorPanel error={bets.error} retry={bets.reload} />}
