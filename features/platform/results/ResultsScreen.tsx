@@ -27,12 +27,12 @@ export async function ResultsScreen({ eventId, searchParams }: { eventId?: strin
   if (!operator) return <OperatorShell active="Results" title="Results"><TenantRequired /></OperatorShell>;
   // Eligible events are searched and paged (not the first 100), and every pending result is loaded on
   // its own so old pending work stays reachable however many versions are newer.
-  const eventWhere = { tenantId: operator.tenantId, status: { in: ["SCHEDULED", "LIVE", "ENDED"] }, ...(eventSearch ? { OR: [{ name: { contains: eventSearch, mode: "insensitive" } }, { externalKey: { contains: eventSearch, mode: "insensitive" } }, { id: eventSearch }] } : {}) };
+  const eventWhere = { tenantId: operator.tenantId, status: { in: ["SCHEDULED", "LIVE", "ENDED"] }, startAt: { lte: new Date() }, ...(eventSearch ? { OR: [{ name: { contains: eventSearch, mode: "insensitive" } }, { externalKey: { contains: eventSearch, mode: "insensitive" } }, { id: eventSearch }] } : {}) };
   const resultWhere = { tenantId: operator.tenantId };
   const [events, eventTotal, eligibleTotal, results, resultTotal, pending, pendingTotal, approvedTotal, approvalTotal] = await Promise.all([
     prisma.event.findMany({ where: eventWhere, orderBy: [{ startAt: "desc" }, { id: "desc" }], take: EVENT_PICKER_SIZE, skip: (eventPage - 1) * EVENT_PICKER_SIZE }),
     prisma.event.count({ where: eventWhere }),
-    prisma.event.count({ where: { tenantId: operator.tenantId, status: { in: ["SCHEDULED", "LIVE", "ENDED"] } } }),
+    prisma.event.count({ where: { tenantId: operator.tenantId, status: { in: ["SCHEDULED", "LIVE", "ENDED"] }, startAt: { lte: new Date() } } }),
     prisma.resultVersion.findMany({ where: resultWhere, orderBy: [{ createdAt: "desc" }, { version: "desc" }, { id: "desc" }], take: PLATFORM_PAGE_SIZE, skip: (page - 1) * PLATFORM_PAGE_SIZE, include: { event: true } }),
     prisma.resultVersion.count({ where: resultWhere }),
     prisma.resultVersion.findMany({ where: { ...resultWhere, status: "PENDING" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: PLATFORM_PAGE_SIZE, include: { event: true } }),
@@ -43,14 +43,17 @@ export async function ResultsScreen({ eventId, searchParams }: { eventId?: strin
   const hashFor = (result: any) => { try { return resultApprovalHash(result); } catch { return undefined; } };
   const shownHashes = [...new Set([...results, ...pending].map(hashFor).filter(Boolean))] as string[];
   const approvals = shownHashes.length ? await prisma.approvalRequest.findMany({ where: { tenantId: operator.tenantId, action: "APPROVE_RESULT", payloadHash: { in: shownHashes } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] }) : [];
+  const approvalActorIds = [...new Set(approvals.flatMap((approval: any) => [approval.requesterId, approval.approverId]).filter(Boolean))] as string[];
+  const approvalActors = approvalActorIds.length ? await prisma.user.findMany({ where: { tenantId: operator.tenantId, id: { in: approvalActorIds } }, select: { id: true, name: true } }) : [];
+  const actorName = (id: string) => approvalActors.find((actor: any) => actor.id === id)?.name || "Unknown operator";
   const approvalFor = (resultId: string) => {
     const result = [...results, ...pending].find((item: any) => item.id === resultId);
     const hash = result ? hashFor(result) : undefined;
     return hash ? approvals.find((approval: any) => approval.payloadHash === hash) : undefined;
   };
   // The selected event's own complete market/selection tree feeds the typed outcome editor.
-  const selectedEvent = eventId ? await prisma.event.findFirst({ where: { id: eventId, tenantId: operator.tenantId, status: { in: ["SCHEDULED", "LIVE", "ENDED"] } }, include: { from_Market_event: { orderBy: { createdAt: "asc" }, include: { from_Selection_market: { orderBy: { key: "asc" } } } } } }) : null;
-  const editorMarkets: ResultEditorMarket[] = (selectedEvent?.from_Market_event ?? []).map((market: any) => ({ id: market.id, label: `${market.definitionKey} · ${shortId(market.id)}`, selections: market.from_Selection_market.map((selection: any) => ({ key: selection.key, label: selection.label })) }));
+  const selectedEvent = eventId ? await prisma.event.findFirst({ where: { id: eventId, tenantId: operator.tenantId, status: { in: ["SCHEDULED", "LIVE", "ENDED"] }, startAt: { lte: new Date() } }, include: { from_Market_event: { orderBy: { createdAt: "asc" }, include: { from_Selection_market: { orderBy: { key: "asc" } } } } } }) : null;
+  const editorMarkets: ResultEditorMarket[] = (selectedEvent?.from_Market_event ?? []).map((market: any) => ({ id: market.id, label: market.definitionKey, selections: market.from_Selection_market.map((selection: any) => ({ key: selection.key, label: selection.label })) }));
   const resultsPath = "/dashboard/platform/results";
   const eventPages = Math.max(1, Math.ceil(eventTotal / EVENT_PICKER_SIZE));
   return <OperatorShell active="Results" title="Results" tone={pendingTotal ? "wait" : "ok"} meta={`${pendingTotal} pending · ${approvedTotal} approved · ${resultTotal} versions`} tenantName={operator.tenantName}>
@@ -68,7 +71,7 @@ export async function ResultsScreen({ eventId, searchParams }: { eventId?: strin
           <StatusBadge value={approval ? `APPROVAL_${approval.status}` : "PENDING"} />
         </div>
         <div className="grid gap-4 xl:grid-cols-2">
-          {!approval ? <MutationForm compact title="Request approval" description={`Result v${result.version}`} mutation={requestMutation} fields={[{ name: "resultVersionId", label: "Result", type: "hidden", defaultValue: result.id }, { name: "reason", label: "Approval reason", placeholder:'Why this is needed and what you reviewed' }]} submitLabel="Request independent approval" successMessage="Approval request created." disabledReason={operator.capabilities.canTrade ? undefined : "Your role cannot request result approval."} /> : <div className="min-w-0 rounded-xl bg-muted/60 px-4 py-3 text-sm"><p className="font-medium">Approval <Mono className="break-all">{shortId(approval.id)}</Mono></p><p className="mt-1 text-xs text-muted-foreground">requester <Mono>{shortId(approval.requesterId)}</Mono>{approval.approverId ? <> · approver <Mono>{shortId(approval.approverId)}</Mono></> : null}</p></div>}
+          {!approval ? <MutationForm compact title="Request approval" description={`Result v${result.version}`} mutation={requestMutation} fields={[{ name: "resultVersionId", label: "Result", type: "hidden", defaultValue: result.id }, { name: "reason", label: "Approval reason", placeholder:'Why this is needed and what you reviewed' }]} submitLabel="Request independent approval" successMessage="Approval request created." disabledReason={operator.capabilities.canTrade ? undefined : "Your role cannot request result approval."} /> : <div className="min-w-0 rounded-xl bg-muted/60 px-4 py-3 text-sm"><p className="font-medium">Approval <Mono className="break-all">{shortId(approval.id)}</Mono></p><p className="mt-1 text-xs text-muted-foreground">requested by {actorName(approval.requesterId)}{approval.approverId ? <> · decided by {actorName(approval.approverId)}</> : null}</p></div>}
           {approval?.status === "APPROVED" ? <MutationForm compact title="Apply approved result" description={`Result v${result.version}`} mutation={approveMutation} fields={[{ name: "resultVersionId", label: "Result", type: "hidden", defaultValue: result.id }, { name: "approvalId", label: "Approval", type: "hidden", defaultValue: approval.id }, { name: "reason", label: "Application reason", placeholder:'Why this is needed and what you reviewed' }]} submitLabel="Approve result version" successMessage="Result approved for grading." disabledReason={operator.capabilities.canManageRisk ? undefined : "Your role does not include risk approval capability."} /> : <WorkflowNote title={approval ? `Approval ${approval.status.toLowerCase()}` : "Approval not requested"} tone={approval?.status === "REJECTED" ? "warning" : "neutral"}>Decided by another user</WorkflowNote>}
         </div>
       </article>; })}

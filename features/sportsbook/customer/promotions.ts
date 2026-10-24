@@ -15,8 +15,12 @@ const promotionFixtures = [
   { key: 'sandbox-deposit-match', name: 'Deposit match sandbox', description: 'A $10 restricted bonus wallet award with 3× wagering evidence.', type: 'DEPOSIT_MATCH', budgetMinor: '500000', economics: { amountMinor: '1000', stakeReturned: true }, requirements: { wageringMultiple: 3, validStructures: ['STRAIGHT', 'PARLAY', 'SYSTEM'] } },
 ] as const
 
+/**
+ * Operator-side provisioning from onboarding (an authenticated operator mutation). It only writes the tenant's
+ * promotion records; customers still reach them solely through the gated customer API, so it does not depend on
+ * whether practice play is open.
+ */
 export async function ensureSandboxPromotions(prisma: PrismaClient, tenantId: string) {
-  assertSandboxEnabled()
   const now = new Date()
   const currency = (await resolveTenantCurrency(prisma, tenantId)).code
   await serializable(prisma, async tx => {

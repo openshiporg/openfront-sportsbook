@@ -6,6 +6,16 @@ export type SportsbookOnboardingInput = typeof seed.operator
 
 type OnboardingResponse = { data?: { applySportsbookOnboarding?: { fixtureHash: string; version: string } }; errors?: Array<{ message?: string }> }
 
+const onboardingErrors: Record<string, string> = {
+  INVALID_TIMEZONE: 'Use an IANA time zone, e.g. Europe/London.',
+  ONBOARDING_CONFLICT: 'This tenant already has a different brand name or domain.',
+  ONBOARDING_PROMOTIONS_PROGRESS_CONFLICT: 'Promotions setup changed since it started. Resume to retry.',
+  ONBOARDING_PROMOTIONS_PROGRESS_STALE: 'Promotions setup changed since it started. Resume to retry.',
+  ONBOARDING_PROMOTIONS_PROGRESS_NOT_PENDING: 'Promotions setup is out of step. Resume to retry.',
+  AUTHENTICATION_REQUIRED: 'Sign in again to continue setup.',
+  MFA_REQUIRED: 'Verify MFA on Operator security, then resume.',
+}
+
 const mutation = `mutation Apply($slug:String!,$operatorName:String!,$brandName:String!,$domain:String!,$currency:String!,$currencyExponent:Int!,$jurisdictionCode:String!,$timezone:String!){applySportsbookOnboarding(slug:$slug,operatorName:$operatorName,brandName:$brandName,domain:$domain,currency:$currency,currencyExponent:$currencyExponent,jurisdictionCode:$jurisdictionCode,timezone:$timezone){fixtureHash version}}`
 
 /**
@@ -23,7 +33,8 @@ export function useOnboardingApi() {
     })
     const payload = await response.json() as OnboardingResponse
     if (!response.ok || payload.errors || !payload.data?.applySportsbookOnboarding) {
-      throw new Error(payload.errors?.[0]?.message || `Request failed (${response.status})`)
+      const code = payload.errors?.[0]?.message ?? ''
+      throw new Error(onboardingErrors[code] ?? (code && code !== 'Unexpected error.' ? code : `Setup didn’t complete (${response.status}). Resume to retry.`))
     }
     return payload.data.applySportsbookOnboarding
   }

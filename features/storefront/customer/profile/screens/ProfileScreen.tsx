@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { CustomerSessionSummary } from '@/features/sportsbook/customer/contracts'
-import { AccountPageHeader, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
+import { AccountPageHeader, AuthenticationRequired, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
 import { CustomerShell } from '../../components/CustomerShell'
 import { Card, Dot, Empty, Notice, Pill, Readouts, Section, Track, checkClass, fieldClass, label, labelClass, pillClass, toneFor } from '../../components/kit'
 import { formatDate, shortId, useCustomerResource, useFrozenSubmission, customerMessage } from '../../lib/customer-api'
@@ -12,7 +12,7 @@ type PrivacyList={requests:Array<{id:string;type:string;status:string;requestedA
 const privacyStatus:Record<string,string>={OPEN:'Received',VERIFYING:'Verifying identity',IN_PROGRESS:'In progress',COMPLETED:'Completed',DENIED:'Declined'}
 export function ProfileScreen(){
   const frozen=useFrozenSubmission()
- const session=useCustomerResource<CustomerSessionSummary>('/api/sandbox/sportsbook/session'),profile=useCustomerResource<Profile>('/api/sandbox/sportsbook/profile'),privacyRequests=useCustomerResource<PrivacyList>(session.data?.authenticated?'/api/sandbox/sportsbook/privacy':null)
+ const session=useCustomerResource<CustomerSessionSummary>('/api/sandbox/sportsbook/session'),profile=useCustomerResource<Profile>(session.data?.authenticated?'/api/sandbox/sportsbook/profile':null),privacyRequests=useCustomerResource<PrivacyList>(session.data?.authenticated?'/api/sandbox/sportsbook/privacy':null)
  const [correction,setCorrection]=useState('')
  const browserZone=typeof Intl!=='undefined'?Intl.DateTimeFormat().resolvedOptions().timeZone:''
  const [form,setForm]=useState({locale:'en-US',timezone:'UTC',preferredOddsFormat:'DECIMAL',marketingAllowed:false}),[verificationForm,setVerificationForm]=useState({legalName:'',dateOfBirth:'',countryCode:'US',postalCode:''}),[pending,setPending]=useState(false),[message,setMessage]=useState('')
@@ -22,7 +22,7 @@ export function ProfileScreen(){
  async function privacy(type:string){setPending(true);setMessage('');try{const result=await frozen.submit<{requestId:string;dueAt:string}>(`privacy:${type}`,'/api/sandbox/sportsbook/privacy','POST',idempotencyKey=>({type,...(type==='CORRECT'?{details:correction}:{}),idempotencyKey}),'privacy');setMessage(`${type[0]+type.slice(1).toLowerCase()} request received · ${shortId(result.requestId)}`);if(type==='CORRECT')setCorrection('');privacyRequests.reload()}catch(error){setMessage(customerMessage(error,'The request wasn’t received. Try again.'))}finally{setPending(false)}}
  const privacyTypes=[['ACCESS','Access'],['EXPORT','Export'],['CORRECT','Correct'],['DELETE','Delete'],['RESTRICT','Restrict'],['PORTABILITY','Portability']] as const
  return <CustomerShell current="profile" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference} closed={isClosedError(session.error)}><AccountPageHeader title="Profile" meta={profile.data?`${profile.data.accountReference} · ${label(profile.data.status)}`:undefined}/>
- {profile.loading&&<LoadingPanel label="Loading profile"/>}{profile.error&&<ErrorPanel error={profile.error} retry={profile.reload}/>} {profile.data&&<>
+ {session.data&&!session.data.authenticated&&<AuthenticationRequired/>}{profile.loading&&<LoadingPanel label="Loading profile"/>}{profile.error&&<ErrorPanel error={profile.error} retry={profile.reload}/>} {profile.data&&<>
  <Readouts className="mt-6" items={[
   {label:'Sign-in',value:profile.data.emailMasked??'Guest',sub:`${label(profile.data.assuranceLevel)} assurance`},
   {label:'Identity',value:label(profile.data.kycStatus),tone:toneFor(profile.data.kycStatus)},

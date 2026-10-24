@@ -20,6 +20,7 @@ export type CatalogPageData = {
   competitionTotal: number;
   competitionSearch?: string;
   definitionOptions: CatalogOption[];
+  sportOptions: CatalogOption[];
   timeZone: string;
   seasonStartsAt: string;
   seasonEndsAt: string;
@@ -81,15 +82,17 @@ export function CatalogPageClient({ data }: { data: CatalogPageData }) {
         { name: "name", label: "Event name", placeholder: "Home v Away" },
         { name: "startAt", label: `Scheduled start (${data.timeZone})`, type: "datetime-local", help: `Tenant time ${data.timeZone}. DST-gap times rejected; repeated times need an offset.` },
         { name: "marketDefinition", label: "Market type", type: "select", options: data.definitionOptions, emptyOptionsMessage: "No active market types." },
-        { name: "selections", label: "Selections", type: "rows", minRows: 2, columns: [{ name: "key", label: "Key", placeholder: "home" }, { name: "label", label: "Name", placeholder: "Home" }], help: "Min 2, unique keys." },
-      ]} submitLabel="Create catalog event" successMessage="Event and initial market created." resultHref={`${basePath}/{id}`} disabledReason={data.canTrade ? undefined : "Trading permission required."} /></div>
+        { name: "selections", label: "Selections", type: "rows", minRows: 2, defaultValue: JSON.stringify([{ key: "home", label: "Home" }, { key: "away", label: "Away" }]), columns: [{ name: "key", label: "Key", placeholder: "draw" }, { name: "label", label: "Name", placeholder: "Draw" }], help: "Min 2, unique keys." },
+      ]} submitLabel="Create catalog event" successMessage="Event created · market suspended until priced." resultHref={`${basePath}/{id}`} disabledReason={data.canTrade ? undefined : "Trading permission required."} /></div>
     </section> : <div className="space-y-3">
       <WorkflowNote title="No competition" tone="warning" />
       <Track><PillLink size="sm" href="/dashboard/platform/onboarding">Open onboarding</PillLink></Track>
     </div>}
     <section aria-labelledby="catalog-reference" className="space-y-3">
       <h2 id="catalog-reference" className="text-sm font-semibold">Reference data</h2>
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
+        <MutationForm compact title="Sport" mutation={`mutation($key:String!,$name:String!){createCatalogSport(key:$key,name:$name)}`} fields={[{ name: 'key', label: 'Sport key', placeholder: 'e.g. basketball' }, { name: 'name', label: 'Sport name', placeholder: 'e.g. Basketball' }]} submitLabel="Create sport" successMessage="Sport created." disabledReason={data.canTrade ? undefined : "Trading permission required."} />
+        <MutationForm compact title="Competition" mutation={`mutation($sportId:ID!,$key:String!,$name:String!,$timezone:String!){createCatalogCompetition(sportId:$sportId,key:$key,name:$name,timezone:$timezone)}`} fields={[{ name: 'sportId', label: 'Sport', type: 'select', options: data.sportOptions, emptyOptionsMessage: 'Create a sport first.' }, { name: 'key', label: 'Competition key', placeholder: 'e.g. nba' }, { name: 'name', label: 'Competition name', placeholder: 'e.g. NBA' }, { name: 'timezone', label: 'Time zone', defaultValue: data.timeZone }]} submitLabel="Create competition" successMessage="Competition created." disabledReason={data.canTrade ? undefined : "Trading permission required."} />
         <MutationForm compact title="Season" mutation={`mutation($competitionId:ID!,$key:String!,$name:String!,$startsAt:String!,$endsAt:String!){createCompetitionSeason(competitionId:$competitionId,key:$key,name:$name,startsAt:$startsAt,endsAt:$endsAt)}`} fields={[{ name: 'competitionId', label: 'Competition', type: 'select', options: data.competitionOptions, emptyOptionsMessage: data.competitionSearch ? "No competition matches." : undefined }, { name: 'key', label: 'Season key', defaultValue: '2026-27' }, { name: 'name', label: 'Season name', defaultValue: '2026 / 2027' }, { name: 'startsAt', label: 'Starts (ISO)', defaultValue: data.seasonStartsAt }, { name: 'endsAt', label: 'Ends (ISO)', defaultValue: data.seasonEndsAt }]} submitLabel="Create season" successMessage="Season created and audited." />
         <MutationForm compact title="Venue" mutation={`mutation($key:String!,$name:String!,$countryCode:String!,$timezone:String!){createCatalogVenue(key:$key,name:$name,countryCode:$countryCode,timezone:$timezone)}`} fields={[{ name: 'key', label: 'Venue key', placeholder: 'e.g. wembley' }, { name: 'name', label: 'Venue name', placeholder: 'e.g. Wembley Stadium' }, { name: 'countryCode', label: 'Country code', placeholder: 'e.g. GB' }, { name: 'timezone', label: 'Time zone', defaultValue: 'UTC' }]} submitLabel="Create venue" successMessage="Venue created." />
         <MutationForm compact title="Competitor" mutation={`mutation($key:String!,$name:String!){createCatalogCompetitor(key:$key,name:$name)}`} fields={[{ name: 'key', label: 'Canonical key', placeholder: 'e.g. arsenal' }, { name: 'name', label: 'Competitor name', placeholder: 'e.g. Arsenal' }]} submitLabel="Create competitor" successMessage="Competitor created." />

@@ -1,6 +1,6 @@
 import { cache } from 'react'
 import { keystoneContext } from '@/features/keystone/context'
-import { resolveSandboxTenant } from '@/features/sportsbook/api/sandbox-tenant'
+import { getStorefrontDisplayBrand } from './brand'
 import { PUBLIC_EVENT_STATUSES } from '@/features/sportsbook/customer/catalog'
 
 /**
@@ -8,11 +8,7 @@ import { PUBLIC_EVENT_STATUSES } from '@/features/sportsbook/customer/catalog'
  * published (same published rules as the catalog read). No operator, or no match, is a 404.
  */
 async function tenantId() {
-  try {
-    return (await resolveSandboxTenant(keystoneContext.prisma)).id as string
-  } catch {
-    return null
-  }
+  return (await getStorefrontDisplayBrand())?.tenantId ?? null
 }
 
 export const findPublishedCompetition = cache(async function (sportKey: string, competition: string) {

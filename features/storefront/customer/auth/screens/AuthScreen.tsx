@@ -39,11 +39,12 @@ export function AuthScreen() {
   }, [])
 
   useEffect(() => {
-    if (mode !== 'register' || terms) return
+    // Terms are read only once the session read says the customer API is open.
+    if (mode !== 'register' || terms || !session.data) return
     let cancelled = false
     customerApi<Terms>('/api/sandbox/sportsbook/auth/register').then(result => { if (!cancelled) setTerms(result) }).catch(() => { if (!cancelled) setError('Registration is unavailable until the operator publishes its terms.') })
     return () => { cancelled = true }
-  }, [mode, terms])
+  }, [mode, terms, session.data])
 
   function switchMode(next: Mode, focus = false) {
     if (pending || next === mode) return

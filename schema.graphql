@@ -14287,6 +14287,7 @@ type Mutation {
   applySportsbookOnboarding(slug: String!, operatorName: String!, brandName: String!, domain: String!, currency: String!, currencyExponent: Int!, jurisdictionCode: String!, timezone: String!): OnboardingPreview!
   createCatalogEvent(competitionId: ID!, externalKey: String!, name: String!, startAt: String!, marketDefinition: String!, selections: String!): ID!
   ingestSandboxPrice(selectionId: ID!, decimalOdds: String!, line: String, sequence: String!, externalId: String!): Boolean!
+  setMarketPrices(marketId: ID!, prices: String!, line: String): Int!
   setMarketStatus(marketId: ID!, status: String!, reason: String!, expectedVersion: Int!, expectedStatus: String!): Boolean!
   ingestSandboxResult(eventId: ID!, payload: String!): ID!
   requestResultApproval(resultVersionId: ID!, reason: String!): ID!
@@ -14335,6 +14336,8 @@ type Mutation {
   createCompetitionSeason(competitionId: ID!, key: String!, name: String!, startsAt: String!, endsAt: String!): ID!
   createCatalogVenue(key: String!, name: String!, countryCode: String!, timezone: String!): ID!
   createCatalogCompetitor(key: String!, name: String!): ID!
+  createCatalogSport(key: String!, name: String!): ID!
+  createCatalogCompetition(sportId: ID!, key: String!, name: String!, timezone: String!): ID!
   attachEventParticipant(eventId: ID!, competitorId: ID!, role: String!, sortOrder: Int!): ID!
   rescheduleEvent(eventId: ID!, startAt: String!, reason: String!): Boolean!
   createEventMarket(eventId: ID!, definitionKey: String!, parameters: String!, tradingMode: String!, cashOutEnabled: Boolean!, selections: String!): ID!

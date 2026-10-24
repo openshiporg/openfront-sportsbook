@@ -134,6 +134,22 @@ function resultReference(data: unknown): string | undefined {
 
 class AmbiguousOutcome extends Error {}
 
+const refusalCopy: Record<string, string> = {
+  EVENT_NOT_STARTED: "The event hasn't started. Results are taken after kick-off.",
+  MARKET_STILL_OPEN: "Suspend or close the market before entering its result.",
+  DUAL_CONTROL_REQUIRED: "Needs approval by a different operator.",
+  MFA_REQUIRED: "Verify MFA on Operator security first.",
+  AUTHENTICATION_REQUIRED: "Sign in again to continue.",
+};
+
+/** Resolver refusal codes (UPPER_SNAKE) read as a sentence; other messages pass through unchanged. */
+function refusalText(message: string | undefined) {
+  if (!message || !/^[A-Z][A-Z0-9_]{2,63}$/.test(message)) return message;
+  if (refusalCopy[message]) return refusalCopy[message];
+  const words = message.replaceAll("_", " ").toLowerCase();
+  return `${words[0].toUpperCase()}${words.slice(1)}.`;
+}
+
 function displayValue(field: MutationField, value: string): string {
   if (field.type === "select") return field.options?.find((option) => option.value === value)?.label ?? (value || "—");
   if (field.type === "checkboxes") {
@@ -228,7 +244,7 @@ export function MutationForm({
       try { payload = await response.json(); } catch { throw new AmbiguousOutcome(); }
       if (response.status >= 500 && !payload.errors) throw new AmbiguousOutcome();
       if (!response.ok || payload.errors?.length) {
-        const message = payload.errors?.[0]?.message || `The request was rejected (${response.status}).`;
+        const message = refusalText(payload.errors?.[0]?.message) || `The request was rejected (${response.status}).`;
         const variables = submittedDraft ? Object.keys(submittedDraft) : [];
         const matched = variables.filter((name) => message.toLowerCase().includes(name.toLowerCase()));
         setFieldErrors(matched.length === 1 ? { [matched[0]]: message } : {});

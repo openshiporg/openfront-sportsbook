@@ -47,6 +47,8 @@ async function startOperatorMfaSession(context, itemId, now = Date.now()) {
   const token = await context.sessionStrategy.start({
     context,
     data: {
+      // @keystone-6/auth only resolves sessions sealed for its list.
+      listKey: "User",
       itemId,
       operatorMfaAssurance: {
         issuedAt: now,
@@ -917,7 +919,7 @@ async function redirectToInit(root, args, context) {
 var redirectToInit_default = redirectToInit;
 
 // features/keystone/mutations/sportsbook-full.ts
-var import_node_crypto8 = require("node:crypto");
+var import_node_crypto9 = require("node:crypto");
 
 // features/sportsbook/domain/engine.ts
 var import_node_crypto2 = require("node:crypto");
@@ -1124,6 +1126,9 @@ function installedSandboxAdapter(connection) {
   return adapter;
 }
 
+// features/keystone/mutations/sportsbook.ts
+var import_node_crypto5 = require("node:crypto");
+
 // features/sportsbook/domain/onboarding.ts
 function buildOnboardingFixture(input) {
   if (!/^[a-z0-9-]+$/.test(input.slug) || !/^[A-Z]{3}$/.test(input.currency) || input.currencyExponent < 0 || input.currencyExponent > 6) throw new Error("INVALID_ONBOARDING_INPUT");
@@ -1158,16 +1163,6 @@ async function executePaymentProvider(provider, command, idempotencyKey) {
 // features/sportsbook/customer/auth.ts
 var import_node_crypto4 = require("node:crypto");
 
-// features/sportsbook/api/sandbox-policy.ts
-function assertSandboxRuntime() {
-  if (process.env.SPORTSBOOK_SANDBOX !== "true") throw new Error("SANDBOX_DISABLED");
-  if (process.env.NODE_ENV === "production") {
-    const origin = process.env.SANDBOX_PUBLIC_ORIGIN ?? "";
-    const database = process.env.DATABASE_URL ?? "";
-    if (process.env.SPORTSBOOK_DEPLOYMENT_MODE !== "sandbox" || !/^https:\/\/[a-z0-9-]+\.local(?::\d+)?$/i.test(origin) || !/(?:ephemeral|sandbox|validation|test)[_/?]/i.test(`${database}/`)) throw new Error("SANDBOX_ISOLATION_REQUIRED");
-  }
-}
-
 // features/sportsbook/customer/errors.ts
 var CustomerError = class extends Error {
   constructor(code, status3, details) {
@@ -1178,14 +1173,6 @@ var CustomerError = class extends Error {
     this.name = "CustomerError";
   }
 };
-function assertSandboxEnabled() {
-  try {
-    assertSandboxRuntime();
-  } catch (error) {
-    const code = error instanceof Error ? error.message : "SANDBOX_DISABLED";
-    throw new CustomerError(code, code === "SANDBOX_DISABLED" ? 404 : 503);
-  }
-}
 
 // features/sportsbook/customer/currency.ts
 async function resolveTenantCurrency(prisma, tenantId, operation) {
@@ -1366,7 +1353,6 @@ var promotionFixtures = [
   { key: "sandbox-deposit-match", name: "Deposit match sandbox", description: "A $10 restricted bonus wallet award with 3\xD7 wagering evidence.", type: "DEPOSIT_MATCH", budgetMinor: "500000", economics: { amountMinor: "1000", stakeReturned: true }, requirements: { wageringMultiple: 3, validStructures: ["STRAIGHT", "PARLAY", "SYSTEM"] } }
 ];
 async function ensureSandboxPromotions(prisma, tenantId) {
-  assertSandboxEnabled();
   const now = /* @__PURE__ */ new Date();
   const currency = (await resolveTenantCurrency(prisma, tenantId)).code;
   await serializable(prisma, async (tx) => {
@@ -1582,6 +1568,12 @@ function assertMarketOpenAllowed(marketStatus, eventStatus) {
 function assertEventAllowsNewMarket(eventStatus) {
   if (!isEventTradingEligible(eventStatus)) throw new Error("PARENT_EVENT_NOT_TRADING_ELIGIBLE");
 }
+var AWAITING_PRICES = "AWAITING_PRICES";
+function assertMarketFirstOpenAllowed(input) {
+  if (!isEventTradingEligible(input.eventStatus)) throw new Error("PARENT_EVENT_NOT_TRADING_ELIGIBLE");
+  if (!input.createdAwaitingPrices || input.everOpened) throw new Error("MARKET_REOPENING_REQUIRES_REVIEWED_POLICY");
+  if (input.selections === 0 || input.unpricedSelections > 0) throw new Error("MARKET_NOT_FULLY_PRICED");
+}
 
 // features/sportsbook/domain/house-rules.ts
 var specific = (key2) => Boolean(key2 && key2 !== "*");
@@ -1676,7 +1668,7 @@ function replayUnavailableReason(source) {
 var replaySourceModel = (kind) => kind === "OUTBOX" ? "outboxMessage" : kind === "INBOX" ? "inboxMessage" : kind === "SCHEDULED_JOB" ? "scheduledJob" : null;
 
 // features/keystone/mutations/sportsbook.ts
-var import_node_crypto5 = require("node:crypto");
+var import_node_crypto6 = require("node:crypto");
 
 // features/keystone/lib/mail.ts
 var import_nodemailer = require("nodemailer");
@@ -2008,6 +2000,7 @@ var sportsbookTypeDefs = graphql`
     applySportsbookOnboarding(slug:String!,operatorName:String!,brandName:String!,domain:String!,currency:String!,currencyExponent:Int!,jurisdictionCode:String!,timezone:String!): OnboardingPreview!
     createCatalogEvent(competitionId:ID!,externalKey:String!,name:String!,startAt:String!,marketDefinition:String!,selections:String!): ID!
     ingestSandboxPrice(selectionId:ID!,decimalOdds:String!,line:String,sequence:String!,externalId:String!): Boolean!
+    setMarketPrices(marketId:ID!,prices:String!,line:String): Int!
     setMarketStatus(marketId:ID!,status:String!,reason:String!,expectedVersion:Int!,expectedStatus:String!): Boolean!
     ingestSandboxResult(eventId:ID!,payload:String!): ID!
     requestResultApproval(resultVersionId:ID!,reason:String!): ID!
@@ -2151,10 +2144,47 @@ var sportsbookResolvers = {
         const duplicate = await tx.event.findFirst({ where: { tenantId, externalKey: a.externalKey } });
         if (duplicate) throw new Error("EXTERNAL_KEY_EXISTS");
         const event = await tx.event.create({ data: { tenantId, competitionId: competition.id, externalKey: a.externalKey, name: a.name, startAt, status: "SCHEDULED", version: 1 } });
-        const market = await tx.market.create({ data: { tenantId, eventId: event.id, definitionId: definition.id, definitionKey: definition.key, parameters: {}, tradingMode: "PREMATCH", cashOutEnabled: true, status: "OPEN", version: 1 } });
+        const market = await tx.market.create({ data: { tenantId, eventId: event.id, definitionId: definition.id, definitionKey: definition.key, parameters: {}, tradingMode: "PREMATCH", cashOutEnabled: true, status: "SUSPENDED", version: 1 } });
+        await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "MARKET", scopeId: market.id, fromStatus: AWAITING_PRICES, toStatus: "SUSPENDED", reason: "Awaiting prices", source: "CATALOG", actorId: context.session.itemId, effectiveAt: /* @__PURE__ */ new Date() } });
         await tx.selection.createMany({ data: selections.map((selection) => ({ tenantId, marketId: market.id, key: String(selection.key), label: String(selection.label), status: "OPEN" })) });
         await appendAudit(tx, tenantId, context.session.itemId, "catalog.event_created", "Event", event.id, "OPERATOR_ENTRY", { competitionId: competition.id, marketId: market.id, definitionId: definition.id, externalKey: a.externalKey, selections });
         return event.id;
+      });
+    },
+    /** Trader pricing: one decimal price per selection of a market, sequenced and enveloped by the server. */
+    setMarketPrices: async (_r, a, context) => {
+      const tenantId = await requireTenant(context, "canTrade");
+      let prices;
+      try {
+        prices = JSON.parse(a.prices);
+      } catch {
+        throw new Error("INVALID_PRICES");
+      }
+      if (!prices || typeof prices !== "object" || Array.isArray(prices)) throw new Error("INVALID_PRICES");
+      const entries = Object.entries(prices).map(([selectionId, odds]) => [selectionId, String(odds ?? "").trim()]).filter(([, odds]) => odds !== "");
+      if (!entries.length || entries.length > 50) throw new Error("INVALID_PRICES");
+      for (const [, odds] of entries) {
+        if (!/^\d{1,4}(\.\d{1,4})?$/.test(odds) || Number(odds) <= 1) throw new Error("INVALID_DECIMAL_ODDS");
+      }
+      const line = typeof a.line === "string" ? a.line.trim().slice(0, 32) : "";
+      return context.prisma.$transaction(async (tx) => {
+        await assertCurrentActor(tx, context, tenantId, "canTrade");
+        const market = await tx.market.findFirst({ where: { id: a.marketId, tenantId }, select: { id: true, status: true } });
+        const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-sports", certificationStatus: "SANDBOX", status: "ACTIVE" } });
+        if (!market || !provider) throw new Error("Not found");
+        if (!["OPEN", "SUSPENDED"].includes(market.status)) throw new Error("MARKET_NOT_TRADING");
+        const now = /* @__PURE__ */ new Date();
+        for (const [selectionId, decimalOdds] of entries) {
+          const selection = await tx.selection.findFirst({ where: { id: selectionId, tenantId, marketId: market.id }, select: { id: true } });
+          if (!selection) throw new Error("SELECTION_NOT_IN_MARKET");
+          const latest = await tx.priceSnapshot.findFirst({ where: { tenantId, selectionId }, orderBy: { receivedAt: "desc" }, select: { sequence: true } });
+          const sequence = String((Number.parseInt(latest?.sequence ?? "0", 10) || 0) + 1);
+          const payload = { source: "TRADER", marketId: market.id, selectionId, decimalOdds, line, sequence, actorId: context.session.itemId };
+          const envelope = await tx.rawEnvelope.create({ data: { tenantId, providerConnectionId: provider.id, direction: "INBOUND", externalId: `trader:${(0, import_node_crypto5.randomUUID)()}`, schemaVersion: "sandbox.v1", payload, payloadHash: evidenceHash(payload), receivedAt: now } });
+          await tx.priceSnapshot.create({ data: { tenantId, selectionId, providerConnectionId: provider.id, decimalOdds, line, sequence, effectiveAt: now, receivedAt: now, rawEnvelopeId: envelope.id, status: "OPEN" } });
+        }
+        await appendAudit(tx, tenantId, context.session.itemId, "market.priced", "Market", market.id, "TRADER_PRICE", { selections: entries.length });
+        return entries.length;
       });
     },
     ingestSandboxPrice: async (_r, a, context) => {
@@ -2177,7 +2207,15 @@ var sportsbookResolvers = {
         const market = await tx.market.findFirst({ where: { id: a.marketId, tenantId }, include: { event: { select: { status: true } } } });
         if (!market) throw new Error("Not found");
         if (Number(market.version ?? 1) !== Number(a.expectedVersion) || market.status !== a.expectedStatus) throw new Error("STALE_MARKET_REVIEW_REFRESH_REQUIRED");
-        if (a.status === "OPEN") assertMarketOpenAllowed(market.status, market.event?.status);
+        if (a.status === "OPEN" && market.status === "SUSPENDED") {
+          const changes = await tx.tradingStatusChange.findMany({ where: { tenantId, scopeType: "MARKET", scopeId: market.id }, select: { fromStatus: true, toStatus: true } });
+          const selections = await tx.selection.findMany({ where: { tenantId, marketId: market.id }, select: { id: true } });
+          let unpricedSelections = 0;
+          for (const selection of selections) {
+            if (!await tx.priceSnapshot.findFirst({ where: { tenantId, selectionId: selection.id, status: "OPEN" }, select: { id: true } })) unpricedSelections++;
+          }
+          assertMarketFirstOpenAllowed({ eventStatus: market.event?.status, createdAwaitingPrices: changes.some((change) => change.fromStatus === AWAITING_PRICES), everOpened: changes.some((change) => change.toStatus === "OPEN"), unpricedSelections, selections: selections.length });
+        } else if (a.status === "OPEN") assertMarketOpenAllowed(market.status, market.event?.status);
         if (market.status === a.status) return true;
         const updated = await tx.market.updateMany({ where: { id: market.id, tenantId, status: market.status, version: market.version }, data: { status: a.status, version: Number(market.version ?? 0) + 1 } });
         if (updated.count !== 1) throw new Error("STALE_MARKET_STATE");
@@ -2201,8 +2239,10 @@ var sportsbookResolvers = {
         const event = await tx.event.findFirst({ where: { id: a.eventId, tenantId } });
         const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-results", certificationStatus: "SANDBOX", status: "ACTIVE" } });
         if (!event || !provider) throw new Error("Not found");
+        if (event.status === "CANCELLED" || new Date(event.startAt).getTime() > Date.now()) throw new Error("EVENT_NOT_STARTED");
         for (const fact of canonical2.facts) {
           const market = await tx.market.findFirst({ where: { id: fact.marketKey, tenantId, eventId: event.id } });
+          if (market?.status === "OPEN") throw new Error("MARKET_STILL_OPEN");
           const selections = market ? await tx.selection.findMany({ where: { tenantId, marketId: market.id, key: fact.selectionKey }, take: 2 }) : [];
           if (!market || selections.length !== 1) throw new Error("CANONICAL_RESULT_SUBJECT_SCOPE_MISMATCH");
         }
@@ -2235,6 +2275,8 @@ var sportsbookResolvers = {
         await requireTenant({ ...context, prisma: tx }, "canManageRisk");
         result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "PENDING" } });
         if (!result) throw new Error("STALE_RESULT_STATE");
+        const resultEvent = await tx.event.findFirst({ where: { id: result.eventId, tenantId }, select: { startAt: true, status: true } });
+        if (!resultEvent || resultEvent.status === "CANCELLED" || new Date(resultEvent.startAt).getTime() > Date.now()) throw new Error("EVENT_NOT_STARTED");
         const payloadHash = resultApprovalHash(result);
         const approval = await tx.approvalRequest.findFirst({ where: { id: a.approvalId, tenantId, action: "APPROVE_RESULT", payloadHash, status: "APPROVED" } });
         if (!approval || !approval.approverId || approval.approverId === approval.requesterId) throw new Error("DUAL_CONTROL_REQUIRED");
@@ -2825,14 +2867,14 @@ var sportsbookResolvers = {
     },
     applyApprovedOperatorAdmission: async (_r, a, context) => {
       const tenantId = await requireTenant(context, "canManagePeople"), email = String(a.email ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim(), emailHash = evidenceHash(email), action = `OPERATOR_ADMISSION:${emailHash}:${a.roleId}`, payloadHash = evidenceHash({ action: "OPERATOR_ADMISSION", name, email, roleId: a.roleId });
-      const token = (0, import_node_crypto5.randomBytes)(32).toString("base64url");
+      const token = (0, import_node_crypto6.randomBytes)(32).toString("base64url");
       const userId = await context.transaction(async (txContext) => {
         const approval = await consumeApproval(txContext.prisma, context, { tenantId, capability: "canManagePeople", approvalId: a.approvalId, action, payloadHash });
         if (approval.replay) throw new Error("APPROVAL_ALREADY_CONSUMED");
         const role = await txContext.prisma.role.findFirst({ where: { id: a.roleId, tenantId } });
         if (!role) throw new Error("Not found");
         if (await txContext.prisma.user.findUnique({ where: { email } })) throw new Error("OPERATOR_EMAIL_UNAVAILABLE");
-        const user = await txContext.sudo().query.User.createOne({ data: { tenant: { connect: { id: tenantId } }, role: { connect: { id: role.id } }, name, email, password: (0, import_node_crypto5.randomBytes)(32).toString("base64url") }, query: "id" });
+        const user = await txContext.sudo().query.User.createOne({ data: { tenant: { connect: { id: tenantId } }, role: { connect: { id: role.id } }, name, email, password: (0, import_node_crypto6.randomBytes)(32).toString("base64url") }, query: "id" });
         await txContext.prisma.user.update({ where: { id: user.id }, data: { passwordResetToken: evidenceHash(token), passwordResetIssuedAt: /* @__PURE__ */ new Date(), passwordResetRedeemedAt: null } });
         await txContext.prisma.roleGrant.create({ data: { tenantId, userId: user.id, roleId: role.id, scope: { tenantId, approvalId: approval.id, admission: true }, effectiveFrom: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
         await appendAudit(txContext.prisma, tenantId, context.session.itemId, "operator.admitted", "User", user.id, "DUAL_APPROVED", { approvalId: approval.id, roleId: role.id, emailHash });
@@ -2964,7 +3006,7 @@ var sportsbookResolvers = {
 };
 
 // features/sportsbook/adapters/webhook-egress.ts
-var import_node_crypto6 = require("node:crypto");
+var import_node_crypto7 = require("node:crypto");
 var import_node_net = require("node:net");
 var import_promises = require("node:dns/promises");
 var import_node_https = require("node:https");
@@ -3053,7 +3095,7 @@ async function retentionCandidates(tx, tenantId, policy, windowFrom, windowTo, e
 }
 
 // features/sportsbook/domain/totp.ts
-var import_node_crypto7 = require("node:crypto");
+var import_node_crypto8 = require("node:crypto");
 var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 function base32Encode(input) {
   let bits = 0, value = 0, result = "";
@@ -3086,26 +3128,26 @@ function base32Decode(input) {
 function key() {
   const value = process.env.PII_ENCRYPTION_KEY ?? process.env.SESSION_SECRET;
   if (!value || value.length < 32) throw new Error("MFA_ENCRYPTION_KEY_REQUIRED");
-  return (0, import_node_crypto7.createHash)("sha256").update(value).digest();
+  return (0, import_node_crypto8.createHash)("sha256").update(value).digest();
 }
 function encryptTotpSecret(secret) {
-  const iv = (0, import_node_crypto7.randomBytes)(12), cipher = (0, import_node_crypto7.createCipheriv)("aes-256-gcm", key(), iv), data = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
+  const iv = (0, import_node_crypto8.randomBytes)(12), cipher = (0, import_node_crypto8.createCipheriv)("aes-256-gcm", key(), iv), data = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
   return `totp:v1:${iv.toString("base64url")}:${cipher.getAuthTag().toString("base64url")}:${data.toString("base64url")}`;
 }
 function decryptTotpSecret(value) {
   const [scope, version, ivText, tagText, dataText] = value.split(":");
   if (scope !== "totp" || version !== "v1") throw new Error("INVALID_MFA_SECRET");
-  const decipher = (0, import_node_crypto7.createDecipheriv)("aes-256-gcm", key(), Buffer.from(ivText, "base64url"));
+  const decipher = (0, import_node_crypto8.createDecipheriv)("aes-256-gcm", key(), Buffer.from(ivText, "base64url"));
   decipher.setAuthTag(Buffer.from(tagText, "base64url"));
   return Buffer.concat([decipher.update(Buffer.from(dataText, "base64url")), decipher.final()]).toString("utf8");
 }
 function generateTotpSecret() {
-  return base32Encode((0, import_node_crypto7.randomBytes)(20));
+  return base32Encode((0, import_node_crypto8.randomBytes)(20));
 }
 function totpCode(secret, time = Date.now(), step = 30) {
   const counter = BigInt(Math.floor(time / 1e3 / step)), buffer = Buffer.alloc(8);
   buffer.writeBigUInt64BE(counter);
-  const digest = (0, import_node_crypto7.createHmac)("sha1", base32Decode(secret)).update(buffer).digest(), offset = digest[digest.length - 1] & 15, value = (digest[offset] & 127) << 24 | (digest[offset + 1] & 255) << 16 | (digest[offset + 2] & 255) << 8 | digest[offset + 3] & 255;
+  const digest = (0, import_node_crypto8.createHmac)("sha1", base32Decode(secret)).update(buffer).digest(), offset = digest[digest.length - 1] & 15, value = (digest[offset] & 127) << 24 | (digest[offset + 1] & 255) << 16 | (digest[offset + 2] & 255) << 8 | digest[offset + 3] & 255;
   return String(value % 1e6).padStart(6, "0");
 }
 function verifyTotp(secret, supplied, time = Date.now()) {
@@ -3113,7 +3155,7 @@ function verifyTotp(secret, supplied, time = Date.now()) {
   const actual = Buffer.from(supplied);
   return [-1, 0, 1].some((window) => {
     const expected = Buffer.from(totpCode(secret, time + window * 3e4));
-    return expected.length === actual.length && (0, import_node_crypto7.timingSafeEqual)(expected, actual);
+    return expected.length === actual.length && (0, import_node_crypto8.timingSafeEqual)(expected, actual);
   });
 }
 
@@ -3472,6 +3514,8 @@ var sportsbookFullTypeDefs = graphql2`
     createCompetitionSeason(competitionId:ID!,key:String!,name:String!,startsAt:String!,endsAt:String!): ID!
     createCatalogVenue(key:String!,name:String!,countryCode:String!,timezone:String!): ID!
     createCatalogCompetitor(key:String!,name:String!): ID!
+    createCatalogSport(key:String!,name:String!): ID!
+    createCatalogCompetition(sportId:ID!,key:String!,name:String!,timezone:String!): ID!
     attachEventParticipant(eventId:ID!,competitorId:ID!,role:String!,sortOrder:Int!): ID!
     rescheduleEvent(eventId:ID!,startAt:String!,reason:String!): Boolean!
     createEventMarket(eventId:ID!,definitionKey:String!,parameters:String!,tradingMode:String!,cashOutEnabled:Boolean!,selections:String!): ID!
@@ -3703,7 +3747,7 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
   completeOperatorMfaEnrollment: async (_r, a, context) => {
     const userId = context.session?.itemId;
     if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
-    const recoveryCodes = Array.from({ length: 8 }, () => `${(0, import_node_crypto8.randomBytes)(4).toString("hex").slice(0, 4)}-${(0, import_node_crypto8.randomBytes)(4).toString("hex").slice(0, 4)}`.toUpperCase()), recoveryHashes = recoveryCodes.map((code) => evidenceHash(code));
+    const recoveryCodes = Array.from({ length: 8 }, () => `${(0, import_node_crypto9.randomBytes)(4).toString("hex").slice(0, 4)}-${(0, import_node_crypto9.randomBytes)(4).toString("hex").slice(0, 4)}`.toUpperCase()), recoveryHashes = recoveryCodes.map((code) => evidenceHash(code));
     const result = await context.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
       const current = await tx.user.findUnique({ where: { id: userId }, include: { role: true } });
@@ -3751,7 +3795,7 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
     if (!/^\S+@\S+\.\S+$/.test(email)) return true;
     const user = await context.prisma.user.findUnique({ where: { email } });
     if (!user) return true;
-    const token = (0, import_node_crypto8.randomBytes)(32).toString("base64url"), digest = evidenceHash(token);
+    const token = (0, import_node_crypto9.randomBytes)(32).toString("base64url"), digest = evidenceHash(token);
     await context.prisma.user.update({ where: { id: user.id }, data: { passwordResetToken: digest, passwordResetIssuedAt: /* @__PURE__ */ new Date() } });
     void sendPasswordResetEmail(token, email).catch(() => console.error("Operator password reset email could not be sent."));
     return true;
@@ -3808,6 +3852,40 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
       await assertCurrentActor(tx, context, tenantId, "canTrade");
       const row = await tx.venue.create({ data: { tenantId, key: a.key, name: a.name, countryCode: a.countryCode, timezone: a.timezone, address: {}, status: "ACTIVE" } });
       await appendAudit(tx, tenantId, context.session.itemId, "catalog.venue_created", "Venue", row.id, "OPERATOR_ENTRY", { key: a.key, countryCode: a.countryCode });
+      return row.id;
+    });
+  },
+  /** Operator catalog entry for a sport or competition, with the same key/name rules as other reference data. */
+  createCatalogSport: async (_r, a, context) => {
+    const tenantId = await requireTenant(context, "canTrade");
+    const key2 = String(a.key ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim();
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key2)) throw new Error("INVALID_CATALOG_KEY");
+    if (!name || name.length > 120) throw new Error("INVALID_CATALOG_NAME");
+    return context.prisma.$transaction(async (tx) => {
+      await assertCurrentActor(tx, context, tenantId, "canTrade");
+      if (await tx.sport.findFirst({ where: { tenantId, key: key2 }, select: { id: true } })) throw new Error("CATALOG_KEY_EXISTS");
+      const row = await tx.sport.create({ data: { tenantId, key: key2, name, active: true } });
+      await appendAudit(tx, tenantId, context.session.itemId, "catalog.sport_created", "Sport", row.id, "OPERATOR_ENTRY", { key: key2 });
+      return row.id;
+    });
+  },
+  createCatalogCompetition: async (_r, a, context) => {
+    const tenantId = await requireTenant(context, "canTrade");
+    const key2 = String(a.key ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim(), timezone = String(a.timezone ?? "").trim();
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key2)) throw new Error("INVALID_CATALOG_KEY");
+    if (!name || name.length > 120) throw new Error("INVALID_CATALOG_NAME");
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+    } catch {
+      throw new Error("INVALID_TIMEZONE");
+    }
+    return context.prisma.$transaction(async (tx) => {
+      await assertCurrentActor(tx, context, tenantId, "canTrade");
+      const sport = await tx.sport.findFirst({ where: { id: a.sportId, tenantId, active: true }, select: { id: true } });
+      if (!sport) throw new Error("SPORT_NOT_FOUND");
+      if (await tx.competition.findFirst({ where: { tenantId, sportId: sport.id, key: key2 }, select: { id: true } })) throw new Error("CATALOG_KEY_EXISTS");
+      const row = await tx.competition.create({ data: { tenantId, sportId: sport.id, key: key2, name, timezone, status: "ACTIVE" } });
+      await appendAudit(tx, tenantId, context.session.itemId, "catalog.competition_created", "Competition", row.id, "OPERATOR_ENTRY", { key: key2, sportId: sport.id });
       return row.id;
     });
   },
@@ -4156,7 +4234,7 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
       await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
       const endpoint = await tx.webhookEndpoint.findFirst({ where: { id: a.endpointId, tenantId, status: "ACTIVE" } });
       if (!endpoint) throw new Error("Not found");
-      const deliveryId = `delivery_${(0, import_node_crypto8.randomBytes)(18).toString("base64url")}`, payload = { id: `evt_${(0, import_node_crypto8.randomBytes)(12).toString("base64url")}`, type: "endpoint.test.v1", occurredAt: (/* @__PURE__ */ new Date()).toISOString(), tenantId, data: { test: true } }, payloadHash = evidenceHash(payload), delivery = await tx.webhookDelivery.create({ data: { tenantId, endpointId: endpoint.id, deliveryId, eventType: "endpoint.test", eventVersion: "v1", payloadHash, signatureKeyId: PLATFORM_WEBHOOK_SIGNING_KEY_ID, status: "PENDING", attempts: 0, availableAt: /* @__PURE__ */ new Date() } }), outbox = await tx.outboxMessage.create({ data: { tenantId, aggregateType: "WEBHOOK_DELIVERY", aggregateId: delivery.id, eventType: "provider.delivery", payload: { endpointId: endpoint.id, deliveryId, eventType: "endpoint.test", eventVersion: "v1", payload }, status: "PENDING", attempts: 0, maxAttempts: 5, availableAt: /* @__PURE__ */ new Date() } });
+      const deliveryId = `delivery_${(0, import_node_crypto9.randomBytes)(18).toString("base64url")}`, payload = { id: `evt_${(0, import_node_crypto9.randomBytes)(12).toString("base64url")}`, type: "endpoint.test.v1", occurredAt: (/* @__PURE__ */ new Date()).toISOString(), tenantId, data: { test: true } }, payloadHash = evidenceHash(payload), delivery = await tx.webhookDelivery.create({ data: { tenantId, endpointId: endpoint.id, deliveryId, eventType: "endpoint.test", eventVersion: "v1", payloadHash, signatureKeyId: PLATFORM_WEBHOOK_SIGNING_KEY_ID, status: "PENDING", attempts: 0, availableAt: /* @__PURE__ */ new Date() } }), outbox = await tx.outboxMessage.create({ data: { tenantId, aggregateType: "WEBHOOK_DELIVERY", aggregateId: delivery.id, eventType: "provider.delivery", payload: { endpointId: endpoint.id, deliveryId, eventType: "endpoint.test", eventVersion: "v1", payload }, status: "PENDING", attempts: 0, maxAttempts: 5, availableAt: /* @__PURE__ */ new Date() } });
       await tx.webhookDelivery.update({ where: { id: delivery.id }, data: { outboxMessageId: outbox.id } });
       return delivery.id;
     });
@@ -4315,7 +4393,7 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
     if (!["SANCTIONS", "PEP", "ADVERSE_MEDIA", "SOURCE_OF_FUNDS"].includes(a.screeningType) || !["POTENTIAL", "REVIEW", "CONFIRMED", "CLEARED", "FALSE_POSITIVE"].includes(a.status)) throw new Error("INVALID_SCREENING");
     const provider = await context.prisma.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-aml", status: "ACTIVE" } });
     if (!provider) throw new Error("AML_PROVIDER_UNAVAILABLE");
-    const result = await sandboxAdapters.aml.execute({}, { type: "screen", payload: { screeningType: a.screeningType, status: a.status } }, `screening:${a.playerId}:${(0, import_node_crypto8.randomBytes)(12).toString("hex")}`);
+    const result = await sandboxAdapters.aml.execute({}, { type: "screen", payload: { screeningType: a.screeningType, status: a.status } }, `screening:${a.playerId}:${(0, import_node_crypto9.randomBytes)(12).toString("hex")}`);
     return context.prisma.$transaction(async (tx) => {
       await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
       const player = await tx.player.findFirst({ where: { id: a.playerId, tenantId } });

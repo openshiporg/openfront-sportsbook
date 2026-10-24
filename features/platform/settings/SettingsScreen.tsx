@@ -2,7 +2,8 @@ import { MutationForm } from "../components/MutationForm";
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { StatusDot } from "../components/kit";
 import { MetricGrid, RecordList, StatusBadge } from "../components/WorkflowUI";
-import { dateTime, jsonText, shortId } from "../lib/format";
+import { dateTime, jsonText, money, shortId } from "../lib/format";
+import { resolveTenantCurrency } from "@/features/sportsbook/customer/currency";
 import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
 import { loadConfigValues } from "../configuration/effectiveConfig";
 import { getStoreSettings } from "../store-settings/actions";
@@ -22,6 +23,17 @@ export async function SettingsScreen() {
     prisma.configDefinition.findMany({ where: { tenantId: operator.tenantId, secret: false }, orderBy: { key: "asc" } }),
   ]);
   const current = settings.effective;
+  const currency = await resolveTenantCurrency(prisma, operator.tenantId).catch(() => null);
+  // MONEY settings read as currency; JSON shows a key summary with the full document on expand (never cut mid-key).
+  const settingValue = (setting: any) => {
+    const raw = setting.value;
+    if (setting.valueType === "MONEY") return <span className="font-mono tabular-nums">{money(typeof raw === "string" || typeof raw === "number" ? raw : String(raw ?? ""), currency?.code, currency?.exponent)}</span>;
+    if (raw !== null && typeof raw === "object") {
+      const keys = Array.isArray(raw) ? `${raw.length} item${raw.length === 1 ? "" : "s"}` : Object.keys(raw).slice(0, 4).join(", ") + (Object.keys(raw).length > 4 ? ` +${Object.keys(raw).length - 4}` : "");
+      return <details className="min-w-0"><summary className="cursor-pointer font-mono text-xs">{keys || "{}"}</summary><pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/60 p-2 font-mono text-xs">{jsonText(raw)}</pre></details>;
+    }
+    return <code className="break-all font-mono text-xs">{String(raw ?? "—")}</code>;
+  };
   // Only declared, tenant-scoped, non-secret definitions can be changed; the API re-validates type and scope.
   const changeable = definitions.filter((definition: any) => Array.isArray(definition.allowedScopes) && definition.allowedScopes.includes("TENANT"));
   const applicable = approvals.filter((approval: any) => approval.status === "APPROVED" && !approval.consumedAt && approval.expiresAt && new Date(approval.expiresAt) > new Date());
@@ -33,10 +45,10 @@ export async function SettingsScreen() {
     {applicable.length > 0 ? <section aria-labelledby="ready-settings" className="space-y-3"><h2 id="ready-settings" className="text-sm font-semibold"><StatusDot tone="info" />Ready to apply<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{applicable.length}</span></h2><div className="grid gap-3 lg:grid-cols-2">{applicable.map((approval: any) => { const item = proposal(approval.action); return <MutationForm key={approval.id} compact title={`${item.key} · ${shortId(approval.id)}`} description={`Expires ${dateTime(approval.expiresAt)}`} mutation={applyMutation} fields={[{ name: "approvalId", label: "Approval", type: "hidden", defaultValue: approval.id }, { name: "key", label: "Key", type: "hidden", defaultValue: item.key }, { name: "value", label: "Exact approved value", type: "textarea", defaultValue: item.value }]} submitLabel="Apply approved version" successMessage="Approved setting version applied." disabledReason={operator.capabilities.canManageSportsbook ? undefined : "Your role cannot manage settings."} />; })}</div></section> : null}
     <MetricGrid items={[{ label: "In force", value: current.length }, { label: "Other versions", value: settings.scheduled.length + settings.history.length, detail: `${settings.scheduled.length} scheduled` }, { label: "Jurisdictions", value: jurisdictions.length }, { label: "Pending", value: pendingCount, tone: pendingCount > 0 ? "wait" : "ok" }]} />
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] xl:items-start">
-      <MutationForm title="Request change" mutation={requestMutation} fields={[{ name: "key", label: "Setting", type: "select", options: changeable.map((definition: any) => ({ label: `${definition.key} · ${definition.valueType} · ${definition.description}`, value: definition.key })) }, { name: "value", label: "Value", type: "textarea", placeholder: "MONEY minor units · INTEGER · true/false · JSON" }, { name: "reason", label: "Change reason", type: "textarea", placeholder: "Policy reference" }]} submitLabel="Request dual approval" successMessage="Setting change approval requested." disabledReason={operator.capabilities.canManageSportsbook ? undefined : "Your role cannot manage settings."} />
+      <MutationForm title="Request change" mutation={requestMutation} fields={[{ name: "key", label: "Setting", type: "select", options: changeable.map((definition: any) => ({ label: `${definition.key} · ${definition.valueType} · ${definition.description}`, value: definition.key })) }, { name: "value", label: "Value", type: "textarea", placeholder: currency ? `Money in minor units (${currency.code} 100 = ${money("100", currency.code, currency.exponent)}) · whole number · true/false · JSON` : "Money in minor units · whole number · true/false · JSON" }, { name: "reason", label: "Change reason", type: "textarea", placeholder: "Policy reference" }]} submitLabel="Request dual approval" successMessage="Setting change approval requested." disabledReason={operator.capabilities.canManageSportsbook ? undefined : "Your role cannot manage settings."} />
       <RecordList title="Change requests" columns={["Approval", "Key", "Actors", "State"]} rows={approvals.map((approval: any) => ({ id: approval.id, status: approval.status, cells: [<span key="id" className="font-mono">{shortId(approval.id)}</span>, <span key="key" className="break-all font-mono text-xs">{proposal(approval.action).key}</span>, `requester ${shortId(approval.requesterId)}${approval.approverId ? ` · approver ${shortId(approval.approverId)}` : ""}`, <StatusBadge key="state" value={approval.status} />] }))} emptyTitle="No setting approvals" />
     </div>
-    <RecordList title="In force" columns={["Key", "Value", "Policy", "Effective"]} rows={current.map((setting: any) => ({ id: setting.id, cells: [<span key="key" className="break-all font-mono text-xs">{setting.key}</span>, <code key="value" className="break-all font-mono text-xs whitespace-pre-wrap">{jsonText(setting.value).slice(0, 180)}</code>, `${setting.policyVersion} · ${setting.valueType}`, dateTime(setting.effectiveFrom)] }))} emptyTitle="No current settings" />
+    <RecordList title="In force" columns={["Key", "Value", "Policy", "Effective"]} rows={current.map((setting: any) => ({ id: setting.id, cells: [<span key="key" className="break-all font-mono text-xs">{setting.key}</span>, <span key="value">{settingValue(setting)}</span>, `${setting.policyVersion} · ${setting.valueType}`, dateTime(setting.effectiveFrom)] }))} emptyTitle="No current settings" />
     <RecordList title="Jurisdictions" columns={["Jurisdiction", "Authority", "License reference", "State"]} rows={jurisdictions.map((item: any) => ({ id: item.id, status: item.status, cells: [item.jurisdiction?.code || shortId(item.jurisdictionId || "Unknown"), item.jurisdiction?.authority || "Unconfigured", `${item.licenseReference} · ${item.policyVersion}`, <StatusBadge key="state" value={item.status} />] }))} emptyTitle="No jurisdiction assignment" />
   </OperatorShell>;
 }

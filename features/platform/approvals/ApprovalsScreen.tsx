@@ -23,7 +23,7 @@ async function getApprovalInbox(tenantId: string, pendingPage: number, historyPa
     prisma.approvalRequest.count({ where: historyWhere }),
     prisma.approvalRequest.count({ where: { tenantId, status: 'APPROVED' } }),
     prisma.approvalRequest.count({ where: { tenantId, status: 'REJECTED' } }),
-    prisma.approvalRequest.count({ where: { tenantId, approverId: { not: null, equals: prisma.approvalRequest.fields.requesterId } } }),
+    prisma.approvalRequest.count({ where: { tenantId, approverId: { not: '', equals: prisma.approvalRequest.fields.requesterId } } }),
   ])
   const actorIds = [...new Set([...pending, ...history].flatMap((item: any) => [item.requesterId, item.approverId, item.consumedById]).filter(Boolean))]
   const actors = actorIds.length ? await prisma.user.findMany({ where: { tenantId, id: { in: actorIds } }, select: { id: true, name: true } }) : []
