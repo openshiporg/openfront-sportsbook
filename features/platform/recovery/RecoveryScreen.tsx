@@ -2,10 +2,17 @@ import { MutationForm } from "../components/MutationForm";
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { MetricGrid, RecordList, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, shortId } from "../lib/format";
-import { Mono, StatusDot } from "../components/kit";
+import { Mono, StatusDot, type Tone } from "../components/kit";
 import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
 import { hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { replaySourceModel, replayUnavailableReason } from "../../sportsbook/workers/replay-contract";
+
+const WORKER_STALE_MS = 2 * 60_000;
+// WorkerHeartbeat has no tenant: it is process liveness shared by every tenant.
+const workerState = (item: any, asOf: Date) => item.status === "READY" && asOf.getTime() - new Date(item.heartbeatAt).getTime() > WORKER_STALE_MS ? "STALE" : (item.status || "UNKNOWN");
+const workerTone: Record<string, Tone> = { READY: "ok", STARTING: "wait", STOPPING: "wait", STOPPED: "off", STALE: "alert" };
+// RecordList derives the row dot from a status value; these map each worker state to one with the same tone.
+const workerDotStatus: Record<string, string> = { READY: "READY", STARTING: "PENDING", STOPPING: "PENDING", STOPPED: "DISABLED", STALE: "STALE" };
 
 const replayMutation = `mutation Replay($sourceType:String!,$sourceId:ID!,$reason:String!){replayQueueItem(sourceType:$sourceType,sourceId:$sourceId,reason:$reason)}`;
 
@@ -33,6 +40,11 @@ export async function RecoveryScreen({ searchParams }: { searchParams?: Platform
     Promise.all([prisma.outboxMessage.count({ where: { ...tenantWhere, status: "PROCESSING" } }), prisma.inboxMessage.count({ where: { ...tenantWhere, status: "PROCESSING" } })]).then(([a, b]) => a + b),
     Promise.all([prisma.outboxMessage.count({ where: { ...tenantWhere, status: "PROCESSING", leaseUntil: { gt: asOf } } }), prisma.inboxMessage.count({ where: { ...tenantWhere, status: "PROCESSING", leaseUntil: { gt: asOf } } })]).then(([a, b]) => a + b),
   ]);
+  const workers = await prisma.workerHeartbeat.findMany({ orderBy: [{ heartbeatAt: "desc" }, { id: "desc" }], take: 100 });
+  const workerStates = workers.map((item: any) => workerState(item, asOf));
+  const staleWorkers = workerStates.filter((state: string) => state === "STALE").length;
+  const readyWorkers = workerStates.filter((state: string) => state === "READY").length;
+  const changingWorkers = workerStates.filter((state: string) => state === "STARTING" || state === "STOPPING").length;
   const recoverableTotal = unresolvedTotal + outboxDeadTotal + inboxDeadTotal;
   const recoverable = [
     ...deadUnresolved.map((item: any) => ({ ...item, sourceKind: "DEAD_LETTER", label: `${item.sourceType} · ${item.reason}` })),
@@ -59,8 +71,8 @@ export async function RecoveryScreen({ searchParams }: { searchParams?: Platform
     active="Recovery"
     eyebrow="Worker operations"
     title="Queue and worker recovery"
-    tone={recoverableTotal ? "alert" : expiredLeases ? "wait" : "ok"}
-    meta={`${expiredLeases} stuck leases · ${recoverableTotal} recoverable · ${outboxPending} pending · as of ${dateTime(asOf)}`}
+    tone={recoverableTotal || staleWorkers ? "alert" : expiredLeases || changingWorkers || !readyWorkers ? "wait" : "ok"}
+    meta={`${expiredLeases} stuck leases · ${recoverableTotal} recoverable · ${outboxPending} pending · ${readyWorkers}/${workers.length} workers ready${staleWorkers ? ` · ${staleWorkers} stale` : ""} · as of ${dateTime(asOf)}`}
     tenantName={operator.tenantName}
   >
     <MetricGrid items={[
@@ -69,6 +81,10 @@ export async function RecoveryScreen({ searchParams }: { searchParams?: Platform
       { label: "Processing", value: liveLeases, detail: "live leases" },
       { label: "Outbox pending", value: outboxPending, detail: `${outboxCompleted} completed` },
     ]} />
+    <RecordList title="Workers" tone={staleWorkers ? "alert" : changingWorkers || !readyWorkers ? "wait" : "ok"} columns={["Worker", "Started", "Last heartbeat", "Build"]} rows={workers.map((item: any, index: number) => {
+      const state = workerStates[index];
+      return { id: item.id, status: workerDotStatus[state] ?? "UNKNOWN", cells: [<span key="worker"><span className="break-all font-mono">{item.workerId || shortId(item.id)}</span><span className="mt-1 block text-xs font-normal text-foreground"><StatusDot tone={workerTone[state] ?? "off"} className="mr-1.5 size-1.5 align-middle" />{state.toLowerCase()}</span></span>, <span key="started"><Mono className="text-xs">{dateTime(item.startedAt)}</Mono>{item.stoppedAt ? <span className="block font-mono text-xs text-muted-foreground">stopped {dateTime(item.stoppedAt)}</span> : null}</span>, <Mono key="heartbeat" className="text-xs">{dateTime(item.heartbeatAt)}</Mono>, <Mono key="build" className="break-all text-xs">{item.buildVersion || "—"}</Mono>] };
+    })} emptyTitle="No worker heartbeats" />
     <section className="space-y-3">
       <h2 className="text-sm font-semibold">{recoverableTotal ? <StatusDot tone="alert" /> : null}Recoverable<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{recoverableTotal > recoverable.length ? `oldest ${recoverable.length} of ${recoverableTotal}` : recoverable.length}</span></h2>
       {recoverable.length === 0 ? <WorkflowNote title="No replay action available" /> : <div className="grid gap-4 lg:grid-cols-2">{recoverable.map((item: any) => {

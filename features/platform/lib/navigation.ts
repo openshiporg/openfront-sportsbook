@@ -22,7 +22,8 @@ export interface PlatformNavGroup {
 // Sportsbook operations, relative to the dashboard basePath, in the order the sidebar lists them.
 export const platformNavItems: PlatformNavItem[] = [
   { title: 'Control room', href: '/platform', color: 'rose', description: 'Today’s queues, exceptions and shortcuts into each workflow.', icon: Radio, group: 'standalone', exact: true },
-  { title: 'Catalog', href: '/platform/catalog', color: 'green', description: 'Create and manage events, markets and selections.', icon: Package, group: 'standalone' },
+  { title: 'Catalog', href: '/platform/catalog', color: 'green', description: 'Create and manage events, markets and selections.', icon: Package, group: 'standalone', exact: true },
+  { title: 'Catalog reference', href: '/platform/catalog/reference', color: 'green', description: 'Sports, competitions, seasons, stages, venues and competitors.', icon: Package, group: 'standalone' },
   { title: 'Trading & prices', href: '/platform/trading', color: 'blue', description: 'Monitor market status and prices, and suspend or reopen markets.', icon: Radio, group: 'standalone' },
   { title: 'Wager investigation', href: '/platform/wagers', color: 'indigo', description: 'Look up wagers, accepted terms and acceptance decisions.', icon: ReceiptText, group: 'standalone' },
   { title: 'Risk & limits', href: '/platform/risk', color: 'red', description: 'Monitor liability and manage stake and payout limits.', icon: ShieldCheck, group: 'standalone' },
@@ -32,9 +33,12 @@ export const platformNavItems: PlatformNavItem[] = [
   { title: 'Customers', href: '/platform/customers', color: 'purple', description: 'Review players, identity verification and AML cases.', icon: ShieldCheck, group: 'standalone' },
   { title: 'Compliance & integrity', href: '/platform/compliance', color: 'slate', description: 'Identity, AML, location, affordability, privacy and integrity reviews.', icon: ShieldCheck, group: 'standalone' },
   { title: 'Responsible gaming', href: '/platform/responsible-gaming', color: 'teal', description: 'Player limits, cool-offs and self-exclusions.', icon: ShieldCheck, group: 'standalone' },
+  { title: 'Account closures', href: '/platform/closures', color: 'teal', description: 'Customer closure requests and their blockers.', icon: ShieldCheck, group: 'standalone' },
   { title: 'Support & disputes', href: '/platform/support', color: 'cyan', description: 'Support cases, disputes, resolutions and appeals.', icon: ReceiptText, group: 'standalone' },
+  { title: 'Notifications', href: '/platform/notifications', color: 'cyan', description: 'Messages sent to customers and staff.', icon: ReceiptText, group: 'standalone' },
   { title: 'Finance', href: '/platform/finance', color: 'emerald', description: 'Ledger journals, payments and balances.', icon: WalletCards, group: 'standalone', exact: true },
   { title: 'Reconciliation & safeguarding', href: '/platform/finance/reconciliation', color: 'emerald', description: 'Compare the ledger with provider, bank and safeguarded-funds records.', icon: WalletCards, group: 'standalone' },
+  { title: 'Tax', href: '/platform/finance/tax', color: 'emerald', description: 'Tax assessed on settled wagers.', icon: WalletCards, group: 'standalone' },
   { title: 'Promotions', href: '/platform/promotions', color: 'pink', description: 'Campaigns, terms, budgets and player awards.', icon: Package, group: 'standalone' },
   { title: 'Providers & certification', href: '/platform/providers', color: 'orange', description: 'Provider health and certification status.', icon: Plug, group: 'standalone' },
   { title: 'Integrations', href: '/platform/integrations', color: 'orange', description: 'Provider connections, inbound messages and webhooks.', icon: Plug, group: 'standalone' },

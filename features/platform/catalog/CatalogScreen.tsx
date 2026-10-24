@@ -2,7 +2,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { ReadFailed } from "../components/ReadFailed";
 import { dateTime, displayTimeZone, shortId } from "../lib/format";
 import { searchFrom } from "../lib/graphql";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext } from "../lib/operator";
 import { allowedParam, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { getCatalog } from "./actions";
 import { CatalogPageClient } from "./screens/CatalogPageClient";
@@ -19,8 +19,6 @@ export async function CatalogScreen({ searchParams }: { searchParams?: PlatformS
   const operator = await getOperatorContext("canTrade");
   if (!operator) return <OperatorShell active="Catalog" title="Catalog"><TenantRequired /></OperatorShell>;
   const result = await getCatalog({ page, pageSize: PLATFORM_PAGE_SIZE, search, status, competitionSearch });
-  const formNow = new Date();
-  const sports = await prisma.sport.findMany({ where: { tenantId: operator.tenantId, active: true }, orderBy: [{ name: "asc" }, { id: "asc" }], take: 100, select: { id: true, name: true } });
   return <OperatorShell active="Catalog" title="Catalog" tone={result.success ? (result.data.pendingMappings ? "wait" : "ok") : "alert"} meta={result.success ? `${result.data.allEvents} events · ${result.data.markets} markets · ${result.data.pendingMappings} mappings pending` : undefined} tenantName={operator.tenantName}>
     {result.success ? <CatalogPageClient data={{
       rows: result.data.events.map((event) => ({ id: event.id, name: event.name || shortId(event.id), reference: shortId(event.externalKey || event.id), competition: event.competition?.name || "Unassigned", startsAt: dateTime(event.startAt), status: event.status })),
@@ -28,8 +26,7 @@ export async function CatalogScreen({ searchParams }: { searchParams?: PlatformS
       competitionOptions: result.data.competitions.map((competition) => ({ label: `${competition.sport?.name || "Sport"} · ${competition.name || shortId(competition.id)}`, value: competition.id })),
       competitionTotal: result.data.competitionTotal, competitionSearch,
       definitionOptions: Array.from(new Map(result.data.definitions.filter((definition) => definition.key).map((definition) => [definition.key as string, { label: definition.sportKey && definition.sportKey !== "*" ? `${definition.name} · ${definition.sportKey}` : `${definition.name} · all sports`, value: definition.key as string }])).values()),
-      sportOptions: sports.map((sport: any) => ({ label: sport.name, value: sport.id })),
-      timeZone: displayTimeZone(), seasonStartsAt: formNow.toISOString(), seasonEndsAt: new Date(formNow.getTime() + 365 * 86_400_000).toISOString(),
+      timeZone: displayTimeZone(),
       canTrade: operator.capabilities.canTrade, page, pageSize: PLATFORM_PAGE_SIZE, search, status,
     }} /> : <ReadFailed subject="the catalog" />}
   </OperatorShell>;

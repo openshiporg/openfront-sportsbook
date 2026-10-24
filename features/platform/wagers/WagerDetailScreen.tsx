@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { MutationForm } from "../components/MutationForm";
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
-import { Mono } from "../components/kit";
+import { Mono, PillLink, Track } from "../components/kit";
 import { DetailGrid, RecordList, StatusBadge, statusDotTone, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, jsonText, money, shortId } from "../lib/format";
 import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
@@ -29,6 +29,15 @@ export async function WagerDetailScreen({ wagerId }: { wagerId: string }) {
   const cashOutParts = wager.from_WagerPart_wager;
   const cashOutState = projectCashOutState(wager.stakeMinor, wager.from_CashOutAcceptance_wager, cashOutParts.length ? cashOutParts : undefined);
   const reversedById = new Map(cashOutState.reversals.map(item => [item.reversalOfId, item.id]));
+  // Offers and exposure share this screen's risk gate; tax is finance-only and is not read without it.
+  const canSeeTax = operator.capabilities.canManageFinance;
+  const [offers, exposure, taxAssessments] = await Promise.all([
+    prisma.cashOutOffer.findMany({ where: { tenantId: operator.tenantId, wagerId: wager.id }, orderBy: [{ offeredAt: "desc" }, { createdAt: "desc" }], take: 50, include: { from_CashOutAcceptance_offer: { where: { tenantId: operator.tenantId }, select: { id: true, status: true, reversalOfId: true } } } }),
+    prisma.wagerExposureAllocation.findMany({ where: { tenantId: operator.tenantId, wagerId: wager.id }, orderBy: { createdAt: "asc" }, take: 100, include: { market: { select: { line: true, definitionKey: true, definition: { select: { name: true } }, event: { select: { name: true } } } } } }),
+    canSeeTax ? prisma.taxAssessment.findMany({ where: { tenantId: operator.tenantId, wagerId: wager.id }, orderBy: { createdAt: "desc" }, take: 50 }) : Promise.resolve([]),
+  ]);
+  const offerAcceptance = (offer: any) => { const accepted = offer.from_CashOutAcceptance_offer.find((item: any) => !item.reversalOfId); return accepted ? (reversedById.has(accepted.id) ? "Accepted · reversed" : "Accepted") : "Not accepted"; };
+  const portion = (numerator: string, denominator: string) => numerator && denominator && denominator !== "0" ? (numerator === denominator ? "Full" : `${numerator}/${denominator}`) : "—";
   const openDisputes = wager.from_Dispute_wager.filter((dispute: any) => ["OPEN", "INVESTIGATING"].includes(String(dispute.status))).length;
   return <OperatorShell active="Wagers" detail title={`Wager ${shortId(wager.id)}`} tone={statusDotTone(wager.status)} meta={`${(wager.status || "unknown").toLowerCase()} · ${wager.structure || terms?.structure || "—"} · ${acceptedLegs.length} legs · ${openDisputes} open disputes`} tenantName={operator.tenantName}>
     {decision && !decision.accepted ? <WorkflowNote title={`Rejected · ${decision.rejectionCode || "REJECTED"}`} tone="warning" /> : null}
@@ -59,6 +68,9 @@ export async function WagerDetailScreen({ wagerId }: { wagerId: string }) {
       {decision ? <pre className="max-h-80 overflow-auto bg-muted/40 p-4 font-mono text-xs text-foreground">{jsonText(decision.gateResults)}</pre> : <p role="status" className="px-4 py-3 text-sm text-muted-foreground">No decision linked</p>}
     </section>
     <RecordList title="Settlement versions" columns={["Version", "Outcome", "Payout", "Created"]} rows={wager.from_Settlement_wager.map((settlement: any) => ({ id: settlement.id, cells: [<Mono key="v">v{settlement.version}</Mono>, settlement.outcome, <Mono key="payout">{money(settlement.payoutMinor, wager.currency)}</Mono>, dateTime(settlement.createdAt)] }))} emptyTitle="Not settled" />
+    <RecordList title="Cash-out offers" columns={["Offer", "Amount", "Portion / fee", "Offered", "Acceptance"]} rows={offers.map((offer: any) => ({ id: offer.id, status: offer.status ?? undefined, cells: [<span key="offer"><Mono>{shortId(offer.id)}</Mono> · {String(offer.status || "unknown").toLowerCase()}</span>, <Mono key="amount" className="text-foreground">{money(offer.amountMinor, offer.currency || wager.currency)}</Mono>, <Mono key="portion">{portion(offer.portionNumerator, offer.portionDenominator)} · fee {money(offer.feeMinor || "0", offer.currency || wager.currency)}</Mono>, <span key="offered">{dateTime(offer.offeredAt || offer.createdAt)}{offer.expiresAt ? <span className="block text-xs">expires {dateTime(offer.expiresAt)}</span> : null}</span>, offerAcceptance(offer)] }))} emptyTitle="No cash-out offers" />
+    <RecordList title="Exposure" columns={["Market", "Stake", "Liability", "Remaining stake / liability"]} rows={exposure.map((item: any) => ({ id: item.id, status: item.status ?? undefined, cells: [<span key="market">{item.market?.definition?.name || item.market?.definitionKey || "Market"}{item.market?.line ? <Mono> · {item.market.line}</Mono> : null}<span className="block text-xs font-normal text-muted-foreground">{item.market?.event?.name ? `${item.market.event.name} · ` : ""}{String(item.status || "unknown").replaceAll("_", " ").toLowerCase()}</span></span>, <Mono key="stake">{money(item.stakeMinor, wager.currency)}</Mono>, <Mono key="liability">{money(item.liabilityMinor, wager.currency)}</Mono>, <Mono key="remaining">{money(item.remainingStakeMinor, wager.currency)} / {money(item.remainingLiabilityMinor, wager.currency)}</Mono>] }))} emptyTitle="No exposure allocated" />
+    {canSeeTax ? <RecordList title="Tax" columns={["Rule version", "Basis", "Amount", "Assessed"]} rows={taxAssessments.map((item: any) => { const identity = /^(.*):v(\d+):[^:]+$/.exec(item.ruleVersion || ""); return { id: item.id, status: item.status ?? undefined, cells: [<span key="rule" className="break-all">{identity ? `${identity[1]} v${identity[2]}` : item.ruleVersion || "—"} · {String(item.status || "unknown").toLowerCase()}</span>, <Mono key="basis">{money(item.basisMinor, item.currency || wager.currency)}</Mono>, <Mono key="amount" className="text-foreground">{money(item.amountMinor, item.currency || wager.currency)}</Mono>, dateTime(item.createdAt)] }; })} emptyTitle="Not assessed" emptyAction={<Track><PillLink size="sm" href="/dashboard/platform/finance/tax">Open Tax</PillLink></Track>} /> : null}
     <RecordList title="Cash-outs" columns={["Record", "Amount", "Effect", "Created"]} rows={wager.from_CashOutAcceptance_wager.map((item: any) => ({ id: item.id, cells: [<span key="record">{item.reversalOfId ? "Reversal of " : "Acceptance "}<Mono>{shortId(item.reversalOfId || item.id)}</Mono></span>, <Mono key="amount">{money(item.amountMinor, item.currency || wager.currency)}</Mono>, item.reversalOfId ? "Reversal posted" : reversedById.has(item.id) ? `Reversed by ${shortId(reversedById.get(item.id)!)}` : "Effective", dateTime(item.acceptedAt)] }))} emptyTitle="No cash-outs" />
   </OperatorShell>;
 }

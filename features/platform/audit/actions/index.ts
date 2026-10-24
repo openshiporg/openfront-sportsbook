@@ -48,3 +48,21 @@ export async function getAuditEvent(auditId: string): Promise<KeystoneResponse<{
   if (!links.success) return links;
   return { success: true, data: { event, previous: links.data.previous?.[0] ?? null, next: links.data.next?.[0] ?? null } };
 }
+
+/* AuditAnchor is a canReadAudit list; Keystone applies the tenant filter. */
+
+export type AuditAnchorRecord = { id: string; chainHeadHash: string | null; eventCount: number | null; anchoredAt: string | null; externalReference: string | null; status: string | null; createdAt: string | null };
+
+const anchorFields = "id chainHeadHash eventCount anchoredAt externalReference status createdAt";
+
+export async function getAuditAnchors({ take }: { take: number }): Promise<KeystoneResponse<{ anchors: AuditAnchorRecord[]; total: number; latestAnchored: AuditAnchorRecord | null }>> {
+  const response = await platformRead<{ auditAnchors: AuditAnchorRecord[]; total: number; latestAnchored: AuditAnchorRecord[] }>(`
+    query AuditAnchors($take: Int!) {
+      auditAnchors(orderBy: [{ createdAt: desc }, { id: desc }], take: $take) { ${anchorFields} }
+      total: auditAnchorsCount
+      latestAnchored: auditAnchors(where: { status: { equals: ANCHORED } }, orderBy: [{ anchoredAt: desc }, { id: desc }], take: 1) { ${anchorFields} }
+    }
+  `, { take });
+  if (!response.success) return response;
+  return { success: true, data: { anchors: response.data.auditAnchors, total: response.data.total, latestAnchored: response.data.latestAnchored[0] ?? null } };
+}

@@ -3516,6 +3516,8 @@ var sportsbookFullTypeDefs = graphql2`
     createCatalogCompetitor(key:String!,name:String!): ID!
     createCatalogSport(key:String!,name:String!): ID!
     createCatalogCompetition(sportId:ID!,key:String!,name:String!,timezone:String!): ID!
+    createCatalogStage(seasonId:ID!,key:String!,name:String!,sortOrder:Int!): ID!
+    setCatalogReferenceStatus(type:String!,id:ID!,active:Boolean!,reason:String!): Boolean!
     attachEventParticipant(eventId:ID!,competitorId:ID!,role:String!,sortOrder:Int!): ID!
     rescheduleEvent(eventId:ID!,startAt:String!,reason:String!): Boolean!
     createEventMarket(eventId:ID!,definitionKey:String!,parameters:String!,tradingMode:String!,cashOutEnabled:Boolean!,selections:String!): ID!
@@ -3896,6 +3898,59 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
       const row = await tx.competitor.create({ data: { tenantId, key: a.key, name: a.name, status: "ACTIVE" } });
       await appendAudit(tx, tenantId, context.session.itemId, "catalog.competitor_created", "Competitor", row.id, "OPERATOR_ENTRY", { key: a.key });
       return row.id;
+    });
+  },
+  createCatalogStage: async (_r, a, context) => {
+    const tenantId = await requireTenant(context, "canTrade");
+    const key2 = String(a.key ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim();
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key2)) throw new Error("INVALID_CATALOG_KEY");
+    if (!name || name.length > 120) throw new Error("INVALID_CATALOG_NAME");
+    if (!Number.isSafeInteger(a.sortOrder) || a.sortOrder < 0 || a.sortOrder > 1e4) throw new Error("INVALID_SORT_ORDER");
+    return context.prisma.$transaction(async (tx) => {
+      await assertCurrentActor(tx, context, tenantId, "canTrade");
+      const season = await tx.season.findFirst({ where: { id: a.seasonId, tenantId, status: { not: "CANCELLED" } }, select: { id: true } });
+      if (!season) throw new Error("SEASON_NOT_FOUND");
+      if (await tx.competitionStage.findFirst({ where: { tenantId, seasonId: season.id, key: key2 }, select: { id: true } })) throw new Error("CATALOG_KEY_EXISTS");
+      const row = await tx.competitionStage.create({ data: { tenantId, seasonId: season.id, key: key2, name, sortOrder: a.sortOrder, status: "SCHEDULED" } });
+      await appendAudit(tx, tenantId, context.session.itemId, "catalog.stage_created", "CompetitionStage", row.id, "OPERATOR_ENTRY", { seasonId: season.id, key: key2, sortOrder: a.sortOrder });
+      return row.id;
+    });
+  },
+  /** Activate/deactivate catalog reference data. Seasons cancel only when no event references them; stages toggle ACTIVE/COMPLETE. */
+  setCatalogReferenceStatus: async (_r, a, context) => {
+    const tenantId = await requireTenant(context, "canTrade");
+    const type = String(a.type ?? "").trim().toUpperCase(), reason = String(a.reason ?? "").trim(), active = a.active === true;
+    const models2 = { SPORT: { model: "sport", target: "Sport" }, COMPETITION: { model: "competition", target: "Competition" }, VENUE: { model: "venue", target: "Venue" }, COMPETITOR: { model: "competitor", target: "Competitor" }, SEASON: { model: "season", target: "Season" }, STAGE: { model: "competitionStage", target: "CompetitionStage" } };
+    const spec = models2[type];
+    if (!spec) throw new Error("INVALID_REFERENCE_TYPE");
+    if (reason.length < 3 || reason.length > 500) throw new Error("REASON_REQUIRED");
+    return context.prisma.$transaction(async (tx) => {
+      await assertCurrentActor(tx, context, tenantId, "canTrade");
+      const row = await tx[spec.model].findFirst({ where: { id: a.id, tenantId } });
+      if (!row) throw new Error("Not found");
+      let from, to, data;
+      if (type === "SPORT") {
+        from = row.active ? "ACTIVE" : "INACTIVE";
+        to = active ? "ACTIVE" : "INACTIVE";
+        data = { active };
+      } else if (type === "SEASON") {
+        from = String(row.status ?? "SCHEDULED");
+        to = active ? "ACTIVE" : "CANCELLED";
+        if (!active && from !== "CANCELLED" && await tx.event.count({ where: { tenantId, seasonId: row.id } })) throw new Error("SEASON_IN_USE");
+        data = { status: to };
+      } else if (type === "STAGE") {
+        from = String(row.status ?? "SCHEDULED");
+        to = active ? "ACTIVE" : "COMPLETE";
+        data = { status: to };
+      } else {
+        from = String(row.status ?? "ACTIVE");
+        to = active ? "ACTIVE" : "INACTIVE";
+        data = { status: to };
+      }
+      if (from === to) return true;
+      await tx[spec.model].update({ where: { id: row.id }, data });
+      await appendAudit(tx, tenantId, context.session.itemId, active ? "catalog.reference_activated" : "catalog.reference_deactivated", spec.target, row.id, reason, { type, from, to });
+      return true;
     });
   },
   attachEventParticipant: async (_r, a, context) => {

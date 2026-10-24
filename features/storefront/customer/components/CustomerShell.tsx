@@ -23,7 +23,8 @@ const accountLinks = [
 ]
 
 const primaryLinks = [
-  { href: '/', label: 'Sports' },
+  { href: '/', label: 'Live & upcoming' },
+  { href: '/sports', label: 'Sports' },
   { href: '/account/bets', label: 'My bets' },
   { href: '/promotions', label: 'Promotions' },
   { href: '/account/responsible-play', label: 'Safer play' },
@@ -51,7 +52,7 @@ export function CustomerShell({
   const brandFilter = { filter: `hue-rotate(${brandHue(brand)}deg)` }
   const brandName = brand?.name || 'Sportsbook'
   const logoSvg = brand?.logoIcon || DEFAULT_STORE_LOGO_ICON
-  const isCurrent = (href: string) => href === '/' ? pathname === '/' || pathname.startsWith('/sports') || pathname.startsWith('/events') || pathname.startsWith('/betslip') : pathname === href
+  const isCurrent = (href: string) => href === '/' ? pathname === '/' || pathname.startsWith('/events') || pathname.startsWith('/betslip') : href === '/sports' ? pathname.startsWith('/sports') : pathname === href
 
   async function signOut() {
     setSigningOut(true)
@@ -112,7 +113,7 @@ export function CustomerShell({
           </div>
           <nav id="customer-navigation" hidden={!menuOpen} className="w-full border-t border-white/10 pb-2 pt-3 md:hidden" aria-label="Mobile navigation">
             <div className="grid grid-cols-2 gap-1">
-              {[{ href: '/', label: 'Sports', key: 'sports' }, ...accountLinks].map(link => <Link key={link.key} onClick={() => setMenuOpen(false)} aria-current={isCurrent(link.href) ? 'page' : undefined} className="rounded-full px-4 py-2.5 text-sm text-white/75 hover:bg-white/10 aria-[current=page]:bg-sb-rule aria-[current=page]:text-white" href={link.href}>{link.label}</Link>)}
+              {[{ href: '/', label: 'Live & upcoming', key: 'board' }, { href: '/sports', label: 'Sports', key: 'sports' }, ...accountLinks].map(link => <Link key={link.key} onClick={() => setMenuOpen(false)} aria-current={isCurrent(link.href) ? 'page' : undefined} className="rounded-full px-4 py-2.5 text-sm text-white/75 hover:bg-white/10 aria-[current=page]:bg-sb-rule aria-[current=page]:text-white" href={link.href}>{link.label}</Link>)}
             </div>
           </nav>
         </div>
