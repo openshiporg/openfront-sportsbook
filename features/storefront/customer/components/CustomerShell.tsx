@@ -81,16 +81,16 @@ export function CustomerShell({
           >
             {menuOpen ? <X aria-hidden="true" className="size-5" /> : <Menu aria-hidden="true" className="size-5" />}
           </button>
-          <Link href="/" data-testid="nav-store-link" className="flex min-w-0 items-center gap-2.5">
+          <Link href="/" data-testid="nav-store-link" className="flex min-w-0 flex-1 items-center gap-2.5 md:flex-none">
             <span style={brandFilter} aria-hidden="true" dangerouslySetInnerHTML={{ __html: logoSvg }} className="h-7 w-6 shrink-0 [&>svg]:block [&>svg]:h-full [&>svg]:w-full" />
-            <span className="truncate font-sb-display text-2xl font-bold uppercase leading-none tracking-wide">{brandName}</span>
+            <span className="min-w-0 truncate font-sb-display text-xl font-bold uppercase leading-none tracking-wide sm:text-2xl">{brandName}</span>
           </Link>
           <nav className="ml-4 hidden md:block" aria-label="Primary navigation">
             <Track dark>
               {primaryLinks.map(link => <Link key={link.href} href={link.href} aria-current={isCurrent(link.href) ? 'page' : undefined} className={pillClass('flatDark', 'sm')}>{link.label}</Link>)}
             </Track>
           </nav>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {authenticated ? (
               <>
                 <Link href="/account/profile" className="hidden items-center gap-2 rounded-full px-3 py-1.5 font-sb-mono text-xs text-white/70 hover:bg-white/10 hover:text-white sm:inline-flex">

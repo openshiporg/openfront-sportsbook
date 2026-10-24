@@ -37,6 +37,8 @@ export type CatalogEvent = {
   sportKey: string
   sportName: string
   competitionId: string
+  /** URL slug for the competition: its catalog key, or its id when no key is set. */
+  competitionSlug: string
   competition: string
   name: string
   startsAt: string

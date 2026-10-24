@@ -1951,6 +1951,20 @@ var appendAudit = async (tx, tenantId, actorId, action, targetType, targetId, re
   const hash = evidenceHash({ tenantId, previousHash: previous?.hash ?? "", actorId, action, targetType, targetId, reason, payloadHash });
   return tx.auditEvent.create({ data: { tenantId, actorId, action, targetType, targetId, reason, payloadHash, previousHash: previous?.hash ?? "", hash } });
 };
+var rejectApprovedResultVersion = async (tx, tenantId, actorId, approval, reason) => {
+  const recorded = approval.requestPayload?.resultVersionId;
+  const candidates = await tx.resultVersion.findMany({ where: { tenantId, status: "PENDING", ...recorded ? { id: String(recorded) } : {} } });
+  const result = candidates.find((item) => {
+    try {
+      return resultApprovalHash(item) === approval.payloadHash;
+    } catch {
+      return false;
+    }
+  });
+  if (!result) return;
+  const updated = await tx.resultVersion.updateMany({ where: { id: result.id, tenantId, status: "PENDING" }, data: { status: "REJECTED" } });
+  if (updated.count === 1) await appendAudit(tx, tenantId, actorId, "result.rejected", "ResultVersion", result.id, reason, { approvalId: approval.id, payloadHash: approval.payloadHash });
+};
 var requireScopedPlayer = async (tx, tenantId, playerId) => {
   const player = await tx.player.findFirst({ where: { id: playerId, tenantId } });
   if (!player) throw new Error("Not found");
@@ -2004,6 +2018,7 @@ var sportsbookTypeDefs = graphql`
     setMarketStatus(marketId:ID!,status:String!,reason:String!,expectedVersion:Int!,expectedStatus:String!): Boolean!
     ingestSandboxResult(eventId:ID!,payload:String!): ID!
     requestResultApproval(resultVersionId:ID!,reason:String!): ID!
+    withdrawResultVersion(resultVersionId:ID!,reason:String!): Boolean!
     approveResultVersion(resultVersionId:ID!,approvalId:ID!,reason:String!): Boolean!
     suspendMarket(marketId:ID!,reason:String!): Boolean!
     gradeMarket(marketId:ID!,resultVersionId:ID!,outcome:String!,factorNumerator:String,factorDenominator:String,ruleVersion:String!,reason:String!): ID!
@@ -2216,7 +2231,7 @@ var sportsbookResolvers = {
           }
           assertMarketFirstOpenAllowed({ eventStatus: market.event?.status, createdAwaitingPrices: changes.some((change) => change.fromStatus === AWAITING_PRICES), everOpened: changes.some((change) => change.toStatus === "OPEN"), unpricedSelections, selections: selections.length });
         } else if (a.status === "OPEN") assertMarketOpenAllowed(market.status, market.event?.status);
-        if (market.status === a.status) return true;
+        if (market.status === a.status) throw new Error(`MARKET_ALREADY_${a.status}`);
         const updated = await tx.market.updateMany({ where: { id: market.id, tenantId, status: market.status, version: market.version }, data: { status: a.status, version: Number(market.version ?? 0) + 1 } });
         if (updated.count !== 1) throw new Error("STALE_MARKET_STATE");
         await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "MARKET", scopeId: market.id, fromStatus: market.status, toStatus: a.status, reason: a.reason, source: "OPERATOR", actorId: context.session.itemId, effectiveAt: /* @__PURE__ */ new Date() } });
@@ -2259,9 +2274,32 @@ var sportsbookResolvers = {
         const result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "PENDING" } });
         if (!result) throw new Error("Not found");
         const payloadHash = resultApprovalHash(result);
-        const approval = await tx.approvalRequest.create({ data: { tenantId, action: "APPROVE_RESULT", payloadHash, requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+        if (await tx.approvalRequest.findFirst({ where: { tenantId, action: "APPROVE_RESULT", payloadHash, status: { in: ["PENDING", "APPROVED"] } }, select: { id: true } })) throw new Error("APPROVAL_ALREADY_REQUESTED");
+        const event = await tx.event.findFirst({ where: { id: result.eventId, tenantId }, select: { name: true, startAt: true, status: true, competition: { select: { name: true } } } });
+        const approval = await tx.approvalRequest.create({ data: { tenantId, action: "APPROVE_RESULT", payloadHash, ...approvalReview({ action: "APPROVE_RESULT", resultVersionId: result.id, version: result.version, eventId: result.eventId, eventName: event?.name ?? null, competition: event?.competition?.name ?? null, eventStartAt: event?.startAt ?? null, eventStatus: event?.status ?? null, providerConnectionId: result.providerConnectionId, result: result.payload, resultPayloadHash: result.payloadHash }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
         await appendAudit(tx, tenantId, context.session.itemId, "result.approval_requested", "ResultVersion", result.id, a.reason, { approvalId: approval.id, payloadHash });
         return approval.id;
+      });
+    },
+    // A pending version the operator will not apply leaves the queue as REJECTED; its open approval requests lapse with it.
+    withdrawResultVersion: async (_r, a, context) => {
+      const tenantId = await requireTenant(context, "canTrade");
+      const reason = String(a.reason ?? "").trim();
+      if (!reason) throw new Error("REASON_REQUIRED");
+      return context.prisma.$transaction(async (tx) => {
+        const actorId = await assertCurrentActor(tx, context, tenantId, "canTrade");
+        const result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "PENDING" } });
+        if (!result) throw new Error("RESULT_NOT_PENDING");
+        const updated = await tx.resultVersion.updateMany({ where: { id: result.id, tenantId, status: "PENDING" }, data: { status: "REJECTED" } });
+        if (updated.count !== 1) throw new Error("RESULT_NOT_PENDING");
+        let payloadHash = null;
+        try {
+          payloadHash = resultApprovalHash(result);
+        } catch {
+        }
+        if (payloadHash) await tx.approvalRequest.updateMany({ where: { tenantId, action: "APPROVE_RESULT", payloadHash, status: "PENDING" }, data: { status: "EXPIRED", decidedAt: /* @__PURE__ */ new Date() } });
+        await appendAudit(tx, tenantId, actorId, "result.withdrawn", "ResultVersion", result.id, reason, { payloadHash });
+        return true;
       });
     },
     approveResultVersion: async (_r, a, context) => {
@@ -2280,6 +2318,7 @@ var sportsbookResolvers = {
         const payloadHash = resultApprovalHash(result);
         const approval = await tx.approvalRequest.findFirst({ where: { id: a.approvalId, tenantId, action: "APPROVE_RESULT", payloadHash, status: "APPROVED" } });
         if (!approval || !approval.approverId || approval.approverId === approval.requesterId) throw new Error("DUAL_CONTROL_REQUIRED");
+        if (approval.expiresAt && new Date(approval.expiresAt) <= /* @__PURE__ */ new Date()) throw new Error("APPROVAL_EXPIRED");
         await tx.resultVersion.updateMany({ where: { tenantId, eventId: result.eventId, status: "APPROVED" }, data: { status: "SUPERSEDED" } });
         await tx.resultVersion.update({ where: { id: result.id }, data: { status: "APPROVED", approvedAt: /* @__PURE__ */ new Date() } });
         await emit(tx, tenantId, "EVENT", result.eventId, "settlement.requested", { resultVersionId: result.id, reason: a.reason });
@@ -2912,6 +2951,7 @@ var sportsbookResolvers = {
         const updated = await tx.approvalRequest.updateMany({ where: { id: approval.id, tenantId, status: "PENDING", payloadHash: approval.payloadHash, requesterId: { not: actorId } }, data: { approverId: actorId, status: decision, reason: a.reason, decidedAt: now, ...approval.expiresAt ? {} : { expiresAt: new Date(now.getTime() + APPROVAL_TTL_MS) } } });
         if (updated.count !== 1) throw new Error("APPROVAL_ALREADY_DECIDED");
         await appendAudit(tx, tenantId, actorId, a.approve ? "approval.approved" : "approval.rejected", "ApprovalRequest", approval.id, a.reason, { action: approval.action, payloadHash: approval.payloadHash });
+        if (!a.approve && approval.action === "APPROVE_RESULT") await rejectApprovedResultVersion(tx, tenantId, actorId, approval, a.reason);
         return { decided: true };
       });
       if (outcome.expired) throw new Error("APPROVAL_EXPIRED");
@@ -3830,7 +3870,15 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
       if (event.status === a.status && event.livePhase === nextPhase && (event.clockSeconds ?? null) === (nextClock ?? null)) return true;
       const updated = await tx.event.updateMany({ where: { id: event.id, tenantId, status: event.status, version: event.version }, data: { status: a.status, livePhase: nextPhase, clockSeconds: nextClock, version: Number(event.version ?? 0) + 1 } });
       if (updated.count !== 1) throw new Error("STALE_EVENT_STATE");
-      if (["SUSPENDED", "ENDED", "CANCELLED"].includes(a.status)) await tx.market.updateMany({ where: { tenantId, eventId: event.id, status: "OPEN" }, data: { status: a.status === "SUSPENDED" ? "SUSPENDED" : "CLOSED", version: { increment: 1 } } });
+      if (["SUSPENDED", "ENDED", "CANCELLED"].includes(a.status)) {
+        const marketStatus = a.status === "SUSPENDED" ? "SUSPENDED" : "CLOSED", now = /* @__PURE__ */ new Date();
+        const openMarkets = await tx.market.findMany({ where: { tenantId, eventId: event.id, status: "OPEN" }, select: { id: true, version: true } });
+        for (const market of openMarkets) {
+          const closed = await tx.market.updateMany({ where: { id: market.id, tenantId, status: "OPEN", version: market.version }, data: { status: marketStatus, version: Number(market.version ?? 0) + 1 } });
+          if (closed.count !== 1) throw new Error("STALE_MARKET_STATE");
+          await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "MARKET", scopeId: market.id, fromStatus: "OPEN", toStatus: marketStatus, reason: `Event ${String(a.status).toLowerCase()} \xB7 ${a.reason}`, source: "EVENT", actorId: context.session.itemId, effectiveAt: now } });
+        }
+      }
       await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "EVENT", scopeId: event.id, fromStatus: event.status, toStatus: a.status, reason: a.reason, source: "OPERATOR", actorId: context.session.itemId, effectiveAt: /* @__PURE__ */ new Date() } });
       await appendAudit(tx, tenantId, context.session.itemId, "event.status_changed", "Event", event.id, a.reason, { from: event.status, to: a.status, livePhase: a.livePhase, clockSeconds: a.clockSeconds });
       return true;

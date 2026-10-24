@@ -13,6 +13,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 export default async function Page({ params }: Params) {
   const value = await params
-  if (!(await findPublishedEvent(value.event))) notFound()
-  return <SportsbookHome initialEventId={value.event} />
+  const match = await findPublishedEvent(value.event)
+  if (!match) notFound()
+  return <SportsbookHome initialEventId={value.event} initialEventName={match.name} initialEventCompetition={match.competition ?? undefined} />
 }

@@ -118,6 +118,7 @@ export async function getSandboxCatalog(prisma: PrismaClient, filters: CatalogFi
       sportKey: event.competition?.sport?.key ?? 'unknown',
       sportName: event.competition?.sport?.name ?? 'Sport',
       competitionId: event.competition?.id ?? '',
+      competitionSlug: event.competition?.key || event.competition?.id || '',
       competition: event.competition?.name ?? 'Competition',
       name: event.name,
       startsAt: event.startAt.toISOString(),

@@ -7,7 +7,7 @@ import { isClosedError } from '../../customer/components/AccountStates'
 import { Card, Dot, Empty, PageTitle, PillLink, Track } from '../../customer/components/kit'
 import { useCustomerResource } from '../../customer/lib/customer-api'
 
-export type SportsIndexEntry = { key: string; name: string; events: number; competitions: Array<{ name: string; events: number }> }
+export type SportsIndexEntry = { key: string; name: string; events: number; competitions: Array<{ slug: string; name: string; events: number }> }
 
 /** Browse by sport: every published sport with its competitions and how many events each has on the board. */
 export function SportsIndex({ sports }: { sports: SportsIndexEntry[] }) {
@@ -23,7 +23,7 @@ export function SportsIndex({ sports }: { sports: SportsIndexEntry[] }) {
             <span className="shrink-0 font-sb-mono text-xs text-sb-flood">{sport.events} event{sport.events === 1 ? '' : 's'}</span>
           </Link>
           {sport.competitions.length === 0 ? <p className="px-5 py-4 text-sm text-sb-mute">No competitions</p> : <ul className="divide-y divide-sb-line">
-            {sport.competitions.map(competition => <li key={competition.name}><Link href={`/sports/${encodeURIComponent(sport.key)}/${encodeURIComponent(competition.name)}`} className="flex items-center justify-between gap-3 px-5 py-3 text-sm hover:bg-sb-paper">
+            {sport.competitions.map(competition => <li key={competition.slug}><Link href={`/sports/${encodeURIComponent(sport.key)}/${encodeURIComponent(competition.slug)}`} className="flex items-center justify-between gap-3 px-5 py-3 text-sm hover:bg-sb-paper">
               <span className="min-w-0 truncate font-semibold">{competition.name}</span>
               <span className="shrink-0 font-sb-mono text-xs text-sb-mute">{competition.events}</span>
             </Link></li>)}

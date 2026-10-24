@@ -14291,6 +14291,7 @@ type Mutation {
   setMarketStatus(marketId: ID!, status: String!, reason: String!, expectedVersion: Int!, expectedStatus: String!): Boolean!
   ingestSandboxResult(eventId: ID!, payload: String!): ID!
   requestResultApproval(resultVersionId: ID!, reason: String!): ID!
+  withdrawResultVersion(resultVersionId: ID!, reason: String!): Boolean!
   approveResultVersion(resultVersionId: ID!, approvalId: ID!, reason: String!): Boolean!
   suspendMarket(marketId: ID!, reason: String!): Boolean!
   gradeMarket(marketId: ID!, resultVersionId: ID!, outcome: String!, factorNumerator: String, factorDenominator: String, ruleVersion: String!, reason: String!): ID!
