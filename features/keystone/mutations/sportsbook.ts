@@ -3,6 +3,7 @@ const graphql = String.raw
 import { evaluateAcceptance, evidenceHash, settlementAmount } from '../../sportsbook/domain/engine'
 import { reverseJournal, settlementJournal, validateJournal, type Journal } from '../../sportsbook/domain/ledger'
 import { buildOnboardingFixture, ensurePromotionsThenComplete, prepareSandboxPromotionProgress } from '../../sportsbook/domain/onboarding'
+import { assertOnboardingCatalog, ensureOnboardingCatalogEvents, ensureOnboardingCatalogRoots } from './onboarding-catalog'
 import { dispatchPinnedPayment } from '../../sportsbook/customer/funding'
 import { captureChange, nextProjection, postedChange, releaseChange, reserveChange } from '../../sportsbook/domain/balance'
 import { ensureSandboxPromotions } from '../../sportsbook/customer/promotions'
@@ -107,6 +108,7 @@ export const sportsbookResolvers={
       // The tenant zone drives every offset-free operator time, so it must be a real IANA zone.
       if(typeof args.timezone!=='string'||!validTimeZone(args.timezone))throw new Error('INVALID_TIMEZONE')
       const fixture=buildOnboardingFixture(args)
+      assertOnboardingCatalog()
       const applied=await serializable(context.prisma,async(tx:any)=>{
         // Setup authority is re-read inside the committing transaction. A slug never grants membership:
         // an unassigned operator may only create a new tenant, and an assigned operator may only resume
@@ -136,10 +138,7 @@ export const sportsbookResolvers={
         for(const rule of [{name:'sandbox-comprehensive',sportKey:'',rules:{structures:['STRAIGHT','PARLAY','SYSTEM','ROUND_ROBIN','TEASER','EACH_WAY'],cashOut:true,deadHeat:true,push:true,void:true,partialAcceptance:true}},{name:'teaser:6',sportKey:'football',rules:{points:'6',decimalOdds:'1.91',approvedFor:['spread','total']}}])if(!await tx.houseRuleVersion.findFirst({where:{tenantId:tenant.id,name:rule.name,version:1}}))await tx.houseRuleVersion.create({data:{tenantId:tenant.id,name:rule.name,version:1,sportKey:rule.sportKey,marketDefinitionKey:'',rules:rule.rules,semanticHash:evidenceHash(rule),effectiveFrom:new Date(),status:'ACTIVE'}})
         for(const flag of [{key:'sandbox.full-wagering',description:'Local comprehensive wager structures'},{key:'sandbox.cashout',description:'Local deterministic cash-out'},{key:'sandbox.promotions',description:'Local restricted-value promotions'}])if(!await tx.featureFlag.findFirst({where:{tenantId:tenant.id,key:flag.key,scopeType:'TENANT',scopeId:tenant.id}}))await tx.featureFlag.create({data:{tenantId:tenant.id,key:flag.key,description:flag.description,enabled:true,scopeType:'TENANT',scopeId:tenant.id,safeDefault:false,ownerId:context.session.itemId}})
         for(const p of fixture.providers)if(!await tx.providerConnection.findFirst({where:{tenantId:tenant.id,adapterId:p.adapterId}}))await tx.providerConnection.create({data:{tenantId:tenant.id,adapterId:p.adapterId,adapterVersion:'1.0.0',configReference:`sandbox:${p.kind}`,capabilities:{kind:p.kind},certificationStatus:'SANDBOX',status:'ACTIVE'}})
-        const region=(await tx.region.findFirst({where:{tenantId:tenant.id,key:'sandbox-global'}}))??await tx.region.create({data:{tenantId:tenant.id,key:'sandbox-global',name:'Sandbox global region',countryCodes:['XX'],status:'ACTIVE'}})
-        const sport=(await tx.sport.findFirst({where:{tenantId:tenant.id,key:'football'}}))??await tx.sport.create({data:{tenantId:tenant.id,key:'football',name:'Football',active:true}})
-        const competition=(await tx.competition.findFirst({where:{tenantId:tenant.id,key:'sandbox-league'}}))??await tx.competition.create({data:{tenantId:tenant.id,sportId:sport.id,regionId:region.id,key:'sandbox-league',name:'Sandbox League',timezone:args.timezone,status:'ACTIVE'}})
-        if(!await tx.season.findFirst({where:{tenantId:tenant.id,competitionId:competition.id,key:'sandbox-2026'}}))await tx.season.create({data:{tenantId:tenant.id,competitionId:competition.id,key:'sandbox-2026',name:'Sandbox 2026',startsAt:new Date(Date.now()-30*86_400_000),endsAt:new Date(Date.now()+180*86_400_000),status:'ACTIVE'}})
+        await ensureOnboardingCatalogRoots(tx,tenant.id,args.timezone)
         for(const definition of [{key:'match-result',name:'Match result',family:'MATCH_RESULT'},{key:'moneyline',name:'Moneyline',family:'MONEYLINE'},{key:'spread',name:'Point spread',family:'SPREAD'},{key:'total',name:'Total',family:'TOTAL'}])if(!await tx.marketDefinition.findFirst({where:{tenantId:tenant.id,key:definition.key,version:1}}))await tx.marketDefinition.create({data:{tenantId:tenant.id,key:definition.key,name:definition.name,sportKey:'*',parametersSchema:{line:definition.key==='spread'||definition.key==='total'},gradingRuleFamily:definition.family,allowedPhases:['PREMATCH','LIVE'],status:'ACTIVE',version:1}})
         if(!await tx.limitProfile.findFirst({where:{tenantId:tenant.id,name:'Sandbox defaults'}}))await tx.limitProfile.create({data:{tenantId:tenant.id,name:'Sandbox defaults',version:1,status:'ACTIVE',effectiveFrom:new Date()}})
         if(!await tx.safeguardingAccount.findFirst({where:{tenantId:tenant.id,accountReference:'sandbox-safeguarding'}}))await tx.safeguardingAccount.create({data:{tenantId:tenant.id,legalEntityId:legalEntity.id,accountReference:'sandbox-safeguarding',classification:'NOT_PROTECTED',currency:args.currency,status:'ACTIVE',disclosureVersion:'sandbox-only'}})
@@ -171,6 +170,8 @@ export const sportsbookResolvers={
           if(!existing)throw new Error('ONBOARDING_PROMOTIONS_PROGRESS_NOT_PENDING')
         },
       )
+      // Demo fixtures (events, markets, opening prices) for the onboarded book; each event commits on its own and a resume skips existing ones.
+      await ensureOnboardingCatalogEvents(context.prisma,applied.tenantId,context.session.itemId,appendAudit)
       // Completion is recorded only after every admitted local stage has committed; a failure above
       // leaves the operator in_progress so the Onboarding screen offers an exact resume.
       await context.prisma.user.updateMany({where:{id:context.session.itemId,tenantId:applied.tenantId},data:{onboardingStatus:'completed'}})

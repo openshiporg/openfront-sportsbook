@@ -1,14 +1,14 @@
 {
-  "version": 1,
+  "version": 2,
   "operator": {
-    "slug": "openfront-sandbox",
-    "operatorName": "Openfront Sandbox Operator",
-    "brandName": "Openfront Sportsbook",
+    "slug": "northline",
+    "operatorName": "Northline Gaming",
+    "brandName": "Northline Sports",
     "domain": "sportsbook.local",
     "currency": "USD",
     "currencyExponent": 2,
     "jurisdictionCode": "SANDBOX",
-    "timezone": "UTC"
+    "timezone": "America/New_York"
   },
   "dependencyOrder": [
     "OPERATOR",
@@ -19,5 +19,183 @@
     "LICENSING",
     "CERTIFICATION"
   ],
-  "externalGates": ["LICENSING", "CERTIFICATION"]
+  "externalGates": ["LICENSING", "CERTIFICATION"],
+  "catalog": {
+    "region": { "key": "north-america", "name": "North America", "countryCodes": ["US", "CA"] },
+    "sports": [
+      {
+        "key": "football",
+        "name": "Football",
+        "competitions": [
+          {
+            "key": "northern-gridiron-conference",
+            "name": "Northern Gridiron Conference",
+            "season": { "key": "ngc-2026", "name": "2026 Regular Season" },
+            "events": [
+              {
+                "key": "ngc-halifax-portland",
+                "name": "Halifax Ironclads v Portland Pioneers",
+                "startsInDays": 2,
+                "startTimeUtc": "17:00",
+                "markets": [
+                  { "definition": "moneyline", "name": "Moneyline", "selections": [{ "key": "home", "label": "Halifax Ironclads", "odds": "1.65" }, { "key": "away", "label": "Portland Pioneers", "odds": "2.30" }] },
+                  { "definition": "spread", "name": "Point spread", "line": "3.5", "selections": [{ "key": "home", "label": "Halifax Ironclads -3.5", "odds": "1.91" }, { "key": "away", "label": "Portland Pioneers +3.5", "odds": "1.91" }] },
+                  { "definition": "total", "name": "Total points", "line": "44.5", "selections": [{ "key": "over", "label": "Over 44.5", "odds": "1.87" }, { "key": "under", "label": "Under 44.5", "odds": "1.95" }] }
+                ]
+              },
+              {
+                "key": "ngc-duluth-erie",
+                "name": "Duluth Lumberjacks v Erie Mariners",
+                "startsInDays": 2,
+                "startTimeUtc": "20:25",
+                "markets": [
+                  { "definition": "moneyline", "name": "Moneyline", "selections": [{ "key": "home", "label": "Duluth Lumberjacks", "odds": "2.05" }, { "key": "away", "label": "Erie Mariners", "odds": "1.80" }] },
+                  { "definition": "spread", "name": "Point spread", "line": "1.5", "selections": [{ "key": "home", "label": "Duluth Lumberjacks +1.5", "odds": "1.91" }, { "key": "away", "label": "Erie Mariners -1.5", "odds": "1.91" }] },
+                  { "definition": "total", "name": "Total points", "line": "41.5", "selections": [{ "key": "over", "label": "Over 41.5", "odds": "1.91" }, { "key": "under", "label": "Under 41.5", "odds": "1.91" }] }
+                ]
+              },
+              {
+                "key": "ngc-kingston-bangor",
+                "name": "Kingston Stags v Bangor Blizzard",
+                "startsInDays": 3,
+                "startTimeUtc": "00:20",
+                "markets": [
+                  { "definition": "moneyline", "name": "Moneyline", "selections": [{ "key": "home", "label": "Kingston Stags", "odds": "1.40" }, { "key": "away", "label": "Bangor Blizzard", "odds": "3.00" }] },
+                  { "definition": "spread", "name": "Point spread", "line": "7.5", "selections": [{ "key": "home", "label": "Kingston Stags -7.5", "odds": "1.95" }, { "key": "away", "label": "Bangor Blizzard +7.5", "odds": "1.87" }] }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "soccer",
+        "name": "Soccer",
+        "competitions": [
+          {
+            "key": "harbor-league",
+            "name": "Harbor League",
+            "season": { "key": "harbor-2026", "name": "2026 Season" },
+            "events": [
+              {
+                "key": "harbor-kingsport-ashford",
+                "name": "Kingsport Rovers v Ashford Athletic",
+                "startsInDays": 1,
+                "startTimeUtc": "19:00",
+                "markets": [
+                  { "definition": "match-result", "name": "Match result", "selections": [{ "key": "home", "label": "Kingsport Rovers", "odds": "2.10" }, { "key": "draw", "label": "Draw", "odds": "3.40" }, { "key": "away", "label": "Ashford Athletic", "odds": "3.50" }] },
+                  { "definition": "total", "name": "Total goals", "line": "2.5", "selections": [{ "key": "over", "label": "Over 2.5", "odds": "1.95" }, { "key": "under", "label": "Under 2.5", "odds": "1.85" }] }
+                ]
+              },
+              {
+                "key": "harbor-millbrook-westhaven",
+                "name": "Millbrook City v Westhaven United",
+                "startsInDays": 3,
+                "startTimeUtc": "15:00",
+                "markets": [
+                  { "definition": "match-result", "name": "Match result", "selections": [{ "key": "home", "label": "Millbrook City", "odds": "1.75" }, { "key": "draw", "label": "Draw", "odds": "3.80" }, { "key": "away", "label": "Westhaven United", "odds": "4.50" }] },
+                  { "definition": "total", "name": "Total goals", "line": "2.5", "selections": [{ "key": "over", "label": "Over 2.5", "odds": "1.80" }, { "key": "under", "label": "Under 2.5", "odds": "2.00" }] }
+                ]
+              },
+              {
+                "key": "harbor-redcliff-portalder",
+                "name": "Redcliff Town v Port Alder FC",
+                "startsInDays": 4,
+                "startTimeUtc": "18:30",
+                "markets": [
+                  { "definition": "match-result", "name": "Match result", "selections": [{ "key": "home", "label": "Redcliff Town", "odds": "2.75" }, { "key": "draw", "label": "Draw", "odds": "3.20" }, { "key": "away", "label": "Port Alder FC", "odds": "2.60" }] },
+                  { "definition": "total", "name": "Total goals", "line": "2.5", "selections": [{ "key": "over", "label": "Over 2.5", "odds": "2.05" }, { "key": "under", "label": "Under 2.5", "odds": "1.75" }] }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "basketball",
+        "name": "Basketball",
+        "competitions": [
+          {
+            "key": "coastal-basketball-association",
+            "name": "Coastal Basketball Association",
+            "season": { "key": "cba-2026", "name": "2026–27 Season" },
+            "events": [
+              {
+                "key": "cba-bayview-granite",
+                "name": "Bayview Hawks v Granite Peaks",
+                "startsInDays": 1,
+                "startTimeUtc": "23:30",
+                "markets": [
+                  { "definition": "moneyline", "name": "Moneyline", "selections": [{ "key": "home", "label": "Bayview Hawks", "odds": "1.55" }, { "key": "away", "label": "Granite Peaks", "odds": "2.50" }] },
+                  { "definition": "spread", "name": "Point spread", "line": "5.5", "selections": [{ "key": "home", "label": "Bayview Hawks -5.5", "odds": "1.91" }, { "key": "away", "label": "Granite Peaks +5.5", "odds": "1.91" }] },
+                  { "definition": "total", "name": "Total points", "line": "221.5", "selections": [{ "key": "over", "label": "Over 221.5", "odds": "1.91" }, { "key": "under", "label": "Under 221.5", "odds": "1.91" }] }
+                ]
+              },
+              {
+                "key": "cba-riverside-summit",
+                "name": "Riverside Comets v Summit Falcons",
+                "startsInDays": 2,
+                "startTimeUtc": "00:00",
+                "markets": [
+                  { "definition": "moneyline", "name": "Moneyline", "selections": [{ "key": "home", "label": "Riverside Comets", "odds": "1.95" }, { "key": "away", "label": "Summit Falcons", "odds": "1.87" }] },
+                  { "definition": "spread", "name": "Point spread", "line": "1.5", "selections": [{ "key": "home", "label": "Riverside Comets +1.5", "odds": "1.91" }, { "key": "away", "label": "Summit Falcons -1.5", "odds": "1.91" }] },
+                  { "definition": "total", "name": "Total points", "line": "214.5", "selections": [{ "key": "over", "label": "Over 214.5", "odds": "1.87" }, { "key": "under", "label": "Under 214.5", "odds": "1.95" }] }
+                ]
+              },
+              {
+                "key": "cba-harborview-mesa",
+                "name": "Harborview Tides v Mesa Coyotes",
+                "startsInDays": 4,
+                "startTimeUtc": "02:00",
+                "markets": [
+                  { "definition": "moneyline", "name": "Moneyline", "selections": [{ "key": "home", "label": "Harborview Tides", "odds": "2.40" }, { "key": "away", "label": "Mesa Coyotes", "odds": "1.60" }] },
+                  { "definition": "total", "name": "Total points", "line": "226.5", "selections": [{ "key": "over", "label": "Over 226.5", "odds": "1.91" }, { "key": "under", "label": "Under 226.5", "odds": "1.91" }] }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "tennis",
+        "name": "Tennis",
+        "competitions": [
+          {
+            "key": "lakeside-open",
+            "name": "Lakeside Open",
+            "season": { "key": "lakeside-2026", "name": "2026 Tournament" },
+            "events": [
+              {
+                "key": "lakeside-moreau-lindqvist",
+                "name": "Elias Moreau v Kasper Lindqvist",
+                "startsInDays": 1,
+                "startTimeUtc": "16:00",
+                "markets": [
+                  { "definition": "moneyline", "name": "Match winner", "selections": [{ "key": "home", "label": "Elias Moreau", "odds": "1.72" }, { "key": "away", "label": "Kasper Lindqvist", "odds": "2.10" }] }
+                ]
+              },
+              {
+                "key": "lakeside-varga-aalto",
+                "name": "Tomas Varga v Henrik Aalto",
+                "startsInDays": 1,
+                "startTimeUtc": "18:00",
+                "markets": [
+                  { "definition": "moneyline", "name": "Match winner", "selections": [{ "key": "home", "label": "Tomas Varga", "odds": "2.35" }, { "key": "away", "label": "Henrik Aalto", "odds": "1.58" }] }
+                ]
+              },
+              {
+                "key": "lakeside-okafor-brandt",
+                "name": "Nia Okafor v Lena Brandt",
+                "startsInDays": 2,
+                "startTimeUtc": "15:30",
+                "markets": [
+                  { "definition": "moneyline", "name": "Match winner", "selections": [{ "key": "home", "label": "Nia Okafor", "odds": "1.48" }, { "key": "away", "label": "Lena Brandt", "odds": "2.65" }] }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
 }
