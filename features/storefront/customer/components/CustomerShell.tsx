@@ -82,7 +82,7 @@ export function CustomerShell({
             {menuOpen ? <X aria-hidden="true" className="size-5" /> : <Menu aria-hidden="true" className="size-5" />}
           </button>
           <Link href="/" data-testid="nav-store-link" className="flex min-w-0 flex-1 items-center gap-2.5 md:flex-none">
-            <span style={brandFilter} aria-hidden="true" dangerouslySetInnerHTML={{ __html: logoSvg }} className="h-7 w-6 shrink-0 [&>svg]:block [&>svg]:h-full [&>svg]:w-full" />
+            <span style={brandFilter} aria-hidden="true" dangerouslySetInnerHTML={{ __html: logoSvg }} className="box-content h-6 w-5 shrink-0 rounded-[2px] bg-white px-1 py-0.5 [&>svg]:block [&>svg]:h-full [&>svg]:w-full" />
             <span className="min-w-0 truncate font-sb-display text-xl font-bold uppercase leading-none tracking-wide sm:text-2xl">{brandName}</span>
           </Link>
           <nav className="ml-4 hidden md:block" aria-label="Primary navigation">
@@ -108,7 +108,7 @@ export function CustomerShell({
                 </button>
               </>
             ) : (
-              <Link href="/account/auth" style={brandFilter} className={pillClass('primary', 'sm')}>Sign in</Link>
+              <Link href="/account/auth" className={cn(pillClass('raised', 'sm'), 'border-white bg-white text-sb-brand hover:bg-white/90')}>Sign in</Link>
             )}
           </div>
           <nav id="customer-navigation" hidden={!menuOpen} className="w-full border-t border-white/10 pb-2 pt-3 md:hidden" aria-label="Mobile navigation">
@@ -117,7 +117,7 @@ export function CustomerShell({
             </div>
           </nav>
         </div>
-        <div aria-hidden="true" style={brandFilter} className="h-1 bg-[linear-gradient(90deg,var(--color-sb-brand)_0_38%,transparent_38%_40%,var(--color-sb-brand)_40%_62%,transparent_62%)] opacity-90" />
+        <div aria-hidden="true" style={brandFilter} className="h-1 bg-[linear-gradient(90deg,#fff_0_38%,transparent_38%_40%,#fff_40%_62%,transparent_62%)] opacity-40" />
       </header>
 
       {current ? (
