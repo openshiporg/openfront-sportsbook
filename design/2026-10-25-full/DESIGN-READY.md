@@ -56,12 +56,9 @@ Brief: `~/Code/Euler/state/briefs/batches-2-6-full-redesign-2026-10-25.md`. The 
 
 - `before/` and `after/`: desktop 1440 and phone 390 for every operator page (MFA step-up through `/dashboard/platform/security`), plus `/`, `/sports`, `/promotions`, `/betslip`, `/account/bets` and `/account/wallet`.
 - The after shots are WebKit captures.
-- **The customer-site after shots show the stale CSS.** Recapture once `ca3d7d5` is pushed and deployed.
 
 ## Open
 
-- Push `ca3d7d5`, then recapture the customer site.
-- No finish-reviewer pass or DESIGN.md yet.
 
 ## Finish review (impeccable-finish-reviewer, fresh context)
 
