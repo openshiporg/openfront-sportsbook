@@ -64,7 +64,7 @@ export async function ProvidersScreen() {
               ? <div key="health"><StatusBadge value={latest.status} /><p className="mt-1 text-xs text-muted-foreground">{(latest.details as any)?.source === 'sandbox-probe' ? 'Simulated probe' : String((latest.details as any)?.source ?? 'Unlabeled sample')} · <Mono>{dateTime(latest.checkedAt)}{typeof latest.latencyMs === 'number' ? ` · ${latest.latencyMs}ms` : ''}</Mono></p></div>
               : <span key="health" className="text-xs">Unmeasured</span>,
           <div key="cert"><StatusBadge value={item.certificationStatus} /><p className="mt-1 text-xs text-muted-foreground">{run ? <Mono>{`${run.passed}/${run.passed + run.failed} · ${shortId(run.id)}`}</Mono> : 'No run'}</p></div>,
-          <span key="cap" className="break-all font-mono text-xs">{JSON.stringify(item.capabilities)}</span>,
+          <span key="cap" className="break-all tabular-nums text-xs">{JSON.stringify(item.capabilities)}</span>,
         ],
       }))}
       emptyTitle="No providers"

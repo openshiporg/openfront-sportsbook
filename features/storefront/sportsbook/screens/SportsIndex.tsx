@@ -20,12 +20,12 @@ export function SportsIndex({ sports }: { sports: SportsIndexEntry[] }) {
         {sports.map(sport => <Card key={sport.key} className="overflow-hidden">
           <Link href={`/sports/${encodeURIComponent(sport.key)}`} className="flex items-center justify-between gap-3 bg-sb-night px-5 py-4 text-white hover:bg-sb-board">
             <span className="min-w-0 truncate font-sb-display text-2xl font-bold uppercase tracking-wide">{sport.events > 0 ? <Dot tone="win" /> : <Dot tone="off" className="bg-white/40" />}{sport.name}</span>
-            <span className="shrink-0 font-sb-mono text-xs text-sb-flood">{sport.events} event{sport.events === 1 ? '' : 's'}</span>
+            <span className="shrink-0 tabular-nums text-xs text-sb-flood">{sport.events} event{sport.events === 1 ? '' : 's'}</span>
           </Link>
           {sport.competitions.length === 0 ? <p className="px-5 py-4 text-sm text-sb-mute">No competitions</p> : <ul className="divide-y divide-sb-line">
             {sport.competitions.map(competition => <li key={competition.slug}><Link href={`/sports/${encodeURIComponent(sport.key)}/${encodeURIComponent(competition.slug)}`} className="flex items-center justify-between gap-3 px-5 py-3 text-sm hover:bg-sb-paper">
               <span className="min-w-0 truncate font-semibold">{competition.name}</span>
-              <span className="shrink-0 font-sb-mono text-xs text-sb-mute">{competition.events}</span>
+              <span className="shrink-0 tabular-nums text-xs text-sb-mute">{competition.events}</span>
             </Link></li>)}
           </ul>}
         </Card>)}

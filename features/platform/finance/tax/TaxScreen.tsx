@@ -83,10 +83,10 @@ export async function TaxScreen({ searchParams }: { searchParams?: PlatformSearc
 
     <section aria-labelledby="tax-unassessed" className="min-w-0 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="tax-unassessed" className="text-sm font-semibold">{unassessedTotal ? <StatusDot tone="wait" /> : null}Not yet assessed<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{unassessedTotal}</span></h2>
+        <h2 id="tax-unassessed" className="text-sm font-semibold">{unassessedTotal ? <StatusDot tone="wait" /> : null}Not yet assessed<span className="ml-2 tabular-nums text-xs font-normal  text-muted-foreground">{unassessedTotal}</span></h2>
         {unassessedPages > 1 ? <Track label="Not yet assessed pages">
           {unassessedPage > 1 ? <PillLink size="sm" href={listHref({ status, page, upage: unassessedPage - 1 })}>Previous</PillLink> : null}
-          <span className="px-2 font-mono text-xs tabular-nums text-muted-foreground">{unassessedPage} / {unassessedPages}</span>
+          <span className="px-2 tabular-nums text-xs  text-muted-foreground">{unassessedPage} / {unassessedPages}</span>
           {unassessedPage < unassessedPages ? <PillLink size="sm" href={listHref({ status, page, upage: unassessedPage + 1 })}>Next</PillLink> : null}
         </Track> : null}
       </div>
@@ -101,7 +101,7 @@ export async function TaxScreen({ searchParams }: { searchParams?: PlatformSearc
             { name: "idempotencyKey", label: "Assessment request key", type: "hidden", defaultValue: `tax:${crypto.randomUUID()}` },
           ]}
           submitLabel="Assess tax" successMessage="Tax assessment recorded." />)}
-      </div> : <div className="rounded-xl border bg-card"><EmptyState title="Every current settlement is assessed" /></div>}
+      </div> : <div className="rounded-[4px] border bg-card"><EmptyState title="Every current settlement is assessed" /></div>}
     </section>
 
     <Track label="Assessment status">

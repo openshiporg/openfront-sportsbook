@@ -127,11 +127,11 @@ export async function ReferenceScreen({ searchParams }: { searchParams?: Platfor
     />
     <section id="create-reference" aria-labelledby="create-reference-title" className="space-y-3">
       <h2 id="create-reference-title" className="text-sm font-semibold">New {singular}</h2>
-      {createForm.parent ? <form method="get" role="search" aria-label={`Find ${createForm.parent.noun}`} className="flex flex-wrap items-center gap-2 rounded-xl border bg-card px-4 py-3">
+      {createForm.parent ? <form method="get" role="search" aria-label={`Find ${createForm.parent.noun}`} className="flex flex-wrap items-center gap-2 rounded-[4px] border bg-card px-4 py-3">
         <input type="hidden" name="type" value={type} />
         {search ? <input type="hidden" name="q" value={search} /> : null}
         <label className="sr-only" htmlFor="reference-parent-search">Find {createForm.parent.noun}</label>
-        <input id="reference-parent-search" type="search" name="parent" defaultValue={parentSearch} placeholder={`Find ${createForm.parent.noun}: name or ID`} className="h-9 min-w-0 flex-1 basis-48 rounded-full border bg-background px-4 text-sm" />
+        <input id="reference-parent-search" type="search" name="parent" defaultValue={parentSearch} placeholder={`Find ${createForm.parent.noun}: name or ID`} className="h-9 min-w-0 flex-1 basis-48 rounded-[4px] border bg-background px-4 text-sm" />
         <Track><Pill size="sm" type="submit">Find</Pill></Track>
         <Mono className="w-full text-xs text-muted-foreground">{createForm.parent.shown} of {createForm.parent.total} {createForm.parent.noun}s{parentSearch ? ` · “${parentSearch}”` : ""}</Mono>
       </form> : null}

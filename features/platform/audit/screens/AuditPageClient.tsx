@@ -45,14 +45,14 @@ export function AuditPageClient({ data }: { data: AuditPageData }) {
       tone={issues ? "alert" : undefined}
       pagination={{ page: data.page, pageSize: data.pageSize, total: data.total, hrefForPage: (next) => hrefWith(basePath, { page: next }) }}
       columns={["Action", "Target", "Actor · reason", "Recorded"]}
-      rows={data.rows.map((row) => ({ id: row.id, href: `${basePath}/${row.id}`, cells: [<span key="action" className="break-words">{row.action}</span>, <span key="target" className="break-words font-mono text-xs">{row.target}</span>, <span key="actor" className="break-words">{row.actor}</span>, <Mono key="recorded" className="text-xs">{row.recorded}</Mono>] }))}
+      rows={data.rows.map((row) => ({ id: row.id, href: `${basePath}/${row.id}`, cells: [<span key="action" className="break-words">{row.action}</span>, <span key="target" className="break-words tabular-nums text-xs">{row.target}</span>, <span key="actor" className="break-words">{row.actor}</span>, <Mono key="recorded" className="text-xs">{row.recorded}</Mono>] }))}
       emptyTitle="No audit events"
       emptyAction={<Track><PillLink size="sm" href="/dashboard/platform/approvals">Open approvals</PillLink></Track>} />
     {data.anchors ? <RecordList title="Anchors"
       tone={data.anchors.rows.some((row) => row.status === "FAILED") ? "alert" : undefined}
       description={[data.anchors.latestAnchoredAt ? `Last anchored ${data.anchors.latestAnchoredAt} · ${data.anchors.latestAnchoredCount ?? "—"} of ${data.total} events` : "", data.anchors.total > data.anchors.rows.length ? `latest ${data.anchors.rows.length} of ${data.anchors.total}` : ""].filter(Boolean).join(" · ") || undefined}
       columns={["Chain head", "Events", "Anchored", "External reference"]}
-      rows={data.anchors.rows.map((row) => ({ id: row.id, status: anchorDotStatus[row.status] ?? "UNKNOWN", cells: [<span key="head"><Mono className="break-all">{row.chainHead}</Mono><span className="mt-1 block text-xs font-normal text-foreground"><StatusDot tone={anchorTone[row.status] ?? "off"} className="mr-1.5 size-1.5 align-middle" />{row.status.toLowerCase()}</span></span>, <Mono key="count">{row.eventCount ?? "—"}</Mono>, <Mono key="anchored" className="text-xs">{row.anchored}</Mono>, <span key="ref" className="break-all font-mono text-xs">{row.externalReference}</span>] }))}
+      rows={data.anchors.rows.map((row) => ({ id: row.id, status: anchorDotStatus[row.status] ?? "UNKNOWN", cells: [<span key="head"><Mono className="break-all">{row.chainHead}</Mono><span className="mt-1 block text-xs font-normal text-foreground"><StatusDot tone={anchorTone[row.status] ?? "off"} className="mr-1.5 size-1.5 align-middle" />{row.status.toLowerCase()}</span></span>, <Mono key="count">{row.eventCount ?? "—"}</Mono>, <Mono key="anchored" className="text-xs">{row.anchored}</Mono>, <span key="ref" className="break-all tabular-nums text-xs">{row.externalReference}</span>] }))}
       emptyTitle="No anchors" /> : <WorkflowNote title="Anchors could not be read" tone="warning" />}
   </>;
 }

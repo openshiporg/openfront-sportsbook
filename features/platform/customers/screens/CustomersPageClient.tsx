@@ -54,7 +54,7 @@ export function CustomersPageClient({ data }: { data: CustomersPageData }) {
         href: `${basePath}/${player.id}`,
         status: player.restricted ? "RESTRICTED" : player.status ?? undefined,
         cells: [
-          <span key="subject" className="break-all">{player.subject}<span className="block font-mono text-xs font-normal text-muted-foreground">{player.reference} · {player.createdAt}</span></span>,
+          <span key="subject" className="break-all">{player.subject}<span className="block tabular-nums text-xs font-normal text-muted-foreground">{player.reference} · {player.createdAt}</span></span>,
           <StatusBadge key="kyc" value={player.kycStatus} />,
           <span key="state" className="flex flex-wrap gap-x-3 gap-y-1"><StatusBadge value={player.status} />{player.restricted ? <StatusBadge value="RESTRICTED" /> : null}</span>,
           <span key="risk" className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 md:justify-start"><StatusBadge value={player.riskBand} /><Mono className="text-xs">{player.verificationCases} KYC · {player.amlCases} AML</Mono></span>,

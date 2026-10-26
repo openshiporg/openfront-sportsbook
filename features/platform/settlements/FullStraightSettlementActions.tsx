@@ -51,22 +51,22 @@ export function FullStraightSettlementActions({ tenantId, actorId, plans }: { te
 
   return <section className="space-y-3" aria-labelledby="settlement-ready">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h2 id="settlement-ready" className="text-sm font-semibold"><StatusDot tone={pending || blocked ? 'alert' : plans.length ? 'wait' : 'ok'} />Ready to settle<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{plans.length}</span></h2>
+      <h2 id="settlement-ready" className="text-sm font-semibold"><StatusDot tone={pending || blocked ? 'alert' : plans.length ? 'wait' : 'ok'} />Ready to settle<span className="ml-2 tabular-nums text-xs font-normal  text-muted-foreground">{plans.length}</span></h2>
       <Track><PillLink size="sm" variant="flat" href="/dashboard/platform/configuration">House rules</PillLink><PillLink size="sm" variant="flat" href="/dashboard/platform/grading">Grading</PillLink></Track>
     </div>
-    {pending ? <div role="status" className="min-w-0 rounded-xl bg-amber-50 px-4 py-3 text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-100 dark:ring-amber-900/50">
+    {pending ? <div role="status" className="min-w-0 rounded-[4px] bg-amber-50 px-4 py-3 text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-100 dark:ring-amber-900/50">
       <p className="break-all text-sm font-medium"><StatusDot tone="wait" />Unresolved attempt · <Mono>{pending.wagerId}</Mono></p>
-      <p className="mt-1 break-all pl-4 font-mono text-xs opacity-80">plan {pending.planHash} · key {pending.idempotencyKey}</p>
+      <p className="mt-1 break-all pl-4 tabular-nums text-xs opacity-80">plan {pending.planHash} · key {pending.idempotencyKey}</p>
       <div className="mt-3 pl-4"><Track><Pill size="sm" variant="primary" onClick={() => void send()} disabled={busy || blocked}>{busy ? 'Resolving…' : 'Retry original settlement'}</Pill><a className={pillClass('flat', 'sm')} href={`/dashboard/platform/settlements/${encodeURIComponent(pending.wagerId)}`}>Reconcile history</a></Track></div>
     </div> : null}
-    {plans.length ? <ul className="min-w-0 divide-y overflow-hidden rounded-xl border bg-card">{plans.map(plan => <li key={plan.wagerId} className="flex min-w-0 flex-wrap items-center justify-between gap-3 px-4 py-3">
+    {plans.length ? <ul className="min-w-0 divide-y overflow-hidden rounded-[4px] border bg-card">{plans.map(plan => <li key={plan.wagerId} className="flex min-w-0 flex-wrap items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0 flex-1 basis-64">
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-medium"><Mono className="break-all">{plan.wagerId}</Mono><StatusBadge value={plan.outcome} /></p>
-        <p className="mt-1 font-mono text-sm tabular-nums">{plan.stakeMinor} → <span className="font-semibold">{plan.payoutMinor}</span> <span className="text-xs text-muted-foreground">minor {plan.currency} · exp {plan.currencyExponent}</span></p>
-        <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">result {plan.resultVersionId} · rule {plan.ruleVersion} · plan {plan.planHash}</p>
+        <p className="mt-1 tabular-nums text-sm ">{plan.stakeMinor} → <span className="font-semibold">{plan.payoutMinor}</span> <span className="text-xs text-muted-foreground">minor {plan.currency} · exp {plan.currencyExponent}</span></p>
+        <p className="mt-1 break-all tabular-nums text-[11px] text-muted-foreground">result {plan.resultVersionId} · rule {plan.ruleVersion} · plan {plan.planHash}</p>
       </div>
       <Track><Pill size="sm" variant="primary" onClick={() => void send(plan)} disabled={!loaded || busy || blocked || Boolean(pending)}>Settle reviewed {plan.outcome}</Pill></Track>
-    </li>)}</ul> : <p role="status" className="rounded-xl bg-muted/60 px-4 py-3 text-sm font-medium"><StatusDot tone="off" />No READY plans</p>}
+    </li>)}</ul> : <p role="status" className="rounded-[4px] bg-muted/60 px-4 py-3 text-sm font-medium"><StatusDot tone="off" />No READY plans</p>}
     <p role="status" aria-live="polite" className="break-words text-sm empty:hidden">{message}</p>
   </section>
 }

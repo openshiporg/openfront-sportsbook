@@ -10,7 +10,7 @@ export function AccountPageHeader({ title, tone, meta, aside }: { title: string;
 }
 
 export function LoadingPanel({ label = 'Loading' }: { label?: string }) {
-  return <div role="status" className="mt-6 flex min-h-40 items-center justify-center rounded-2xl bg-sb-card text-sm text-sb-mute ring-1 ring-sb-line">
+  return <div role="status" className="mt-6 flex min-h-40 items-center justify-center rounded-[2px] bg-sb-card text-sm text-sb-mute ring-1 ring-sb-line">
     <LoaderCircle aria-hidden="true" className="mr-2 size-5 animate-spin motion-reduce:animate-none" />{label}
   </div>
 }
@@ -19,16 +19,16 @@ export function LoadingPanel({ label = 'Loading' }: { label?: string }) {
 export const isClosedError = (error: CustomerApiError | null | undefined) => Boolean(error && ['SANDBOX_DISABLED', 'SANDBOX_ISOLATION_REQUIRED'].includes(error.code))
 
 export function ClosedPanel() {
-  return <div role="status" className="mt-6 rounded-2xl bg-sb-night p-6 text-white sm:p-8">
+  return <div role="status" className="mt-6 rounded-[2px] bg-sb-night p-6 text-white sm:p-8">
     <p className="font-sb-display text-3xl font-bold uppercase leading-none tracking-wide"><Dot tone="off" className="bg-white/40" />Betting closed</p>
-    <p className="mt-2 font-sb-mono text-xs uppercase tracking-wider text-white/50">Accounts, prices and bets are unavailable</p>
+    <p className="mt-2 text-xs  text-white/80">Accounts, prices and bets are unavailable</p>
   </div>
 }
 
 export function ErrorPanel({ error, retry }: { error: CustomerApiError; retry: () => void }) {
   if (error.status === 401) return <AuthenticationRequired />
   if (isClosedError(error)) return <ClosedPanel />
-  return <div role="alert" className="mt-6 rounded-2xl bg-red-50 p-5 text-sm text-red-950 ring-1 ring-red-200">
+  return <div role="alert" className="mt-6 rounded-[2px] bg-red-50 p-5 text-sm text-red-950 ring-1 ring-red-200">
     <p className="font-semibold"><Dot tone="alert" />Couldn’t load this page</p>
     <div className="mt-4"><Track><Pill size="sm" onClick={retry}><RefreshCw aria-hidden="true" />Retry</Pill></Track></div>
   </div>
@@ -48,7 +48,7 @@ export function AuthenticationRequired() {
       setCreating(false)
     }
   }
-  return <div className="mt-6 overflow-hidden rounded-2xl bg-sb-card ring-1 ring-sb-line">
+  return <div className="mt-6 overflow-hidden rounded-[2px] bg-sb-card ring-1 ring-sb-line">
     <div className="bg-sb-night px-5 py-5 text-white sm:px-6">
       <p className="font-sb-display text-3xl font-bold uppercase leading-none tracking-wide"><Dot tone="off" className="bg-white/40" />Signed out</p>
     </div>

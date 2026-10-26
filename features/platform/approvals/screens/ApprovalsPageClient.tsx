@@ -58,7 +58,7 @@ const decideMutation = `mutation($approvalId:ID!,$approve:Boolean!,$reason:Strin
 function PendingApproval({ item }: { item: PendingApprovalItem }) {
   const hasBody = item.body !== null;
   const state = item.expired ? 'EXPIRED' : item.status;
-  return <article id={`approval-${item.id}`} className="min-w-0 overflow-hidden rounded-xl border bg-card text-card-foreground">
+  return <article id={`approval-${item.id}`} className="min-w-0 overflow-hidden rounded-[4px] border bg-card text-card-foreground">
     <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 border-b px-4 py-3">
       <div className="min-w-0">
         <h3 className="break-words font-semibold capitalize"><StatusDot tone={item.self ? 'off' : item.expired ? 'alert' : 'wait'} />{item.title.toLowerCase()}</h3>
@@ -68,8 +68,8 @@ function PendingApproval({ item }: { item: PendingApprovalItem }) {
     </header>
     <div className="grid min-w-0 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
       <div className="min-w-0 space-y-3">
-        <DetailGrid items={[{ label: 'Expires', value: <Mono>{item.expiresAt}</Mono> }, { label: 'Reason', value: item.reason }, { label: 'Action', value: <span className="break-all font-mono text-xs">{item.action}</span> }, { label: 'Fingerprint', value: <code className="break-all font-mono text-xs">{item.payloadHash}</code> }]} />
-        {hasBody ? <div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Submitted body</p><pre className="mt-1 max-h-80 overflow-auto rounded-lg bg-muted p-3 font-mono text-xs">{item.body}</pre></div> : <WorkflowNote title="Body not recorded" tone="warning">Reject and ask for resubmission.</WorkflowNote>}
+        <DetailGrid items={[{ label: 'Expires', value: <Mono>{item.expiresAt}</Mono> }, { label: 'Reason', value: item.reason }, { label: 'Action', value: <span className="break-all tabular-nums text-xs">{item.action}</span> }, { label: 'Fingerprint', value: <code className="break-all tabular-nums text-xs">{item.payloadHash}</code> }]} />
+        {hasBody ? <div className="min-w-0"><p className="text-xs font-medium text-muted-foreground">Submitted body</p><pre className="mt-1 max-h-80 overflow-auto rounded-[4px] bg-muted p-3 tabular-nums text-xs">{item.body}</pre></div> : <WorkflowNote title="Body not recorded" tone="warning">Reject and ask for resubmission.</WorkflowNote>}
       </div>
       <div className="min-w-0">
     <MutationForm compact requireReview title="Decision" mutation={decideMutation} fields={[{ name: 'approvalId', label: 'Approval', type: 'hidden', defaultValue: item.id }, { name: 'payloadHash', label: 'Fingerprint', type: 'hidden', defaultValue: item.payloadHash }, { name: 'approve', label: 'Decision', type: 'select', transform: 'boolean', options: hasBody ? [{ label: 'Approve this exact body', value: 'true' }, { label: 'Reject', value: 'false' }] : [{ label: 'Reject', value: 'false' }] }, { name: 'reason', label: 'Decision reason', type: 'textarea', placeholder: 'What you reviewed and why' }]} submitLabel="Record independent decision" successMessage="Decision recorded." disabledReason={item.self ? 'Your request. Another approver must decide.' : item.expired ? 'Expired. Ask for resubmission.' : undefined} />
@@ -83,9 +83,9 @@ export function ApprovalsPageClient({ data }: { data: ApprovalsPageData }) {
   const params = { status: data.status, page: data.historyPage, ppage: data.pendingPage };
   return <>
     <section className="space-y-3" aria-labelledby="pending-approvals">
-      <h2 id="pending-approvals" className="text-sm font-semibold"><StatusDot tone={data.pendingTotal > 0 ? 'wait' : 'ok'} />Awaiting decision<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{data.pendingTotal}</span></h2>
-      {data.pending.length === 0 ? <div className="rounded-xl border bg-card"><EmptyState title="No pending requests" action={<Track><PillLink size="sm" href="/dashboard/platform/audit">Audit log</PillLink></Track>} /></div> : data.pending.map((item) => <PendingApproval key={item.id} item={item} />)}
-      {pendingPages > 1 ? <nav aria-label="Pending request pages" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-2.5"><Track>{data.pendingPage > 1 ? <PillLink size="sm" href={hrefWith(basePath, { ...params, ppage: data.pendingPage - 1 })}>Previous</PillLink> : <span aria-disabled="true" className="inline-flex h-8 items-center px-3 text-xs text-muted-foreground/60">Previous</span>}{data.pendingPage < pendingPages ? <PillLink size="sm" href={hrefWith(basePath, { ...params, ppage: data.pendingPage + 1 })}>Next</PillLink> : <span aria-disabled="true" className="inline-flex h-8 items-center px-3 text-xs text-muted-foreground/60">Next</span>}</Track><Mono className="text-xs text-muted-foreground">{data.pendingPage} / {pendingPages}</Mono></nav> : null}
+      <h2 id="pending-approvals" className="text-sm font-semibold"><StatusDot tone={data.pendingTotal > 0 ? 'wait' : 'ok'} />Awaiting decision<span className="ml-2 tabular-nums text-xs font-normal  text-muted-foreground">{data.pendingTotal}</span></h2>
+      {data.pending.length === 0 ? <div className="rounded-[4px] border bg-card"><EmptyState title="No pending requests" action={<Track><PillLink size="sm" href="/dashboard/platform/audit">Audit log</PillLink></Track>} /></div> : data.pending.map((item) => <PendingApproval key={item.id} item={item} />)}
+      {pendingPages > 1 ? <nav aria-label="Pending request pages" className="flex flex-wrap items-center justify-between gap-3 rounded-[4px] border bg-card px-4 py-2.5"><Track>{data.pendingPage > 1 ? <PillLink size="sm" href={hrefWith(basePath, { ...params, ppage: data.pendingPage - 1 })}>Previous</PillLink> : <span aria-disabled="true" className="inline-flex h-8 items-center px-3 text-xs text-muted-foreground/60">Previous</span>}{data.pendingPage < pendingPages ? <PillLink size="sm" href={hrefWith(basePath, { ...params, ppage: data.pendingPage + 1 })}>Next</PillLink> : <span aria-disabled="true" className="inline-flex h-8 items-center px-3 text-xs text-muted-foreground/60">Next</span>}</Track><Mono className="text-xs text-muted-foreground">{data.pendingPage} / {pendingPages}</Mono></nav> : null}
     </section>
     <MetricGrid items={[
       { label: 'Pending', value: data.pendingTotal, tone: data.pendingTotal > 0 ? 'wait' : 'ok' },
@@ -98,8 +98,8 @@ export function ApprovalsPageClient({ data }: { data: ApprovalsPageData }) {
       action={<ListFilters filters={[{ key: "status", label: "State", options: data.statuses.map((value) => ({ label: value.toLowerCase(), value })) }]} />}
       columns={['Request', 'Action', 'Actors', 'State']}
       rows={data.history.map((item) => ({ id: item.id, status: item.status ?? undefined, cells: [
-        <span key="request" className="inline-block min-w-0 align-top"><span className="block font-mono font-semibold">{item.reference}</span><span className="block break-all font-mono text-xs font-normal text-muted-foreground">{item.payloadHash}</span></span>,
-        <div key="action"><p className="max-w-md break-all font-mono text-xs">{item.action}</p><p className="text-xs text-muted-foreground">{item.createdAt}</p></div>,
+        <span key="request" className="inline-block min-w-0 align-top"><span className="block tabular-nums font-semibold">{item.reference}</span><span className="block break-all tabular-nums text-xs font-normal text-muted-foreground">{item.payloadHash}</span></span>,
+        <div key="action"><p className="max-w-md break-all tabular-nums text-xs">{item.action}</p><p className="text-xs text-muted-foreground">{item.createdAt}</p></div>,
         <div key="actors"><p>Requester {item.requester}</p><p className="text-xs text-muted-foreground">Approver {item.approver}</p>{item.applied ? <p className="text-xs text-muted-foreground">{item.applied}</p> : null}</div>,
         <span key="state" className="flex flex-wrap gap-2"><StatusBadge value={item.status} />{item.consumed ? <StatusBadge value="APPLIED" /> : item.approvedButExpired ? <StatusBadge value="EXPIRED" /> : null}</span>,
       ] }))}

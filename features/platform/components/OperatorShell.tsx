@@ -98,10 +98,10 @@ export function OperatorShell({
       <div className="flex flex-wrap items-end justify-between gap-3 px-4 pt-4 md:px-6 md:pt-6">
         <div className="min-w-0 max-w-3xl">
           <h1 id="platform-page-title" tabIndex={-1} className="break-words text-2xl font-semibold tracking-tight text-gray-900 outline-none dark:text-gray-50">{tone ? <StatusDot tone={tone} /> : null}{title}</h1>
-          {meta ? <p className="mt-1 font-mono text-xs tabular-nums text-muted-foreground">{meta}</p> : null}
+          {meta ? <p className="mt-1 tabular-nums text-xs  text-muted-foreground">{meta}</p> : null}
         </div>
         {tenantName ? (
-          <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground ring-1 ring-inset ring-black/5 dark:ring-white/5">
+          <span className="inline-flex items-center rounded-[4px] bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground ring-1 ring-inset ring-black/5 dark:ring-white/5">
             <span className="sr-only">Operator: </span>
             <StatusDot tone="ok" className="mr-1.5 size-1.5 align-middle" />
             {tenantName}
@@ -130,7 +130,7 @@ export async function TenantRequired() {
     ? state.canSetUp ? "Complete operator setup to create your tenant." : "Ask a tenant administrator to admit you to their operator."
     : copy.body;
   return (
-    <section role="status" className="rounded-xl bg-amber-50 px-4 py-4 text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-100 dark:ring-amber-900/50">
+    <section role="status" className="rounded-[4px] bg-amber-50 px-4 py-4 text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-100 dark:ring-amber-900/50">
       <h2 className="font-semibold"><StatusDot tone="wait" />{copy.title}</h2>
       <p className="mt-0.5 pl-4 text-sm opacity-80">{body}</p>
       {state.kind === "signed_out" || state.kind === "step_up_required" || (state.kind === "unassigned" && state.canSetUp) || state.kind === "service_unavailable" ? (
@@ -149,7 +149,7 @@ export async function TenantRequired() {
 
 export function ExternalGateNotice() {
   return (
-    <aside role="status" className="rounded-xl bg-muted/60 px-4 py-3 text-sm">
+    <aside role="status" className="rounded-[4px] bg-muted/60 px-4 py-3 text-sm">
       <p className="font-medium"><StatusDot tone="wait" />Not approved for real-money operation</p>
       <p className="mt-0.5 pl-4 text-xs text-muted-foreground">Licence, contracted providers, jurisdiction policy and certification required</p>
     </aside>

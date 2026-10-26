@@ -71,7 +71,7 @@ export async function NotificationsScreen({ searchParams }: { searchParams?: Pla
     tone={tone}
     meta={`${failed} failed · ${pending} pending · ${sentDay} sent 24h${channel ? ` · ${channelLabels[channel].toLowerCase()}` : ""}`}
   >
-    <Track label="Filter by channel" className="rounded-2xl">
+    <Track label="Filter by channel" className="rounded-[4px]">
       <PillLink size="sm" variant="flat" href={href({ status })} current={!channel}>All</PillLink>
       {channels.map((value) => <PillLink key={value} size="sm" variant="flat" href={href({ channel: value, status })} current={channel === value}>{channelLabels[value]}</PillLink>)}
     </Track>
@@ -83,7 +83,7 @@ export async function NotificationsScreen({ searchParams }: { searchParams?: Pla
     <RecordList
       title={`${statusLabels[status]} notifications`}
       tone={status === "failed" && failed ? "alert" : undefined}
-      action={<Track label="Filter by state" className="rounded-2xl">{statuses.map((value) => <PillLink key={value} size="sm" variant="flat" href={href({ channel, status: value })} current={value === status}>{statusLabels[value]}</PillLink>)}</Track>}
+      action={<Track label="Filter by state" className="rounded-[4px]">{statuses.map((value) => <PillLink key={value} size="sm" variant="flat" href={href({ channel, status: value })} current={value === status}>{statusLabels[value]}</PillLink>)}</Track>}
       columns={["Recipient", "Template", "Channel · locale", "State", "Sent", "Reference"]}
       rows={rows.map((item: any) => ({
         id: item.id,

@@ -97,7 +97,7 @@ export async function CustomerDetailScreen({ playerId }: { playerId: string }) {
     </section>
 
     <section className="min-w-0 space-y-3">
-      <h2 className="text-sm font-semibold">Pending decisions<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{pendingCases.length}</span></h2>
+      <h2 className="text-sm font-semibold">Pending decisions<span className="ml-2 tabular-nums text-xs font-normal  text-muted-foreground">{pendingCases.length}</span></h2>
       {pendingCases.length
         ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{pendingCases.map((item: any) => <MutationForm key={item.id} compact title={`${item.type} · ${shortId(item.id)}`} requireReview mutation={decideVerification} fields={[{ name: "caseId", label: "Case", type: "hidden", defaultValue: item.id }, { name: "decision", label: "Decision", type: "select", options: [{ label: "Approve", value: "APPROVED" }, { label: "Reject", value: "REJECTED" }] }, { name: "reason", label: "Decision reason" }]} submitLabel="Record decision" successMessage="Verification decision recorded." disabledReason={disabledReason} />)}</div>
         : <WorkflowNote title="No pending verification" />}
@@ -131,7 +131,7 @@ export async function CustomerDetailScreen({ playerId }: { playerId: string }) {
           return {
             id: account.id,
             cells: [
-              <span key="wallet"><Mono>{account.currency}</Mono><span className="block break-all font-mono text-xs font-normal text-muted-foreground">{account.id}</span></span>,
+              <span key="wallet"><Mono>{account.currency}</Mono><span className="block break-all tabular-nums text-xs font-normal text-muted-foreground">{account.id}</span></span>,
               projection ? <Mono key="available">{money(projection.availableMinor, account.currency)}</Mono> : "Unknown (no projection)",
               projection ? <Mono key="posted">{money(projection.postedMinor, account.currency)} / {money(projection.pendingMinor, account.currency)}</Mono> : "—",
               projection ? <Mono key="asof" className="text-xs">{dateTime(projection.asOf)} · v{projection.version}</Mono> : "—",

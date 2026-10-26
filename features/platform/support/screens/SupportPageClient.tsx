@@ -73,9 +73,9 @@ export function SupportPageClient({ data }: { data: SupportPageData }) {
         href: `${basePath}/${item.id}`,
         status: item.status ?? undefined,
         cells: [
-          <span key="case"><span className="font-semibold">{item.subject}</span><span className="block break-all font-mono text-xs font-normal text-muted-foreground">{item.reference} · {item.category}</span></span>,
+          <span key="case"><span className="font-semibold">{item.subject}</span><span className="block break-all tabular-nums text-xs font-normal text-muted-foreground">{item.reference} · {item.category}</span></span>,
           <Mono key="player" className="break-all">{item.player}</Mono>,
-          <span key="time" className="font-mono text-xs tabular-nums"><span className="block">{item.openedAt}</span><span className="block text-muted-foreground">due {item.slaDueAt}</span></span>,
+          <span key="time" className="tabular-nums text-xs "><span className="block">{item.openedAt}</span><span className="block text-muted-foreground">due {item.slaDueAt}</span></span>,
           <StatusBadge key="state" value={item.status} />,
         ],
       }))}
@@ -96,7 +96,7 @@ export function SupportPageClient({ data }: { data: SupportPageData }) {
       tone={data.openDisputes ? "wait" : undefined}
       action={<Track label="Dispute state">{[undefined, ...data.disputeStatuses].map((value) => <PillLink key={value ?? "all"} size="sm" variant="flat" href={disputeHref({ dstatus: value })} current={value === data.disputeStatus}>{value ? label(value) : "all"}</PillLink>)}</Track>}
       columns={["Dispute", "Wager", "Resolution", "State"]}
-      rows={data.disputes.map((item) => ({ id: item.id, status: item.status ?? undefined, cells: [<span key="id"><span className="font-semibold">{item.category}</span><span className="block break-all font-mono text-xs font-normal text-muted-foreground">{item.reference}</span></span>, <Mono key="wager" className="break-all">{item.wager}</Mono>, item.resolution, <StatusBadge key="state" value={item.status} />] }))}
+      rows={data.disputes.map((item) => ({ id: item.id, status: item.status ?? undefined, cells: [<span key="id"><span className="font-semibold">{item.category}</span><span className="block break-all tabular-nums text-xs font-normal text-muted-foreground">{item.reference}</span></span>, <Mono key="wager" className="break-all">{item.wager}</Mono>, item.resolution, <StatusBadge key="state" value={item.status} />] }))}
       filtered={Boolean(data.disputeStatus)}
       emptyTitle={data.disputeStatus ? "No disputes in this state" : "No disputes"}
       emptyAction={data.disputeStatus ? <Track><PillLink size="sm" href={disputeHref({ dstatus: undefined })}>All disputes</PillLink></Track> : <Track><PillLink size="sm" href="/dashboard/platform/wagers">Wagers</PillLink></Track>}

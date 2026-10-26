@@ -59,10 +59,10 @@ export function ReconciliationPageClient({ data, forms, trailing }: { data: Reco
     <RecordList title="Exceptions" tone={data.metrics.openItems ? "alert" : undefined}
       columns={["Item", "References", "Difference", "State"]}
       rows={needsAttentionFirst(data.items, (item) => itemDot(item.status) ?? null).map((item) => ({ id: item.id, href: `${basePath}/items/${item.id}`, status: itemDot(item.status), cells: [
-        <span key="id"><Mono className="break-all text-xs">{item.id}</Mono><span className="block font-mono text-xs font-normal tabular-nums text-muted-foreground">run {item.run} · {item.createdAt}</span></span>,
-        <span key="refs" className="block font-mono text-xs"><span className="block break-all">int {item.internalReference}</span><span className="block break-all">prov {item.providerReference}</span></span>,
+        <span key="id"><Mono className="break-all text-xs">{item.id}</Mono><span className="block tabular-nums text-xs font-normal  text-muted-foreground">run {item.run} · {item.createdAt}</span></span>,
+        <span key="refs" className="block tabular-nums text-xs"><span className="block break-all">int {item.internalReference}</span><span className="block break-all">prov {item.providerReference}</span></span>,
         <Mono key="diff">{item.difference}</Mono>,
-        <span key="state" className="block"><StatusBadge value={item.status} />{item.resolution ? <span className="mt-1 block font-mono text-xs text-muted-foreground">journal {item.resolution}</span> : null}</span>,
+        <span key="state" className="block"><StatusBadge value={item.status} />{item.resolution ? <span className="mt-1 block tabular-nums text-xs text-muted-foreground">journal {item.resolution}</span> : null}</span>,
       ] }))}
       filtered={filtered}
       emptyTitle={filtered ? "No matching exceptions" : "No reconciliation items"}
@@ -75,7 +75,7 @@ export function ReconciliationPageClient({ data, forms, trailing }: { data: Reco
         emptyTitle="No safeguarding controls"
         pagination={{ ...data.controlPage, hrefForPage: hrefFor("cpage") }} />
       <RecordList title="Adjustment requests" tone={data.metrics.pendingAdjustments ? "wait" : undefined} columns={["Request", "Account", "Amount / reason", "State"]}
-        rows={needsAttentionFirst(data.adjustments, (item) => item.status).map((item) => ({ id: item.id, href: `/dashboard/platform/finance/adjustments/${item.id}`, status: item.status ?? undefined, cells: [<span key="id"><Mono className="break-all">{item.reference}</Mono><span className="block font-mono text-xs font-normal tabular-nums text-muted-foreground">{item.createdAt}</span></span>, <Mono key="account" className="break-all text-xs">{item.account}</Mono>, <span key="amount"><Mono>{item.amount}</Mono><span className="block text-xs text-muted-foreground">{item.reason}</span></span>, <span key="state" className="block"><StatusBadge value={item.status} />{item.journal ? <span className="mt-1 block font-mono text-xs text-muted-foreground">journal {item.journal}</span> : null}</span>] }))}
+        rows={needsAttentionFirst(data.adjustments, (item) => item.status).map((item) => ({ id: item.id, href: `/dashboard/platform/finance/adjustments/${item.id}`, status: item.status ?? undefined, cells: [<span key="id"><Mono className="break-all">{item.reference}</Mono><span className="block tabular-nums text-xs font-normal  text-muted-foreground">{item.createdAt}</span></span>, <Mono key="account" className="break-all text-xs">{item.account}</Mono>, <span key="amount"><Mono>{item.amount}</Mono><span className="block text-xs text-muted-foreground">{item.reason}</span></span>, <span key="state" className="block"><StatusBadge value={item.status} />{item.journal ? <span className="mt-1 block tabular-nums text-xs text-muted-foreground">journal {item.journal}</span> : null}</span>] }))}
         emptyTitle="No adjustment requests"
         pagination={{ ...data.adjustmentPage, hrefForPage: hrefFor("apage") }} />
     </div>
@@ -83,7 +83,7 @@ export function ReconciliationPageClient({ data, forms, trailing }: { data: Reco
     {forms}
 
     <RecordList title="Safeguarding accounts" columns={["Account", "Classification", "Currency", "State"]}
-      rows={data.accounts.map((item) => ({ id: item.id, status: item.status ?? undefined, cells: [<span key="id"><span className="break-all font-semibold">{item.reference}</span><span className="block break-all font-mono text-xs font-normal text-muted-foreground">{item.shortId}</span></span>, item.classification, <Mono key="cur">{item.currency}</Mono>, <StatusBadge key="state" value={item.status} />] }))}
+      rows={data.accounts.map((item) => ({ id: item.id, status: item.status ?? undefined, cells: [<span key="id"><span className="break-all font-semibold">{item.reference}</span><span className="block break-all tabular-nums text-xs font-normal text-muted-foreground">{item.shortId}</span></span>, item.classification, <Mono key="cur">{item.currency}</Mono>, <StatusBadge key="state" value={item.status} />] }))}
       emptyTitle="No safeguarding account"
       emptyAction={<Track><PillLink size="sm" href="/dashboard/platform/onboarding">Onboarding</PillLink></Track>} />
     {trailing}

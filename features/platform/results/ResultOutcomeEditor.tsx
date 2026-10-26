@@ -34,9 +34,9 @@ export function ResultOutcomeEditor({ eventId, eventLabel, markets, mutation, di
   });
   const update = (id: string, patch: Partial<Fact>) => setFacts((current) => ({ ...current, [id]: { ...(current[id] ?? { outcome: "", factorNumerator: "", factorDenominator: "" }), ...patch } }));
 
-  const factorInput = "mt-1 block h-9 w-full rounded-full border bg-background px-3 font-mono text-sm tabular-nums";
+  const factorInput = "mt-1 block h-9 w-full rounded-[4px] border bg-background px-3 tabular-nums text-sm ";
   return <div className="space-y-4">
-    <section aria-labelledby="result-outcomes" className="min-w-0 overflow-hidden rounded-xl border bg-card">
+    <section aria-labelledby="result-outcomes" className="min-w-0 overflow-hidden rounded-[4px] border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
         <h2 id="result-outcomes" className="min-w-0 break-words text-sm font-semibold"><StatusDot tone={missing.length ? "wait" : "ok"} />Outcomes · {eventLabel}</h2>
         <Mono className="text-xs text-muted-foreground">{rows.length - missing.length}/{rows.length} set · {markets.length} markets</Mono>
@@ -44,7 +44,7 @@ export function ResultOutcomeEditor({ eventId, eventLabel, markets, mutation, di
       <div className="divide-y">
         {markets.map((market) => <fieldset key={market.id} className="min-w-0 px-4 py-3">
           <legend className="sr-only">{market.label}</legend>
-          <p aria-hidden="true" className="break-all font-mono text-xs font-medium text-muted-foreground">{market.label}</p>
+          <p aria-hidden="true" className="break-all tabular-nums text-xs font-medium text-muted-foreground">{market.label}</p>
           <div className="mt-2 space-y-3">
             {market.selections.map((selection) => {
               const id = `${market.id}\u0000${selection.key}`;

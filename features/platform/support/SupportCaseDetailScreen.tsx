@@ -50,7 +50,7 @@ export async function SupportCaseDetailScreen({ caseId, page = 1 }: { caseId: st
   const disputeActor = (id: string) => (id ? disputeActors.find((user: any) => user.id === id)?.name : undefined);
   const closed = ["RESOLVED", "CLOSED"].includes(item.status);
   const pages = Math.max(1, Math.ceil(total / PAGE));
-  const linkClass = "font-mono underline underline-offset-2 hover:text-foreground";
+  const linkClass = "tabular-nums underline underline-offset-2 hover:text-foreground";
   return <OperatorShell
     active="Support"
     detail
@@ -70,9 +70,9 @@ export async function SupportCaseDetailScreen({ caseId, page = 1 }: { caseId: st
       { label: "Dispute", value: item.dispute ? <span className="flex flex-wrap items-center gap-2"><Mono>{shortId(item.dispute.id)}</Mono> <StatusBadge value={item.dispute.status} /></span> : "—" },
       { label: "Payment", value: item.paymentIntentId ? <Mono>{shortId(item.paymentIntentId)}</Mono> : "—" },
     ]} />
-    {item.dispute ? <section aria-labelledby="dispute-timeline" className="min-w-0 overflow-hidden rounded-xl border bg-card text-card-foreground">
+    {item.dispute ? <section aria-labelledby="dispute-timeline" className="min-w-0 overflow-hidden rounded-[4px] border bg-card text-card-foreground">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-        <h2 id="dispute-timeline" className="text-sm font-semibold"><StatusDot tone={statusDotTone(item.dispute.status)} />Dispute<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{disputeEventTotal > disputeEvents.length ? `latest ${disputeEvents.length} of ${disputeEventTotal}` : disputeEventTotal}</span></h2>
+        <h2 id="dispute-timeline" className="text-sm font-semibold"><StatusDot tone={statusDotTone(item.dispute.status)} />Dispute<span className="ml-2 tabular-nums text-xs font-normal  text-muted-foreground">{disputeEventTotal > disputeEvents.length ? `latest ${disputeEvents.length} of ${disputeEventTotal}` : disputeEventTotal}</span></h2>
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"><StatusBadge value={item.dispute.status} />{item.dispute.category ? <span>{item.dispute.category}</span> : null}{item.dispute.resolvedAt ? <Mono>resolved {dateTime(item.dispute.resolvedAt)}</Mono> : null}</span>
       </div>
       {disputeEvents.length === 0 ? <p role="status" className="px-4 py-3 text-sm text-muted-foreground">No dispute events</p> : <ol className="divide-y">{disputeEvents.map((event: any) => {
@@ -85,8 +85,8 @@ export async function SupportCaseDetailScreen({ caseId, page = 1 }: { caseId: st
       })}</ol>}
     </section> : null}
     <section aria-labelledby="case-timeline" className="min-w-0 space-y-3">
-      <h2 id="case-timeline" className="text-sm font-semibold">Conversation<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{total}</span></h2>
-      {events.length === 0 ? <WorkflowNote title="No messages yet" /> : <ol className="space-y-3">{events.map((event: any) => <li key={event.id} className={`min-w-0 rounded-xl border p-4 ${event.actorType === "PLAYER" ? "bg-card" : "bg-muted/40"}`}>
+      <h2 id="case-timeline" className="text-sm font-semibold">Conversation<span className="ml-2 tabular-nums text-xs font-normal  text-muted-foreground">{total}</span></h2>
+      {events.length === 0 ? <WorkflowNote title="No messages yet" /> : <ol className="space-y-3">{events.map((event: any) => <li key={event.id} className={`min-w-0 rounded-[4px] border p-4 ${event.actorType === "PLAYER" ? "bg-card" : "bg-muted/40"}`}>
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"><span className="font-medium text-foreground">{event.actorType === "STAFF" ? staffName(event.actorId) : event.actorType === "PLAYER" ? "Customer" : event.actorType}<span className="font-normal text-muted-foreground"> · {event.type.replaceAll("_", " ").toLowerCase()}</span></span><span className="flex flex-wrap items-center gap-2"><StatusBadge value={event.visibility} /><Mono>{dateTime(event.createdAt)}</Mono></span></div>
         {event.visibility === "RESTRICTED" ? <p className="mt-2 text-sm italic text-muted-foreground">Restricted entry</p> : <p className="mt-2 whitespace-pre-wrap break-words text-sm">{event.body || "—"}</p>}
       </li>)}</ol>}

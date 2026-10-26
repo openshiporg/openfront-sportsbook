@@ -42,7 +42,7 @@ export async function IntegrationDetailScreen({ connectionId }: { connectionId: 
     <RecordList title="Envelopes" tone={failedEnvelopes ? "alert" : undefined} columns={["External ID", "Direction · schema", "Inbox", "Received"]} rows={envelopes.map((envelope: any) => {
       const inboxStates = envelope.from_InboxMessage_rawEnvelope.map((item: any) => item.status);
       const worst = inboxStates.find((value: string) => statusDotTone(value) === "alert") ?? inboxStates[0];
-      return { id: envelope.id, status: worst ?? "PENDING", cells: [<span key="external"><span className="break-all">{envelope.externalId}</span><span className="block break-all font-mono text-xs font-normal text-muted-foreground">{shortId(envelope.payloadHash)}</span></span>, <Mono key="dir">{`${envelope.direction} · ${envelope.schemaVersion}`}</Mono>, inboxStates.length ? <span key="inbox" className="flex flex-wrap gap-x-3">{inboxStates.map((value: string, index: number) => <StatusBadge key={index} value={value} />)}</span> : "Not normalized", <Mono key="received">{dateTime(envelope.receivedAt)}</Mono>] };
+      return { id: envelope.id, status: worst ?? "PENDING", cells: [<span key="external"><span className="break-all">{envelope.externalId}</span><span className="block break-all tabular-nums text-xs font-normal text-muted-foreground">{shortId(envelope.payloadHash)}</span></span>, <Mono key="dir">{`${envelope.direction} · ${envelope.schemaVersion}`}</Mono>, inboxStates.length ? <span key="inbox" className="flex flex-wrap gap-x-3">{inboxStates.map((value: string, index: number) => <StatusBadge key={index} value={value} />)}</span> : "Not normalized", <Mono key="received">{dateTime(envelope.receivedAt)}</Mono>] };
     })} emptyTitle="No envelopes" />
     <RecordList title="Entity mappings" columns={["External", "Entity type", "Canonical", "State"]} rows={mappings.map((mapping: any) => ({ id: mapping.id, status: mapping.status, cells: [<span key="external" className="break-all">{mapping.externalId}</span>, mapping.entityType, <span key="canonical">{mapping.canonicalType} · <Mono>{shortId(mapping.canonicalId)}</Mono></span>, <StatusBadge key="state" value={mapping.status} />] }))} emptyTitle="No mappings" />
     <DetailGrid items={[
@@ -52,8 +52,8 @@ export async function IntegrationDetailScreen({ connectionId }: { connectionId: 
       { label: "Certification", value: <StatusBadge value={connection.certificationStatus} /> },
       { label: "Raw envelopes", value: <Mono>{envelopes.length}</Mono> },
       { label: "Mappings", value: <Mono>{mappings.length}</Mono> },
-      { label: "Sandbox webhook", value: <code className="break-all font-mono text-xs">/api/sandbox/webhooks/[kind]</code> },
-      { label: "Headers", value: <code className="break-all font-mono text-xs">x-openfront-tenant-id · x-openfront-connection-id</code> },
+      { label: "Sandbox webhook", value: <code className="break-all tabular-nums text-xs">/api/sandbox/webhooks/[kind]</code> },
+      { label: "Headers", value: <code className="break-all tabular-nums text-xs">x-openfront-tenant-id · x-openfront-connection-id</code> },
       { label: "Signature covers", value: "Timestamp, tenant, connection, raw body" },
     ]} />
     <MutationForm title="Connection recovery unavailable" mutation={recoverMutation} fields={[{ name: "aggregateType", label: "Aggregate type", type: "hidden", defaultValue: "PROVIDER_CONNECTION" }, { name: "aggregateId", label: "Connection", type: "hidden", defaultValue: connection.id }, { name: "eventType", label: "Recovery event", type: "hidden", defaultValue: "recovery.requested" }]} submitLabel="Unavailable" successMessage="No recovery was queued." disabledReason={recoveryUnavailable ?? (operator.capabilities.canManageIntegrations ? undefined : "Integration management required.")} />

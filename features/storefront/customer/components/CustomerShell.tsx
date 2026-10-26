@@ -66,7 +66,7 @@ export function CustomerShell({
 
   return (
     <div className="flex min-h-screen flex-col overflow-x-clip bg-sb-paper text-sb-ink">
-      <a href="#main-content" className="sr-only z-50 rounded-full bg-white px-4 py-3 text-sm font-semibold text-sb-ink focus:not-sr-only focus:fixed focus:left-3 focus:top-3">
+      <a href="#main-content" className="sr-only z-50 rounded-[2px] bg-white px-4 py-3 text-sm font-semibold text-sb-ink focus:not-sr-only focus:fixed focus:left-3 focus:top-3">
         Skip to content
       </a>
       <header className="sticky top-0 z-30 bg-sb-night text-white">
@@ -93,7 +93,7 @@ export function CustomerShell({
           <div className="ml-auto flex shrink-0 items-center gap-2">
             {authenticated ? (
               <>
-                <Link href="/account/profile" className="hidden items-center gap-2 rounded-full px-3 py-1.5 font-sb-mono text-xs text-white/70 hover:bg-white/10 hover:text-white sm:inline-flex">
+                <Link href="/account/profile" className="hidden items-center gap-2 rounded-[2px] px-3 py-1.5 tabular-nums text-xs text-white/70 hover:bg-white/10 hover:text-white sm:inline-flex">
                   <span aria-hidden="true" className="size-1.5 rounded-full bg-sb-win" />{accountReference ?? 'Account'}
                 </Link>
                 <button
@@ -101,7 +101,7 @@ export function CustomerShell({
                   aria-label={signingOut ? 'Signing out' : 'Sign out'}
                   onClick={signOut}
                   disabled={signingOut}
-                  className="inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-full px-3.5 text-sm font-semibold text-white/80 ring-1 ring-white/15 hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-60"
+                  className="inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-[2px] px-3.5 text-sm font-semibold text-white/80 ring-1 ring-white/15 hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-60"
                 >
                   <LogOut aria-hidden="true" className="size-4" />
                   <span className="hidden sm:inline">{signingOut ? 'Signing out…' : 'Sign out'}</span>
@@ -113,7 +113,7 @@ export function CustomerShell({
           </div>
           <nav id="customer-navigation" hidden={!menuOpen} className="w-full border-t border-white/10 pb-2 pt-3 md:hidden" aria-label="Mobile navigation">
             <div className="grid grid-cols-2 gap-1">
-              {[{ href: '/', label: 'Live & upcoming', key: 'board' }, { href: '/sports', label: 'Sports', key: 'sports' }, ...accountLinks].map(link => <Link key={link.key} onClick={() => setMenuOpen(false)} aria-current={isCurrent(link.href) ? 'page' : undefined} className="rounded-full px-4 py-2.5 text-sm text-white/75 hover:bg-white/10 aria-[current=page]:bg-sb-rule aria-[current=page]:text-white" href={link.href}>{link.label}</Link>)}
+              {[{ href: '/', label: 'Live & upcoming', key: 'board' }, { href: '/sports', label: 'Sports', key: 'sports' }, ...accountLinks].map(link => <Link key={link.key} onClick={() => setMenuOpen(false)} aria-current={isCurrent(link.href) ? 'page' : undefined} className="rounded-[2px] px-4 py-2.5 text-sm text-white/75 hover:bg-white/10 aria-[current=page]:bg-sb-rule aria-[current=page]:text-white" href={link.href}>{link.label}</Link>)}
             </div>
           </nav>
         </div>
@@ -124,7 +124,7 @@ export function CustomerShell({
         <div className="mx-auto grid w-full max-w-6xl flex-1 gap-6 px-4 py-6 md:grid-cols-[200px_minmax(0,1fr)] md:gap-10 md:py-10">
           <nav aria-label="Account sections" className="min-w-0">
             <div className="sb-scroll -mx-4 px-4 md:mx-0 md:px-0">
-              <div className="inline-flex gap-1 rounded-full bg-sb-well p-1 shadow-[inset_0_1px_2px_rgb(16_20_27/0.12)] ring-1 ring-inset ring-black/5 md:flex md:flex-col md:rounded-3xl md:p-1.5">
+              <div className="inline-flex gap-1 rounded-[2px] bg-sb-well p-1 shadow-[inset_0_1px_2px_rgb(16_20_27/0.12)] ring-1 ring-inset ring-black/5 md:flex md:flex-col md:rounded-[2px] md:p-1.5">
                 {accountLinks.map(link => {
                   const Icon = link.icon
                   const active = current === link.key
@@ -144,9 +144,9 @@ export function CustomerShell({
         </div>
       ) : <main id="main-content" className="flex-1">{closed ? <div className="mx-auto w-full max-w-3xl px-4 py-6"><ClosedState /></div> : children}</main>}
 
-      <footer className="bg-sb-night px-4 py-6 text-xs text-white/60">
+      <footer className="bg-sb-night px-4 py-6 text-xs text-white/80">
         <div className="mx-auto flex max-w-[1560px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:px-2">
-          <p className="font-sb-mono uppercase tracking-wider"><span aria-hidden="true" className="mr-2 inline-block size-1.5 rounded-full bg-sb-flood align-middle" />Practice play · no real money</p>
+          <p className=""><span aria-hidden="true" className="mr-2 inline-block size-1.5 rounded-full bg-sb-flood align-middle" />Practice play · no real money</p>
           <div className="flex flex-wrap gap-x-5 gap-y-2">
             <Link href="/account/responsible-play" className="hover:text-white">Safer play</Link>
             <Link href="/account/disputes" className="hover:text-white">Support</Link>

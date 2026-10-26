@@ -90,9 +90,9 @@ export async function ResponsibleGamingScreen({ searchParams }: { searchParams?:
     <section className="min-w-0 space-y-4">
       <form method="get" role="search" aria-label="Find player" className="flex flex-wrap items-center gap-2">
         <label htmlFor="rg-player-search" className="sr-only">Find player</label>
-        <input id="rg-player-search" name="player" type="search" defaultValue={playerSearch} placeholder="Player reference or ID" className="h-9 min-w-0 flex-1 basis-56 rounded-full border bg-background px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+        <input id="rg-player-search" name="player" type="search" defaultValue={playerSearch} placeholder="Player reference or ID" className="h-9 min-w-0 flex-1 basis-56 rounded-[4px] border bg-background px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
         <Track><Pill type="submit" size="sm" variant="primary">Find player</Pill></Track>
-        <p className="w-full font-mono text-xs tabular-nums text-muted-foreground">{playerSearch ? `${players.length} matching “${playerSearch}” · max 50` : `${players.length} of ${playerTotal} players`}</p>
+        <p className="w-full tabular-nums text-xs  text-muted-foreground">{playerSearch ? `${players.length} matching “${playerSearch}” · max 50` : `${players.length} of ${playerTotal} players`}</p>
       </form>
       {players.length ? <div className="grid gap-4 xl:grid-cols-3">
         <MutationForm title="Set money limit" description="Deposit, stake or loss" requireReview mutation={limitMutation} fields={[{ name: "playerId", label: "Player", type: "select", options: playerOptions }, { name: "type", label: "Limit type", type: "select", options: ["DEPOSIT", "STAKE", "LOSS"].map((value) => ({ label: value, value })) }, { name: "period", label: "Period", type: "select", options: periodOptions }, { name: "amountMinor", label: "Amount (minor units of the currency)", type: "number", defaultValue: 10000 }, { name: "currency", label: "Currency", type: "select", options: currencies.map((item: any) => ({ label: `${item.currency?.code} (exponent ${item.currency?.exponent})`, value: item.currency?.code })) }]} submitLabel="Set money limit" successMessage="Responsible-gaming limit set." disabledReason={disabledReason} />

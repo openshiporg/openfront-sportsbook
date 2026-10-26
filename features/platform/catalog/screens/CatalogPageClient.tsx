@@ -32,7 +32,7 @@ const basePath = "/dashboard/platform/catalog";
 const createMutation = `mutation CreateCatalog($competitionId:ID!,$externalKey:String!,$name:String!,$startAt:String!,$marketDefinition:String!,$selections:String!){createCatalogEvent(competitionId:$competitionId,externalKey:$externalKey,name:$name,startAt:$startAt,marketDefinition:$marketDefinition,selections:$selections)}`;
 const statusOptions = ["LIVE", "SCHEDULED", "SUSPENDED", "ENDED", "CANCELLED"].map((value) => ({ label: value.toLowerCase(), value }));
 const stateText = (value: string | null | undefined) => (value || "unknown").replaceAll("_", " ").toLowerCase();
-const inputClass = "h-9 w-full min-w-0 rounded-full border bg-background px-4 text-sm";
+const inputClass = "h-9 w-full min-w-0 rounded-[4px] border bg-background px-4 text-sm";
 
 export function CatalogPageClient({ data }: { data: CatalogPageData }) {
   const filtered = Boolean(data.search || data.status);

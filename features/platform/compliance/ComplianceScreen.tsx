@@ -116,7 +116,7 @@ export async function ComplianceScreen() {
           cells: [
             <span key="player"><Mono className="break-all font-semibold">{shortId(item.id)}</Mono><span className="block text-xs font-normal text-muted-foreground">{item.locale} · {item.riskBand}</span></span>,
             <StatusBadge key="kyc" value={item.kycStatus} />,
-            latestGeo ? <div key="geo"><StatusBadge value={latestGeo.decision} /><p className="mt-1 font-mono text-xs tabular-nums text-muted-foreground">{dateTime(latestGeo.checkedAt)}</p></div> : <span key="geo">No check</span>,
+            latestGeo ? <div key="geo"><StatusBadge value={latestGeo.decision} /><p className="mt-1 tabular-nums text-xs  text-muted-foreground">{dateTime(latestGeo.checkedAt)}</p></div> : <span key="geo">No check</span>,
             activeRestrictions.length ? <Mono key="restrictions">{activeRestrictions.length} active</Mono> : 'None',
           ],
         }

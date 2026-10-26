@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Barlow_Condensed, Geist, Geist_Mono, JetBrains_Mono } from "next/font/google";
+import { Antonio, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,15 +13,10 @@ const geistMono = Geist_Mono({
 });
 
 // Storefront display and price numerals.
-const barlowCondensed = Barlow_Condensed({
-  variable: "--font-barlow-condensed",
+const antonio = Antonio({
+  variable: "--font-antonio",
   subsets: ["latin"],
   weight: ["600", "700"],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
-  subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
@@ -40,7 +35,7 @@ export default function RootLayout({
         <link href="/favicon.svg" rel="icon" />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${barlowCondensed.variable} ${jetbrainsMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${antonio.variable} antialiased`}
       >
         {children}
       </body>

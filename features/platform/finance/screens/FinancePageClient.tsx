@@ -55,7 +55,7 @@ export function FinancePageClient({ data, forms }: { data: FinancePageData; form
       emptyAction={<Track><PillLink size="sm" href={`${basePath}/reconciliation`}>Reconciliation</PillLink></Track>}
       pagination={{ ...data.runPage, hrefForPage: hrefFor("rpage") }} />
     <RecordList title="Journals" tone={unbalanced ? "alert" : undefined} columns={["Transaction", "Type", "Debits / credits", "State"]}
-      rows={needsAttentionFirst(data.journals, (journal) => journal.state).map((journal) => ({ id: journal.id, href: `${basePath}/journals/${journal.id}`, status: journal.state, cells: [<span key="id"><Mono className="break-all">{journal.reference}</Mono><span className="block font-mono text-xs font-normal tabular-nums text-muted-foreground">{journal.effectiveAt}</span></span>, journal.type, <Mono key="amounts">{journal.amounts}</Mono>, <StatusBadge key="status" value={journal.state} />] }))}
+      rows={needsAttentionFirst(data.journals, (journal) => journal.state).map((journal) => ({ id: journal.id, href: `${basePath}/journals/${journal.id}`, status: journal.state, cells: [<span key="id"><Mono className="break-all">{journal.reference}</Mono><span className="block tabular-nums text-xs font-normal  text-muted-foreground">{journal.effectiveAt}</span></span>, journal.type, <Mono key="amounts">{journal.amounts}</Mono>, <StatusBadge key="status" value={journal.state} />] }))}
       emptyTitle="No journal transactions"
       emptyAction={<Track><PillLink size="sm" href="/dashboard/platform/wagers">Wagers</PillLink></Track>}
       pagination={{ ...data.journalPage, hrefForPage: hrefFor("jpage") }} />

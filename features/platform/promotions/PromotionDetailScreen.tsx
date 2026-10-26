@@ -38,7 +38,7 @@ function RuleDocument({ name, value, currency }: { name: string; value: unknown;
     <p className="break-words text-sm">{ruleSummary(value, currency)}</p>
     <details className="mt-1 text-xs text-muted-foreground">
       <summary className="cursor-pointer select-none hover:text-foreground">{name} JSON</summary>
-      <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/60 p-2 font-mono text-[11px] text-foreground">{jsonText(value)}</pre>
+      <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/60 p-2 tabular-nums text-[11px] text-foreground">{jsonText(value)}</pre>
     </details>
   </div>
 }
@@ -100,9 +100,9 @@ export async function PromotionDetailScreen({ promotionId, searchParams }: { pro
       { label: 'Starts', value: <Mono>{dateTime(promotion.startsAt)}</Mono> },
       { label: 'Ends', value: <Mono>{dateTime(promotion.endsAt)}</Mono> },
       { label: 'Brand · jurisdiction', value: `${promotion.brand?.name || 'All brands'} · ${promotion.jurisdiction?.code || 'All jurisdictions'}` },
-      { label: 'Terms', value: <span><Mono>{promotion.termsVersion || '—'}</Mono><span className="block break-all font-mono text-xs text-muted-foreground">{promotion.termsHash || '—'}</span></span> },
-      { label: 'Approval', value: approval ? <span className="flex flex-wrap items-center gap-2"><StatusBadge value={approval.status} /><Link className={`font-mono text-xs ${linkClass}`} href="/dashboard/platform/approvals">{shortId(approval.id)}</Link></span> : 'None' },
-      { label: 'Budget versions', value: <Link className={`font-mono ${linkClass}`} href={hrefWith('/dashboard/platform/promotions', { campaign: promotion.id }) + '#budget-history'}>{budgetVersions}</Link> },
+      { label: 'Terms', value: <span><Mono>{promotion.termsVersion || '—'}</Mono><span className="block break-all tabular-nums text-xs text-muted-foreground">{promotion.termsHash || '—'}</span></span> },
+      { label: 'Approval', value: approval ? <span className="flex flex-wrap items-center gap-2"><StatusBadge value={approval.status} /><Link className={`tabular-nums text-xs ${linkClass}`} href="/dashboard/platform/approvals">{shortId(approval.id)}</Link></span> : 'None' },
+      { label: 'Budget versions', value: <Link className={`tabular-nums ${linkClass}`} href={hrefWith('/dashboard/platform/promotions', { campaign: promotion.id }) + '#budget-history'}>{budgetVersions}</Link> },
     ]} />
 
     {isDraft ? <section aria-labelledby="promotion-activation" className="min-w-0 space-y-3">
@@ -144,7 +144,7 @@ export async function PromotionDetailScreen({ promotionId, searchParams }: { pro
             items.length
               ? <ol key="movements" className="space-y-0.5 text-xs">{items.map((item: any) => <li key={item.id} className="flex flex-wrap justify-between gap-x-2"><span>{String(item.type ?? '').toLowerCase()}</span><Mono>{money(item.amountMinor, item.currency)} → {money(item.remainingMinor, item.currency)}</Mono><Mono className="w-full text-muted-foreground">{dateTime(item.createdAt)}</Mono></li>)}</ol>
               : <span key="movements" className="text-xs">No movements</span>,
-            <span key="expiry"><Mono className="text-xs">{dateTime(award.expiresAt)}</Mono><span className="block font-mono text-xs text-muted-foreground">awarded {dateTime(award.awardedAt)}</span></span>,
+            <span key="expiry"><Mono className="text-xs">{dateTime(award.expiresAt)}</Mono><span className="block tabular-nums text-xs text-muted-foreground">awarded {dateTime(award.awardedAt)}</span></span>,
           ],
         }
       })}

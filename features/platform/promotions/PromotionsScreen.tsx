@@ -25,7 +25,7 @@ async function BudgetHistory({ tenantId, promotion, page }: { tenantId: string; 
         id: item.id,
         status: item.status,
         cells: [
-          <span key="v"><Mono className="font-semibold">v{item.version} · {item.currency}</Mono><span className="block font-mono text-xs font-normal tabular-nums text-muted-foreground">{dateTime(item.createdAt)}</span></span>,
+          <span key="v"><Mono className="font-semibold">v{item.version} · {item.currency}</Mono><span className="block tabular-nums text-xs font-normal  text-muted-foreground">{dateTime(item.createdAt)}</span></span>,
           <Mono key="alloc">{money(item.allocatedMinor, item.currency)} / {money(item.awardedMinor, item.currency)}</Mono>,
           <Mono key="redeem">{money(item.redeemedMinor, item.currency)} / {money(item.forfeitedMinor, item.currency)}</Mono>,
           <span key="s" className="flex flex-wrap gap-2"><StatusBadge value={item.status} />{page === 1 && index === 0 ? <StatusBadge value="CURRENT" /> : null}</span>,
@@ -75,7 +75,7 @@ export async function PromotionsScreen({ searchParams }: { searchParams?: Platfo
       href: `/dashboard/platform/promotions/${item.id}`,
       status: item.status,
       cells: [
-        <span key="id"><span className="font-semibold">{item.name}</span><span className="block break-all font-mono text-xs font-normal text-muted-foreground">{shortId(item.id)} · {item.termsHash}</span></span>,
+        <span key="id"><span className="font-semibold">{item.name}</span><span className="block break-all tabular-nums text-xs font-normal text-muted-foreground">{shortId(item.id)} · {item.termsHash}</span></span>,
         <Mono key="window" className="text-xs">{dateTime(item.startsAt)} → {dateTime(item.endsAt)}</Mono>,
         budget
           ? <span key="budget"><Mono>{money(budget.awardedMinor, item.currency)} / {money(budget.allocatedMinor, item.currency)}</Mono><Link href={hrefWith('/dashboard/platform/promotions', { campaign: item.id }) + '#budget-history'} className="mt-1 block text-xs font-medium text-muted-foreground underline underline-offset-2 hover:text-foreground">History</Link></span>

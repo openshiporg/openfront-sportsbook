@@ -17,12 +17,12 @@ export async function AuditDetailScreen({ auditId }: { auditId: string }) {
   const { event, previous, next } = result.data;
   if (!event) notFound();
   const previousMissing = Boolean(event.previousHash) && !previous;
-  const hash = (value: string | null | undefined, fallback: string) => <code className="break-all font-mono text-xs">{value || fallback}</code>;
+  const hash = (value: string | null | undefined, fallback: string) => <code className="break-all tabular-nums text-xs">{value || fallback}</code>;
   return <OperatorShell active="Audit" detail eyebrow="Audit detail" title={event.action || "Audit event"} tone={previousMissing ? "alert" : "ok"} meta={`${dateTime(event.createdAt)} · ${previousMissing ? "predecessor missing" : event.previousHash ? "predecessor linked" : "genesis"}`} tenantName={operator.tenantName}>
     {previousMissing ? <WorkflowNote title="Chain gap found" tone="warning">Previous hash not found.</WorkflowNote> : null}
     <DetailGrid items={[
-      { label: "Previous record", value: event.previousHash ? (previous ? <Link href={`/dashboard/platform/audit/${previous.id}`} className="break-all font-mono text-xs underline-offset-4 hover:underline">{previous.id}</Link> : "Not found") : "Genesis" },
-      { label: "Next record", value: next ? <Link href={`/dashboard/platform/audit/${next.id}`} className="break-all font-mono text-xs underline-offset-4 hover:underline">{next.id}</Link> : "Not in current chain" },
+      { label: "Previous record", value: event.previousHash ? (previous ? <Link href={`/dashboard/platform/audit/${previous.id}`} className="break-all tabular-nums text-xs underline-offset-4 hover:underline">{previous.id}</Link> : "Not found") : "Genesis" },
+      { label: "Next record", value: next ? <Link href={`/dashboard/platform/audit/${next.id}`} className="break-all tabular-nums text-xs underline-offset-4 hover:underline">{next.id}</Link> : "Not in current chain" },
       { label: "Recorded", value: <Mono>{dateTime(event.createdAt)}</Mono> },
       { label: "Actor", value: <Mono className="break-all">{event.actorId}</Mono> },
       { label: "Action", value: event.action },

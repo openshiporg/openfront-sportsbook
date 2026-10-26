@@ -49,31 +49,32 @@
  * floodlight lime for a chosen price and the slip's return, red for live.
  */
 @theme {
-  --color-sb-night: #0a0e14;
-  --color-sb-board: #141a24;
-  --color-sb-rule: #262e3b;
-  --color-sb-paper: #f1f0ea;
+  --color-sb-night: #155eef;
+  --color-sb-board: #0f47b8;
+  --color-sb-rule: #4a82f3;
+  --color-sb-paper: #fbfbf8;
   --color-sb-card: #ffffff;
-  --color-sb-line: #dfddd4;
-  --color-sb-well: #e7e5dd;
-  --color-sb-ink: #10141b;
+  --color-sb-line: #d6d6cf;
+  --color-sb-well: #efefea;
+  --color-sb-ink: #111318;
   --color-sb-mute: #636873;
   --color-sb-brand: #155eef;
-  --color-sb-flood: #d9f44a;
-  --color-sb-live: #e5484d;
+  --color-sb-flood: #ffffff;
+  --color-sb-live: #d92d20;
   --color-sb-win: #12a05a;
   --color-sb-wait: #e0920f;
-  --font-sb-display: var(--font-barlow-condensed), var(--font-geist-sans), sans-serif;
-  --font-sb-mono: var(--font-jetbrains-mono), var(--font-geist-mono), monospace;
+  --font-sb-display: var(--font-antonio), var(--font-geist-sans), sans-serif;
+  --font-sb-mono: var(--font-geist-sans), sans-serif;
 }
 
-/* Bet-slip ticket: punched notches at the tear line. */
+/* Fixed-odds coupon: the slip tears along a dashed line, no punched notches. */
 .sb-tear {
   position: relative;
   border-top: 1px dashed var(--color-sb-line);
 }
 .sb-tear::before,
 .sb-tear::after {
+  display: none;
   content: "";
   position: absolute;
   top: -9px;

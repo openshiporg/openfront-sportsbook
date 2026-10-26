@@ -53,7 +53,7 @@ export async function GradingScreen() {
       { label: 'Markets loaded', value: markets.length, detail: 'newest 100' },
     ]} />
     <section className="space-y-3" aria-labelledby="grading-queue">
-      <h2 id="grading-queue" className="text-sm font-semibold"><StatusDot tone={actions.length ? 'wait' : 'ok'} />Ready to grade<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{actions.length}</span></h2>
+      <h2 id="grading-queue" className="text-sm font-semibold"><StatusDot tone={actions.length ? 'wait' : 'ok'} />Ready to grade<span className="ml-2 tabular-nums text-xs font-normal  text-muted-foreground">{actions.length}</span></h2>
       {actions.length === 0
         ? <WorkflowNote title="No grades ready" />
         : <div className="grid gap-4 xl:grid-cols-2">{actions.map(({ market, result, selection, fact }: any) => <MutationForm

@@ -37,8 +37,8 @@ export async function OverviewScreen() {
     { label: "Open markets", count: openMarkets, href: "/dashboard/platform/trading", tone: "info" },
   ];
   return <OperatorShell active="Overview" title="Control room" tone={attention ? "wait" : "ok"} meta={`${attention} need attention · ${openMarkets} open markets · ${wagers} wagers`} tenantName={operator.tenantName}>
-    <section aria-labelledby="overview-queues" className="min-w-0 overflow-hidden rounded-xl border bg-card text-card-foreground">
-      <h2 id="overview-queues" className="border-b px-4 py-3 text-sm font-semibold">{attention ? <StatusDot tone="wait" /> : <StatusDot tone="ok" />}Queues<span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">{attention}</span></h2>
+    <section aria-labelledby="overview-queues" className="min-w-0 overflow-hidden rounded-[4px] border bg-card text-card-foreground">
+      <h2 id="overview-queues" className="border-b px-4 py-3 text-sm font-semibold">{attention ? <StatusDot tone="wait" /> : <StatusDot tone="ok" />}Queues<span className="ml-2 tabular-nums text-xs font-normal  text-muted-foreground">{attention}</span></h2>
       <ul className="divide-y">
         {queues.map((queue) => {
           const body = <>
