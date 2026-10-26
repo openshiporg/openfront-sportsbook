@@ -18,10 +18,21 @@ export function LoadingPanel({ label = 'Loading' }: { label?: string }) {
 /** The API refuses every customer action while the operator's betting runtime is switched off. */
 export const isClosedError = (error: CustomerApiError | null | undefined) => Boolean(error && ['SANDBOX_DISABLED', 'SANDBOX_ISOLATION_REQUIRED'].includes(error.code))
 
-export function ClosedPanel() {
-  return <div role="status" className="mt-6 rounded-[2px] bg-sb-night p-6 text-white sm:p-8">
-    <p className="font-sb-display text-3xl font-bold uppercase leading-none tracking-wide"><Dot tone="off" className="bg-white/40" />Betting closed</p>
-    <p className="mt-2 text-xs  text-white/80">Accounts, prices and bets are unavailable</p>
+/** Closed state. On the coupon it keeps the coupon's own frame (ruled 1 / X / 2 heads) with one row saying so;
+ *  elsewhere it is a single ruled notice. No events or prices are shown because none are offered. */
+export function ClosedPanel({ coupon = false }: { coupon?: boolean }) {
+  if (coupon) return <div role="status" className="mt-4 overflow-hidden rounded-[2px] bg-sb-card ring-1 ring-sb-ink/15">
+    <div className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_3.5rem] border-b-2 border-sb-ink px-4 py-2 text-xs font-semibold text-sb-mute sm:px-5">
+      <span>Event</span><span className="text-center">1</span><span className="text-center">X</span><span className="text-center">2</span>
+    </div>
+    <div className="px-4 py-6 sm:px-5">
+      <p className="font-sb-display text-3xl font-bold uppercase leading-none text-sb-ink">Betting closed</p>
+      <p className="mt-2 text-sm text-sb-mute">No prices are offered. Accounts, prices and bets are unavailable.</p>
+    </div>
+  </div>
+  return <div role="status" className="mt-6 rounded-[2px] border-l-0 bg-sb-card px-5 py-5 ring-1 ring-sb-ink/15">
+    <p className="font-sb-display text-3xl font-bold uppercase leading-none text-sb-ink">Betting closed</p>
+    <p className="mt-2 text-sm text-sb-mute">Accounts, prices and bets are unavailable</p>
   </div>
 }
 

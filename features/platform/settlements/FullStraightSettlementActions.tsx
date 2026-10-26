@@ -66,7 +66,7 @@ export function FullStraightSettlementActions({ tenantId, actorId, plans }: { te
         <p className="mt-1 break-all tabular-nums text-[11px] text-muted-foreground">result {plan.resultVersionId} · rule {plan.ruleVersion} · plan {plan.planHash}</p>
       </div>
       <Track><Pill size="sm" variant="primary" onClick={() => void send(plan)} disabled={!loaded || busy || blocked || Boolean(pending)}>Settle reviewed {plan.outcome}</Pill></Track>
-    </li>)}</ul> : <p role="status" className="rounded-[4px] bg-muted/60 px-4 py-3 text-sm font-medium"><StatusDot tone="off" />No READY plans</p>}
+    </li>)}</ul> : <p role="status" className="rounded-[4px] bg-muted/60 px-4 py-3 text-sm font-medium">Nothing ready to settle</p>}
     <p role="status" aria-live="polite" className="break-words text-sm empty:hidden">{message}</p>
   </section>
 }

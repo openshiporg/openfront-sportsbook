@@ -124,7 +124,7 @@ export function CustomerShell({
         <div className="mx-auto grid w-full max-w-6xl flex-1 gap-6 px-4 py-6 md:grid-cols-[200px_minmax(0,1fr)] md:gap-10 md:py-10">
           <nav aria-label="Account sections" className="min-w-0">
             <div className="sb-scroll -mx-4 px-4 md:mx-0 md:px-0">
-              <div className="inline-flex gap-1 rounded-[2px] bg-sb-well p-1 shadow-[inset_0_1px_2px_rgb(16_20_27/0.12)] ring-1 ring-inset ring-black/5 md:flex md:flex-col md:rounded-[2px] md:p-1.5">
+              <div className="flex max-w-full overflow-x-auto border-b border-sb-line [scrollbar-width:thin] md:flex-col md:overflow-visible md:border-b-0 md:border-t md:[&>*]:justify-start">
                 {accountLinks.map(link => {
                   const Icon = link.icon
                   const active = current === link.key

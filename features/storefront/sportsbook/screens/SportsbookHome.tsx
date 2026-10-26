@@ -80,7 +80,7 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
  return <CustomerShell authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference}><div className="mx-auto grid max-w-[1560px] grid-cols-1 gap-6 px-4 py-5 pb-28 sm:py-6 xl:grid-cols-[208px_minmax(0,1fr)_380px] xl:px-6 xl:pb-8">
   <aside className="hidden xl:block" aria-label="Catalog navigation">
    <div className="sticky top-24 space-y-6">
-    <div><Link href="/sports" className="mb-2 block px-3 text-[11px] font-semibold  text-sb-mute hover:text-sb-ink">Sports</Link><div className="flex flex-col gap-1 rounded-[2px] bg-sb-well p-1.5 shadow-[inset_0_1px_2px_rgb(16_20_27/0.12)] ring-1 ring-inset ring-black/5">{sports.map(item=><button key={item} type="button" aria-pressed={sport===item} onClick={()=>pickSport(item)} className={cn(pillClass('flat','sm'),'justify-start px-3.5')}>{sportLabel(item)}</button>)}</div></div>
+    <div><Link href="/sports" className="mb-2 block px-3 text-[11px] font-semibold  text-sb-mute hover:text-sb-ink">Sports</Link><div className="flex flex-col border-t border-sb-line [&>*]:justify-start">{sports.map(item=><button key={item} type="button" aria-pressed={sport===item} onClick={()=>pickSport(item)} className={cn(pillClass('flat','sm'),'justify-start px-3.5')}>{sportLabel(item)}</button>)}</div></div>
     {competitions.length>1&&<div><p className="mb-2 px-3 text-[11px] font-semibold  text-sb-mute">Competitions</p><div className="flex flex-col gap-0.5">{competitions.map(item=><button key={item} type="button" aria-pressed={competition===item} onClick={()=>setCompetition(item)} className="min-h-9 truncate rounded-[2px] px-3.5 text-left text-sm text-sb-mute hover:text-sb-ink aria-pressed:font-semibold aria-pressed:text-sb-ink">{competition===item&&<Dot tone="info" />}{item==='All'?'All competitions':item}</button>)}</div></div>}
    </div>
   </aside>
@@ -105,7 +105,7 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
     {competitions.length>1&&<div className="sb-scroll -mx-4 px-4"><div role="group" aria-label="Competition" className="inline-flex gap-1">{competitions.map(item=><button key={item} type="button" aria-pressed={competition===item} onClick={()=>setCompetition(item)} className="min-h-9 shrink-0 whitespace-nowrap rounded-[2px] px-3.5 text-xs font-semibold text-sb-mute ring-1 ring-sb-line aria-pressed:bg-sb-ink aria-pressed:text-white aria-pressed:ring-sb-ink">{item==='All'?'All competitions':item}</button>)}</div></div>}
    </div>
 
-   {closed?<ClosedPanel/>:<>
+   {closed?<ClosedPanel coupon/>:<>
    {catalog.loading&&!catalog.data&&<div role="status" className="mt-4 space-y-3">{[0,1,2].map(i=><div key={i} className="h-36 animate-pulse rounded-[2px] bg-sb-card ring-1 ring-sb-line motion-reduce:animate-none"/>)}<span className="sr-only">Loading events…</span></div>}
    {catalog.error&&<div role="alert" className="mt-4 rounded-[2px] bg-red-50 p-5 text-sm text-red-950 ring-1 ring-red-200"><p className="font-semibold"><Dot tone="alert"/>Prices unavailable</p><div className="mt-3"><Track><Pill size="sm" onClick={catalog.reload}><RefreshCw aria-hidden="true"/>Retry</Pill></Track></div></div>}
    {!catalog.loading&&!catalog.error&&events.length===0&&<p className="mt-4 rounded-[2px] border  border-sb-line px-4 py-10 text-center text-sm text-sb-mute">{view==='FAVORITES'&&favorites.error?'Favorites unavailable.':view==='FAVORITES'?'No favorite events.':view==='LIVE'?'Nothing live.':'No events.'}</p>}

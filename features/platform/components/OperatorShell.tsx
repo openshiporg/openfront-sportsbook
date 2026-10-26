@@ -97,13 +97,12 @@ export function OperatorShell({
       <PageBreadcrumbs items={breadcrumbsFor(active, title, detail)} actions={actions} />
       <div className="flex flex-wrap items-end justify-between gap-3 px-4 pt-4 md:px-6 md:pt-6">
         <div className="min-w-0 max-w-3xl">
-          <h1 id="platform-page-title" tabIndex={-1} className="break-words text-2xl font-semibold tracking-tight text-gray-900 outline-none dark:text-gray-50">{tone ? <StatusDot tone={tone} /> : null}{title}</h1>
+          <h1 id="platform-page-title" tabIndex={-1} className="break-words font-sb-display text-3xl font-bold uppercase leading-none text-gray-900 outline-none dark:text-gray-50">{tone === "alert" || tone === "live" ? <StatusDot tone={tone} /> : null}{title}</h1>
           {meta ? <p className="mt-1 tabular-nums text-xs  text-muted-foreground">{meta}</p> : null}
         </div>
         {tenantName ? (
           <span className="inline-flex items-center rounded-[4px] bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground ring-1 ring-inset ring-black/5 dark:ring-white/5">
             <span className="sr-only">Operator: </span>
-            <StatusDot tone="ok" className="mr-1.5 size-1.5 align-middle" />
             {tenantName}
           </span>
         ) : null}

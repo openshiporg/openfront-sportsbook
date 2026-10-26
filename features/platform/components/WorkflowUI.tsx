@@ -1,14 +1,13 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowRight, Circle, Search, Square, Triangle } from "lucide-react";
-import { EmptyState as SharedEmptyState } from "@/components/ui/empty-state";
+import { ArrowRight } from "lucide-react";
 import { PillLink, StatusDot, Track, type Tone } from "./kit";
 
 /** Headline figures: a ruled strip of mono readouts. `detail` is a short state, never an explanation. */
 export function MetricGrid({ items }: { items: { label: string; value: ReactNode; detail?: ReactNode; tone?: Tone }[] }) {
-  return <dl aria-label="Current totals" className={`grid grid-cols-2 gap-px overflow-hidden rounded-[4px] bg-border ring-1 ring-border ${items.length >= 4 ? "xl:grid-cols-4" : items.length === 3 ? "sm:grid-cols-3" : ""}`}>
-    {items.map((item) => <div key={item.label} className="min-w-0 bg-background px-4 py-3">
-      <dt className="truncate text-xs font-medium text-muted-foreground">{item.tone ? <StatusDot tone={item.tone} /> : null}{item.label}</dt>
+  return <dl aria-label="Current totals" className={`grid grid-cols-2 border-y [&>*+*]:border-l ${items.length >= 4 ? "xl:grid-cols-4" : items.length === 3 ? "sm:grid-cols-3" : ""}`}>
+    {items.map((item) => <div key={item.label} className="min-w-0 px-4 py-2 first:pl-0">
+      <dt className="truncate text-xs font-medium text-muted-foreground">{item.tone === "alert" || item.tone === "live" || item.tone === "wait" ? <StatusDot tone={item.tone} /> : null}{item.label}</dt>
       <dd className="mt-1 break-words tabular-nums text-xl font-semibold  sm:text-2xl">{item.value}</dd>
       {item.detail ? <dd className="mt-0.5 truncate text-xs text-muted-foreground">{item.detail}</dd> : null}
     </div>)}
@@ -58,7 +57,7 @@ export function RecordList({ title, description, columns, rows, emptyTitle, empt
   const count = pagination ? pagination.total : rows.length;
   return <section className="min-w-0 overflow-hidden rounded-[4px] border bg-card text-card-foreground">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-foreground px-3 py-2">
-      <div className="min-w-0"><h2 className="text-[15px] font-bold tracking-tight">{tone ? <StatusDot tone={tone} /> : null}{title}<span className="ml-2 tabular-nums text-xs font-normal  text-muted-foreground">{count}</span></h2>{description ? <p className="mt-0.5 text-xs text-muted-foreground">{description}</p> : null}</div>
+      <div className="min-w-0"><h2 className="font-sb-display text-lg font-bold uppercase leading-tight">{tone === "alert" || tone === "live" || tone === "wait" ? <StatusDot tone={tone} /> : null}{title}<span className="ml-2 tabular-nums text-xs font-normal  text-muted-foreground">{count}</span></h2>{description ? <p className="mt-0.5 text-xs text-muted-foreground">{description}</p> : null}</div>
       {action}
     </div>
     {rows.length === 0 ? <EmptyState variant={filtered ? "search" : "empty"} title={emptyTitle} description={emptyDescription} action={emptyAction} /> : <>
@@ -81,8 +80,8 @@ export function RecordList({ title, description, columns, rows, emptyTitle, empt
 }
 
 /** Collection empty state built on the shared dashboard EmptyState ("empty" = no records, "search" = no results for the current filter). */
-export function EmptyState({ title, description, action, variant = "empty" }: { title: string; description?: string; action?: ReactNode; variant?: "empty" | "search" }) {
-  return <div role="status"><SharedEmptyState title={title} description={description ?? ""} icons={variant === "search" ? [Search] : [Triangle, Square, Circle]} />{action ? <div className="-mt-10 flex justify-center pb-10">{action}</div> : null}</div>;
+export function EmptyState({ title, description, action }: { title: string; description?: string; action?: ReactNode; variant?: "empty" | "search" }) {
+  return <div role="status" className="px-3 py-5 text-sm"><p className="font-medium text-foreground">{title}</p>{description ? <p className="mt-0.5 text-muted-foreground">{description}</p> : null}{action ? <div className="mt-2">{action}</div> : null}</div>;
 }
 
 /** One-line state: a dot on the title line, with optional short detail. */

@@ -52,7 +52,7 @@ export async function SettlementsScreen({ searchParams }: { searchParams?: Platf
   const notReady = readiness.filter(item => !item.plan);
   return <OperatorShell active="Settlement" title="Settlement" tone={ready.length || pendingApprovals ? "wait" : "ok"} meta={`${ready.length} ready · ${notReady.length} not ready · ${pendingApprovals} approvals pending`} tenantName={operator.tenantName}>
     <MetricGrid items={[
-      { label: "Ready", value: ready.length, detail: "FULL STRAIGHT", tone: ready.length ? "wait" : "ok" },
+      { label: "Ready", value: ready.length, detail: "Full straight", tone: ready.length ? "wait" : "ok" },
       { label: "Not ready", value: notReady.length, detail: `of ${candidates.length} oldest`, tone: notReady.length ? "alert" : undefined },
       { label: "Resettle approvals", value: pendingApprovals, detail: "pending", tone: pendingApprovals ? "wait" : undefined },
       { label: "Payouts on page", value: payoutSummary, detail: incompletePayout ? "incomplete · not net" : "by currency · not net", tone: incompletePayout ? "alert" : undefined },

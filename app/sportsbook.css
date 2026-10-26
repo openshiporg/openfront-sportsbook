@@ -44,9 +44,9 @@
 }
 
 /*
- * Storefront brand: a night price board. Night/board surfaces, chalk paper,
- * the logo's cobalt as the action colour (Store Settings rotates its hue),
- * floodlight lime for a chosen price and the slip's return, red for live.
+ * Storefront brand: the fixed-odds coupon. White coupon stock and black ink; the book's blue printed as
+ * solid bands ("night" and "board" are the band tokens, kept by name for the existing classes); white on the
+ * bands; square ruled price boxes fill blue when marked; red only for live. Antonio condensed for heads.
  */
 @theme {
   --color-sb-night: #155eef;
@@ -63,7 +63,7 @@
   --color-sb-live: #d92d20;
   --color-sb-win: #12a05a;
   --color-sb-wait: #e0920f;
-  --font-sb-display: var(--font-antonio), var(--font-geist-sans), sans-serif;
+  --font-sb-display: var(--font-antonio), "Antonio", "Arial Narrow", sans-serif;
   --font-sb-mono: var(--font-geist-sans), sans-serif;
 }
 
