@@ -77,7 +77,7 @@ export function CustomerShell({
             aria-expanded={menuOpen}
             aria-controls="customer-navigation"
             onClick={() => setMenuOpen(value => !value)}
-            className="-ml-1 grid size-11 place-items-center rounded-full text-white/80 hover:bg-white/10 md:hidden"
+            className="-ml-1 grid size-11 place-items-center rounded-full text-white/95 hover:bg-white/10 md:hidden"
           >
             {menuOpen ? <X aria-hidden="true" className="size-5" /> : <Menu aria-hidden="true" className="size-5" />}
           </button>
@@ -101,7 +101,7 @@ export function CustomerShell({
                   aria-label={signingOut ? 'Signing out' : 'Sign out'}
                   onClick={signOut}
                   disabled={signingOut}
-                  className="inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-[2px] px-3.5 text-sm font-semibold text-white/80 ring-1 ring-white/15 hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-60"
+                  className="inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-[2px] px-3.5 text-sm font-semibold text-white/95 ring-1 ring-white/15 hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-60"
                 >
                   <LogOut aria-hidden="true" className="size-4" />
                   <span className="hidden sm:inline">{signingOut ? 'Signing out…' : 'Sign out'}</span>
@@ -144,7 +144,7 @@ export function CustomerShell({
         </div>
       ) : <main id="main-content" className="flex-1">{closed ? <div className="mx-auto w-full max-w-3xl px-4 py-6"><ClosedState /></div> : children}</main>}
 
-      <footer className="bg-sb-night px-4 py-6 text-xs text-white/80">
+      <footer className="bg-sb-night px-4 py-6 text-xs text-white/95">
         <div className="mx-auto flex max-w-[1560px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:px-2">
           <p className=""><span aria-hidden="true" className="mr-2 inline-block size-1.5 rounded-full bg-sb-flood align-middle" />Practice play · no real money</p>
           <div className="flex flex-wrap gap-x-5 gap-y-2">

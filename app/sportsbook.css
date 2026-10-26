@@ -191,3 +191,6 @@ html, body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Focus must read on the blue bands: the shared focus colour is near-invisible on book blue. */
+.bg-sb-night :focus-visible, .bg-sb-night:focus-visible, .bg-sb-board :focus-visible { outline: 2px solid #fff; outline-offset: 2px; }

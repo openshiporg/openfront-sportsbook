@@ -1,0 +1,557 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-26T00:00:00Z",
+  "title": "Design System: Openfront Sportsbook",
+  "extensions": {
+    "colorMeta": {
+      "coupon-blue": {
+        "role": "primary",
+        "displayName": "Book Blue",
+        "canonical": "oklch(53.7% 0.229 262.2)",
+        "tonalRamp": [
+          "#000729",
+          "#001c5f",
+          "#00359d",
+          "#024fe0",
+          "#3879fb",
+          "#73a3ff",
+          "#aecafd",
+          "#e6effe"
+        ]
+      },
+      "band-rule": {
+        "role": "primary",
+        "displayName": "Band Rule Blue",
+        "canonical": "oklch(62.7% 0.180 262.6)",
+        "tonalRamp": [
+          "#00062a",
+          "#011c60",
+          "#02349f",
+          "#2458c5",
+          "#447cec",
+          "#75a3fc",
+          "#aecafe",
+          "#e6efff"
+        ]
+      },
+      "coupon-stock": {
+        "role": "neutral",
+        "displayName": "Coupon Stock",
+        "canonical": "oklch(98.7% 0.004 106.5)",
+        "tonalRamp": [
+          "#0b0b09",
+          "#252523",
+          "#424240",
+          "#61615f",
+          "#828280",
+          "#a5a5a2",
+          "#c9c9c6",
+          "#efefec"
+        ]
+      },
+      "slip-white": {
+        "role": "neutral",
+        "displayName": "Slip White",
+        "canonical": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "coupon-keyline": {
+        "role": "neutral",
+        "displayName": "Coupon Keyline",
+        "canonical": "oklch(87.4% 0.009 106.6)",
+        "tonalRamp": [
+          "#0c0b07",
+          "#252520",
+          "#42423d",
+          "#62625c",
+          "#83837c",
+          "#a5a59f",
+          "#cacac3",
+          "#efefe8"
+        ]
+      },
+      "coupon-well": {
+        "role": "neutral",
+        "displayName": "Coupon Well",
+        "canonical": "oklch(95.1% 0.007 106.5)",
+        "tonalRamp": [
+          "#0b0b08",
+          "#252522",
+          "#42423e",
+          "#61615d",
+          "#83837e",
+          "#a5a5a1",
+          "#c9c9c5",
+          "#efefea"
+        ]
+      },
+      "coupon-ink": {
+        "role": "neutral",
+        "displayName": "Coupon Ink",
+        "canonical": "oklch(18.7% 0.011 268.1)",
+        "tonalRamp": [
+          "#090b10",
+          "#23252a",
+          "#3f4248",
+          "#5e6168",
+          "#7f8289",
+          "#a2a5ac",
+          "#c6c9d0",
+          "#ebeef6"
+        ]
+      },
+      "coupon-mute": {
+        "role": "neutral",
+        "displayName": "Coupon Mute",
+        "canonical": "oklch(51.7% 0.018 266.2)",
+        "tonalRamp": [
+          "#080b13",
+          "#21252e",
+          "#3d424c",
+          "#5c616c",
+          "#7d828e",
+          "#a0a5b1",
+          "#c3c9d6",
+          "#e9effb"
+        ]
+      },
+      "flash-red": {
+        "role": "signal",
+        "displayName": "Flash Red",
+        "canonical": "oklch(57.6% 0.209 29.5)",
+        "tonalRamp": [
+          "#1f0000",
+          "#4d0100",
+          "#800301",
+          "#b70903",
+          "#e43a2b",
+          "#fd7563",
+          "#fdb4a8",
+          "#fee9e5"
+        ]
+      },
+      "settled-green": {
+        "role": "signal",
+        "displayName": "Settled Green",
+        "canonical": "oklch(62.1% 0.152 154.1)",
+        "tonalRamp": [
+          "#001005",
+          "#032e16",
+          "#074f2a",
+          "#00753f",
+          "#039c56",
+          "#44c078",
+          "#6ee69b",
+          "#c6ffd7"
+        ]
+      },
+      "waiting-amber": {
+        "role": "signal",
+        "displayName": "Waiting Amber",
+        "canonical": "oklch(72.2% 0.153 70.9)",
+        "tonalRamp": [
+          "#140800",
+          "#352002",
+          "#5c3a05",
+          "#85560d",
+          "#b07416",
+          "#e0920e",
+          "#ffba62",
+          "#ffebd5"
+        ]
+      },
+      "desk-ink": {
+        "role": "neutral",
+        "displayName": "Desk Ink",
+        "canonical": "oklch(0.141 0.005 285.823)",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#252527",
+          "#424244",
+          "#616164",
+          "#828285",
+          "#a5a5a8",
+          "#c9c9cc",
+          "#eeeef1"
+        ]
+      },
+      "desk-paper": {
+        "role": "neutral",
+        "displayName": "Desk Paper",
+        "canonical": "oklch(1 0 0)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "desk-rule": {
+        "role": "neutral",
+        "displayName": "Desk Rule",
+        "canonical": "oklch(0.92 0.004 286.32)",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#252527",
+          "#424244",
+          "#616163",
+          "#828285",
+          "#a5a5a7",
+          "#c9c9cc",
+          "#eeeef1"
+        ]
+      },
+      "desk-muted": {
+        "role": "neutral",
+        "displayName": "Desk Muted",
+        "canonical": "oklch(0.967 0.001 286.375)",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#252526",
+          "#424243",
+          "#616162",
+          "#828283",
+          "#a5a5a6",
+          "#c9c9ca",
+          "#eeeeef"
+        ]
+      },
+      "desk-mute-text": {
+        "role": "neutral",
+        "displayName": "Desk Mute Text",
+        "canonical": "oklch(0.552 0.016 285.938)",
+        "tonalRamp": [
+          "#0b0a11",
+          "#24242c",
+          "#414149",
+          "#606069",
+          "#81818a",
+          "#a4a4ae",
+          "#c8c8d2",
+          "#ededf8"
+        ]
+      },
+      "desk-live-red": {
+        "role": "signal",
+        "displayName": "Live Red",
+        "canonical": "oklch(57.7% 0.215 27.3)",
+        "tonalRamp": [
+          "#1e0001",
+          "#4c0204",
+          "#7f060b",
+          "#b60f16",
+          "#e73430",
+          "#fc7669",
+          "#ffb3a9",
+          "#fee9e6"
+        ]
+      },
+      "desk-ok-green": {
+        "role": "signal",
+        "displayName": "OK Green",
+        "canonical": "oklch(69.6% 0.149 162.5)",
+        "tonalRamp": [
+          "#000f07",
+          "#012d1d",
+          "#044f35",
+          "#0b734f",
+          "#14996b",
+          "#25c189",
+          "#59e7ac",
+          "#c3ffe0"
+        ]
+      },
+      "desk-wait-amber": {
+        "role": "signal",
+        "displayName": "Wait Amber",
+        "canonical": "oklch(76.9% 0.165 70.1)",
+        "tonalRamp": [
+          "#140800",
+          "#361f01",
+          "#5d3903",
+          "#865508",
+          "#b2730f",
+          "#df921e",
+          "#feba67",
+          "#feebd6"
+        ]
+      },
+      "desk-info-blue": {
+        "role": "signal",
+        "displayName": "Info Blue",
+        "canonical": "oklch(54.6% 0.215 262.9)",
+        "tonalRamp": [
+          "#00062b",
+          "#011b62",
+          "#0232a1",
+          "#1451d8",
+          "#3c79fa",
+          "#75a3fe",
+          "#adcaff",
+          "#e7effe"
+        ]
+      },
+      "desk-off-grey": {
+        "role": "signal",
+        "displayName": "Off Grey",
+        "canonical": "oklch(71.2% 0.013 286.1)",
+        "tonalRamp": [
+          "#0b0a10",
+          "#24242b",
+          "#414149",
+          "#606068",
+          "#81818a",
+          "#a4a4ad",
+          "#c8c8d1",
+          "#ededf7"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Customer page titles and the coupon band title; 3rem from 640px; uppercase."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Event names on the coupon and the bet slip head; uppercase."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Customer section heads over a 2px ink rule; uppercase."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All running text, market names, notices."
+      },
+      "figure": {
+        "displayName": "Figure",
+        "purpose": "Prices in price boxes and the slip, stakes; tabular figures."
+      },
+      "readout": {
+        "displayName": "Readout",
+        "purpose": "Figure strips, cash and potential return; 1.25rem on phones."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Field, figure and column labels and tabs; sentence case, no tracking; 0.6875rem in the slip and band."
+      },
+      "desk-title": {
+        "displayName": "Desk Title",
+        "purpose": "Operator page titles; uppercase."
+      },
+      "desk-section": {
+        "displayName": "Desk Section",
+        "purpose": "Agate table heads with count beside; uppercase."
+      },
+      "desk-cell": {
+        "displayName": "Desk Cell",
+        "purpose": "Agate table cells; first column 600."
+      },
+      "desk-table-head": {
+        "displayName": "Desk Table Head",
+        "purpose": "Agate column heads on the muted band."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "state-change",
+        "value": "150ms ease (color, background-color, border-color)",
+        "purpose": "Hover and mark transitions on price boxes, buttons and tabs."
+      },
+      {
+        "name": "live-pulse",
+        "value": "animate-pulse on the live mark, motion-safe only",
+        "purpose": "The only ambient motion: the live state mark on the coupon."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animations and transitions collapse to 0.01ms",
+        "purpose": "Global prefers-reduced-motion override."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone-3up",
+        "value": "360px"
+      },
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      }
+    ],
+    "focus": {
+      "value": "2px solid outline, 2px offset (global); desks use a 2px ring in the shell ring token",
+      "note": "Global outline colour oklch(0.45 0.12 165) is inherited from the shared stylesheet and is not a brand colour; it is near-invisible on Book Blue bands (about 1.3:1)."
+    },
+    "worlds": {
+      "customer": "Fixed-odds coupon: features/storefront/**, tokens --color-sb-* in app/sportsbook.css, light only.",
+      "operator": "Sports-page agate table: features/platform/**, shared dashboard shell tokens, light and dark."
+    }
+  },
+  "components": [
+    {
+      "name": "Price Box",
+      "kind": "custom",
+      "refersTo": "price-box",
+      "description": "Square ruled cell for one selection; fills solid Book Blue when marked.",
+      "html": "<div class=\"ds-prices\"><button class=\"ds-price\" aria-pressed=\"false\"><span class=\"ds-price-l\">Harbor City</span><span class=\"ds-price-o\">2.10</span></button><button class=\"ds-price\" aria-pressed=\"true\"><span class=\"ds-price-l\">Draw</span><span class=\"ds-price-o\">3.40</span></button><button class=\"ds-price\" aria-pressed=\"false\"><span class=\"ds-price-l\">Northgate</span><span class=\"ds-price-o\">3.25</span></button></div>",
+      "css": ".ds-prices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;font-family: var(--font-sb-mono, Geist, sans-serif);} .ds-price{display:flex;min-height:56px;align-items:center;justify-content:space-between;gap:8px;padding:0 12px;border:2px solid color-mix(in srgb,var(--color-sb-ink,#111318) 80%,transparent);border-radius:2px;background:var(--color-sb-card,#fff);color:var(--color-sb-ink,#111318);cursor:pointer;transition:background-color .15s,border-color .15s,color .15s;} .ds-price:hover{background:var(--color-sb-well,#efefea);} .ds-price:focus-visible{outline:2px solid var(--color-sb-ink,#111318);outline-offset:2px;} .ds-price[aria-pressed=true]{background:var(--color-sb-brand,#155eef);border-color:var(--color-sb-brand,#155eef);color:#fff;} .ds-price-l{font-size:12px;font-weight:500;color:var(--color-sb-mute,#636873);} .ds-price[aria-pressed=true] .ds-price-l{color:rgb(255 255 255/.75);} .ds-price-o{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Solid Book Blue action; 48px full width in the slip.",
+      "html": "<button class=\"ds-btn-primary\">Get quote</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 16px;border:1px solid var(--color-sb-brand,#155eef);border-radius:2px;background:var(--color-sb-brand,#155eef);color:#fff;font-family: var(--font-sb-mono, Geist, sans-serif);font-size:14px;font-weight:600;cursor:pointer;transition:filter .15s;} .ds-btn-primary:hover{filter:brightness(1.1);} .ds-btn-primary:focus-visible{outline:2px solid var(--color-sb-ink,#111318);outline-offset:2px;} .ds-btn-primary:disabled{opacity:.5;pointer-events:none;}"
+    },
+    {
+      "name": "Raised Button",
+      "kind": "button",
+      "refersTo": "button-raised",
+      "description": "White secondary action with a 25% ink border that darkens on hover.",
+      "html": "<button class=\"ds-btn-raised\">Retry</button>",
+      "css": ".ds-btn-raised{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 16px;border:1px solid color-mix(in srgb,var(--color-sb-ink,#111318) 25%,transparent);border-radius:2px;background:var(--color-sb-card,#fff);color:var(--color-sb-ink,#111318);font-family: var(--font-sb-mono, Geist, sans-serif);font-size:14px;font-weight:600;cursor:pointer;transition:border-color .15s;} .ds-btn-raised:hover{border-color:var(--color-sb-ink,#111318);} .ds-btn-raised:focus-visible{outline:2px solid var(--color-sb-ink,#111318);outline-offset:2px;}"
+    },
+    {
+      "name": "Underline Tabs",
+      "kind": "nav",
+      "refersTo": "tab-underline",
+      "description": "Every choice set: mute tabs on a keyline; the current one carries a 2px ink rule.",
+      "html": "<div class=\"ds-tabs\" role=\"group\" aria-label=\"Bet type\"><button class=\"ds-tab\" aria-pressed=\"false\">Straight</button><button class=\"ds-tab\" aria-pressed=\"true\">Parlay</button><button class=\"ds-tab\" aria-pressed=\"false\">System</button></div>",
+      "css": ".ds-tabs{display:inline-flex;border-bottom:1px solid var(--color-sb-line,#d6d6cf);font-family: var(--font-sb-mono, Geist, sans-serif);} .ds-tab{min-height:36px;padding:0 12px;margin-bottom:-1px;border:0;border-bottom:2px solid transparent;background:none;color:var(--color-sb-mute,#636873);font-size:12px;font-weight:600;cursor:pointer;transition:color .15s;} .ds-tab:hover{color:var(--color-sb-ink,#111318);} .ds-tab:focus-visible{outline:2px solid var(--color-sb-ink,#111318);outline-offset:2px;} .ds-tab[aria-pressed=true]{border-bottom-color:var(--color-sb-ink,#111318);color:var(--color-sb-ink,#111318);}"
+    },
+    {
+      "name": "Coupon Band",
+      "kind": "card",
+      "refersTo": "coupon-band",
+      "description": "Solid blue band heading the event list: display title, tabular meta, white underline tabs.",
+      "html": "<div class=\"ds-band\"><h1 class=\"ds-band-h\"><span class=\"ds-mark\"></span>Live &amp; upcoming</h1><p class=\"ds-band-m\">2 live · 12 events · Oct 26, 14:05</p><div class=\"ds-band-tabs\"><button aria-pressed=\"true\">All</button><button aria-pressed=\"false\">Live</button><button aria-pressed=\"false\">Favorites</button></div></div>",
+      "css": ".ds-band{padding:24px;border-radius:2px;background:var(--color-sb-night,#155eef);color:#fff;font-family: var(--font-sb-mono, Geist, sans-serif);} .ds-band-h{margin:0;font-family: var(--font-sb-display, Antonio, 'Arial Narrow', sans-serif);font-size:48px;font-weight:700;line-height:1;letter-spacing:-.025em;text-transform:uppercase;} .ds-mark{display:inline-block;width:10px;height:10px;margin-right:8px;border-radius:1px;background:var(--color-sb-live,#d92d20);vertical-align:.35em;} .ds-band-m{margin:8px 0 0;font-size:12px;font-variant-numeric:tabular-nums;} .ds-band-tabs{display:inline-flex;margin-top:20px;border-bottom:1px solid rgb(255 255 255/.2);} .ds-band-tabs button{min-height:36px;padding:0 12px;margin-bottom:-1px;border:0;border-bottom:2px solid transparent;background:none;color:rgb(255 255 255/.65);font:inherit;font-size:12px;font-weight:600;cursor:pointer;} .ds-band-tabs button:hover{color:#fff;} .ds-band-tabs button:focus-visible{outline:2px solid #fff;outline-offset:2px;} .ds-band-tabs button[aria-pressed=true]{border-bottom-color:#fff;color:#fff;}"
+    },
+    {
+      "name": "Stake Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Square white field with a 25% ink border; focus turns the border blue.",
+      "html": "<label class=\"ds-field-l\">Stake · USD<input class=\"ds-field ds-field-num\" inputmode=\"decimal\" value=\"10.00\"></label>",
+      "css": ".ds-field-l{display:grid;gap:6px;font-family: var(--font-sb-mono, Geist, sans-serif);font-size:11px;font-weight:600;color:var(--color-sb-mute,#636873);} .ds-field{min-height:44px;width:100%;padding:0 12px;border:1px solid color-mix(in srgb,var(--color-sb-ink,#111318) 25%,transparent);border-radius:2px;background:var(--color-sb-card,#fff);color:var(--color-sb-ink,#111318);font:inherit;font-size:14px;} .ds-field-num{text-align:right;font-size:18px;font-weight:600;font-variant-numeric:tabular-nums;} .ds-field:focus-visible{border-color:var(--color-sb-brand,#155eef);outline:2px solid var(--color-sb-ink,#111318);outline-offset:2px;} .ds-field:disabled{opacity:.6;}"
+    },
+    {
+      "name": "Section Head",
+      "kind": "custom",
+      "refersTo": "",
+      "description": "Condensed bold uppercase head with a tabular count, over a 2px ink rule.",
+      "html": "<div class=\"ds-sec\"><h2>Open bets<span>4</span></h2></div>",
+      "css": ".ds-sec{padding-bottom:8px;border-bottom:2px solid var(--color-sb-ink,#111318);} .ds-sec h2{margin:0;font-family: var(--font-sb-display, Antonio, 'Arial Narrow', sans-serif);font-size:20px;font-weight:700;letter-spacing:.025em;text-transform:uppercase;color:var(--color-sb-ink,#111318);} .ds-sec span{margin-left:8px;font-family:Geist,sans-serif;font-size:14px;font-weight:400;font-variant-numeric:tabular-nums;color:var(--color-sb-mute,#636873);}"
+    },
+    {
+      "name": "Agate Table",
+      "kind": "card",
+      "refersTo": "desk-table-head",
+      "description": "Operator desk table: condensed head over a 2px ink rule, ruled rows, square state marks, tabular figures.",
+      "html": "<section class=\"ds-agate\"><div class=\"ds-agate-h\"><h2><span class=\"ds-dot ds-live\"></span>Suspended markets<span class=\"ds-n\">3</span></h2></div><table><thead><tr><th>Market</th><th>Event</th><th>Price</th><th>State</th></tr></thead><tbody><tr><td><span class=\"ds-dot ds-live\"></span>Match result</td><td>Harbor City v Northgate</td><td class=\"ds-r\">2.10</td><td><span class=\"ds-dot ds-alert\"></span>suspended</td></tr><tr><td><span class=\"ds-dot ds-wait\"></span>Total goals 2.5</td><td>Rivermouth v Eastfield</td><td class=\"ds-r\">1.85</td><td><span class=\"ds-dot ds-wait\"></span>pending</td></tr></tbody></table></section>",
+      "css": ".ds-agate{overflow:hidden;border:1px solid var(--border,#e4e4e7);border-radius:4px;background:var(--card,#fff);color:var(--foreground,#09090b);font-family:var(--font-geist-sans,Geist),sans-serif;} .ds-agate-h{padding:8px 12px;border-bottom:2px solid var(--foreground,#09090b);} .ds-agate-h h2{margin:0;font-family: var(--font-sb-display, Antonio, 'Arial Narrow', sans-serif);font-size:18px;font-weight:700;line-height:1.25;text-transform:uppercase;} .ds-n{margin-left:8px;font-family:var(--font-geist-sans,Geist),sans-serif;font-size:12px;font-weight:400;font-variant-numeric:tabular-nums;color:var(--muted-foreground,#71717a);} .ds-agate table{width:100%;border-collapse:collapse;font-size:14px;text-align:left;} .ds-agate th{padding:6px 12px;background:color-mix(in srgb,var(--muted,#f4f4f5) 40%,transparent);border-bottom:1px solid var(--border,#e4e4e7);font-size:12px;font-weight:600;color:color-mix(in srgb,var(--foreground,#09090b) 70%,transparent);} .ds-agate td{padding:8px 12px;border-top:1px solid var(--border,#e4e4e7);font-variant-numeric:tabular-nums;color:color-mix(in srgb,var(--foreground,#09090b) 75%,transparent);} .ds-agate td:first-child{font-weight:600;color:var(--foreground,#09090b);} .ds-agate tbody tr:hover{background:color-mix(in srgb,var(--muted,#f4f4f5) 40%,transparent);} .ds-r{text-align:right;} .ds-dot{display:inline-block;width:8px;height:8px;margin-right:8px;border-radius:1px;vertical-align:.18em;} .ds-live{background:#dc2626;} .ds-alert{background:#ef4444;} .ds-wait{background:#f59e0b;}"
+    },
+    {
+      "name": "Desk Buttons",
+      "kind": "button",
+      "refersTo": "desk-button-primary",
+      "description": "Operator actions: 32px, 4px corners; primary is solid ink, raised is paper with a rule border.",
+      "html": "<div class=\"ds-desk-btns\"><button class=\"ds-dbtn ds-dbtn-p\">Reopen market</button><button class=\"ds-dbtn\">Open event</button></div>",
+      "css": ".ds-desk-btns{display:inline-flex;gap:6px;font-family:var(--font-geist-sans,Geist),sans-serif;} .ds-dbtn{display:inline-flex;align-items:center;height:32px;padding:0 12px;border:1px solid var(--border,#e4e4e7);border-radius:4px;background:var(--background,#fff);color:var(--foreground,#09090b);font:inherit;font-size:14px;font-weight:500;cursor:pointer;transition:background-color .15s;} .ds-dbtn:hover{background:var(--muted,#f4f4f5);} .ds-dbtn:focus-visible{outline:2px solid var(--ring,#a1a1aa);outline-offset:2px;} .ds-dbtn-p{border-color:var(--foreground,#09090b);background:var(--foreground,#09090b);color:var(--background,#fff);} .ds-dbtn-p:hover{background:color-mix(in srgb,var(--foreground,#09090b) 85%,transparent);}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Printed Book",
+    "overview": "Openfront Sportsbook is set like the two printed artefacts of a betting shop. The customer site is a **fixed-odds coupon**: white coupon stock, black ink, the book's blue printed as solid bands, and each event a row of square ruled price boxes that fill solid when marked. The operator desks are the **sports-page agate table**: black ink on white, thin column rules, condensed bold heads with a 2px ink rule beneath, and every figure in tabular numerals. Both worlds share one condensed head face (Antonio), one text face (Geist), and the same refusal of shadows, round shapes and monospace costume.\n\nDensity follows the reader. The bettor on a phone gets 56px price boxes and a bottom-sheet slip; the trader gets 8px row rhythm, 14px cells and the table header above the fold. Colour carries state, never decoration: blue is the book's ink on the customer side and absent from the desks' surfaces; red is live and alarm; amber is waiting; green is settled. Anything the system does not recognise reads neutral grey, never healthy.\n\nThe operator desks sit inside the shared dashboard shell and draw their neutrals from its tokens, so they work in light and dark. The customer site is light only, on its own `sb-*` palette.",
+    "keyCharacteristics": [
+      "Square everything: 2px corners on the coupon, 4px on the desks, 1px on state marks.",
+      "Condensed bold uppercase heads (Antonio 700) over a 2px ink rule; sentence-case Geist for everything else.",
+      "Odds, money, counts and times in tabular figures in the text face.",
+      "Hairline rings and 1px keylines for structure; no shadows.",
+      "Choices are underline tabs on a keyline, never pills or segmented tracks.",
+      "A small square state mark on the title line is the only status ornament."
+    ],
+    "rules": [
+      {
+        "name": "The Printed Band Rule",
+        "body": "The book's blue appears as a solid band or a solid marked box. It is never a tint wash, a gradient fill or a background for body copy.",
+        "section": "colors"
+      },
+      {
+        "name": "The Flash Red Rule",
+        "body": "Red means live, or something refused. A price, a promotion or a call to action is never red.",
+        "section": "colors"
+      },
+      {
+        "name": "The Unknown Is Neutral Rule",
+        "body": "A status the mapping does not list renders grey. No unrecognised state is ever shown green.",
+        "section": "colors"
+      },
+      {
+        "name": "The Condensed Head Rule",
+        "body": "Antonio is for heads only: titles, section heads, event names, slip and state heads. Never for labels, body, buttons or figures.",
+        "section": "typography"
+      },
+      {
+        "name": "The Agate Figure Rule",
+        "body": "Every odds, money, count, clock and reference value is set in Geist with tabular figures. No monospace face stands in for alignment.",
+        "section": "typography"
+      },
+      {
+        "name": "The Printed Depth Rule",
+        "body": "Separate with a rule, a ring or a solid band. If a surface needs a shadow to read as separate, the layout is wrong.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Square Corner Rule",
+        "body": "No pills, circles or soft cards. Corners stop at 2px on the coupon and 4px on the desks.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "**Do** fill a price box solid Book Blue when it is marked, and leave every unmarked box white with a 2px ink border.",
+      "**Do** set every head in Antonio 700 uppercase over a 2px ink rule, and everything else in Geist sentence case.",
+      "**Do** put odds, money, counts and clocks in tabular figures, right-aligned in tables and ledgers.",
+      "**Do** mark state with the 8px square mark on the title line, and map unknown statuses to grey.",
+      "**Do** keep \"Practice play · no real money\" visible in the customer footer on every page, and safer-play links beside account actions.",
+      "**Do** separate with 1px rules and hairline rings; use solid blue bands for the header, footer, coupon band, slip head and quote panel."
+    ],
+    "donts": [
+      "**Don't** use shadows, inset wells or glows on either world.",
+      "**Don't** round anything past 2px on the coupon or 4px on the desks; no pills, circles or rounded cards.",
+      "**Don't** use pill filters or segmented tracks; choices are underline tabs.",
+      "**Don't** set figures in a monospace face, or use small tracked-caps labels or eyebrows above titles.",
+      "**Don't** use red for anything but live or refusal, or blue as a tint wash.",
+      "**Don't** bring the coupon's blue onto the desks' surfaces; the desks are ink on white with signal marks only."
+    ]
+  }
+}

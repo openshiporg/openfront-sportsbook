@@ -97,9 +97,9 @@ export function AuthScreen() {
       <section className="overflow-hidden rounded-[2px] bg-sb-card ring-1 ring-sb-line" aria-labelledby="auth-heading">
         <div className="bg-sb-night px-5 pb-5 pt-6 text-white sm:px-7">
           <h1 id="auth-heading" className="font-sb-display text-4xl font-bold uppercase leading-none tracking-tight">{title}</h1>
-          <p className="mt-2 text-xs  text-white/80">Practice play · no real money</p>
+          <p className="mt-2 text-xs  text-white/95">Practice play · no real money</p>
           <div className="mt-5 grid grid-cols-3 gap-1 rounded-[2px] bg-black/40 p-1 shadow-[inset_0_1px_2px_rgb(0_0_0/0.6)] ring-1 ring-inset ring-white/5" role="tablist" aria-label="Account access">
-            {MODES.map(([value,label]) => <button key={value} ref={element=>{tabRefs.current[value]=element}} id={`auth-tab-${value}`} type="button" role="tab" aria-selected={mode===value} aria-controls="auth-panel" tabIndex={mode===value?0:-1} disabled={pending&&mode!==value} onKeyDown={onTabKeyDown} onClick={()=>switchMode(value)} className="min-h-9 rounded-[2px] px-2 text-sm font-semibold text-white/80 transition-colors hover:text-white aria-selected:bg-sb-rule aria-selected:text-white aria-selected:shadow-[0_1px_2px_rgb(0_0_0/0.5)]">{label}</button>)}
+            {MODES.map(([value,label]) => <button key={value} ref={element=>{tabRefs.current[value]=element}} id={`auth-tab-${value}`} type="button" role="tab" aria-selected={mode===value} aria-controls="auth-panel" tabIndex={mode===value?0:-1} disabled={pending&&mode!==value} onKeyDown={onTabKeyDown} onClick={()=>switchMode(value)} className="min-h-9 rounded-[2px] px-2 text-sm font-semibold text-white/95 transition-colors hover:text-white aria-selected:bg-sb-rule aria-selected:text-white aria-selected:shadow-[0_1px_2px_rgb(0_0_0/0.5)]">{label}</button>)}
           </div>
         </div>
         <div role="tabpanel" id="auth-panel" aria-labelledby={`auth-tab-${mode}`} className="px-5 pb-6 pt-5 sm:px-7">
