@@ -136,7 +136,7 @@ const isCustomerOrigin = (intent: any) => /^customer(-withdrawal)?:/.test(String
  * captures/credits; definitive failure releases a withdrawal hold; anything else stays UNKNOWN with funds held.
  * Shared by the customer finalize step and the payment.unknown.v1 reconciliation consumer.
  */
-async function applyPaymentOutcome(tx: any, current: any, outcome: DispatchOutcome, now: Date) {
+export async function applyPaymentOutcome(tx: any, current: any, outcome: DispatchOutcome, now: Date) {
   const tenantId = current.tenantId as string
   const amountMinor = BigInt(current.amountMinor)
   const [cash, clearing] = await Promise.all([

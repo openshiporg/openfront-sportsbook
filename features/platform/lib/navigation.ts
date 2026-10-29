@@ -37,6 +37,7 @@ export const platformNavItems: PlatformNavItem[] = [
   { title: 'Support & disputes', href: '/platform/support', color: 'cyan', description: 'Support cases, disputes, resolutions and appeals.', icon: ReceiptText, group: 'standalone' },
   { title: 'Notifications', href: '/platform/notifications', color: 'cyan', description: 'Messages sent to customers and staff.', icon: ReceiptText, group: 'standalone' },
   { title: 'Finance', href: '/platform/finance', color: 'emerald', description: 'Ledger journals, payments and balances.', icon: WalletCards, group: 'standalone', exact: true },
+  { title: 'Licences & payments', href: '/platform/payments', color: 'slate', description: 'Operator licences, payment providers and payout queue.', icon: ShieldCheck, group: 'standalone' },
   { title: 'Reconciliation & safeguarding', href: '/platform/finance/reconciliation', color: 'emerald', description: 'Compare the ledger with provider, bank and safeguarded-funds records.', icon: WalletCards, group: 'standalone' },
   { title: 'Tax', href: '/platform/finance/tax', color: 'emerald', description: 'Tax assessed on settled wagers.', icon: WalletCards, group: 'standalone' },
   { title: 'Promotions', href: '/platform/promotions', color: 'pink', description: 'Campaigns, terms, budgets and player awards.', icon: Package, group: 'standalone' },

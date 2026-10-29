@@ -24,6 +24,7 @@ const screenRoutes = {
   Support: "/platform/support",
   Notifications: "/platform/notifications",
   Finance: "/platform/finance",
+  Payments: "/platform/payments",
   Reconciliation: "/platform/finance/reconciliation",
   Tax: "/platform/finance/tax",
   Promotions: "/platform/promotions",
