@@ -303,6 +303,7 @@ model Jurisdiction {
   createdAt                                   DateTime                    @default(now())
   updatedAt                                   DateTime                    @default(now()) @updatedAt
   from_OperatorJurisdiction_jurisdiction      OperatorJurisdiction[]      @relation("OperatorJurisdiction_jurisdiction")
+  from_OperatorLicence_jurisdiction           OperatorLicence[]           @relation("OperatorLicence_jurisdiction")
   from_ProviderConnection_jurisdiction        ProviderConnection[]        @relation("ProviderConnection_jurisdiction")
   from_JurisdictionPolicyVersion_jurisdiction JurisdictionPolicyVersion[] @relation("JurisdictionPolicyVersion_jurisdiction")
   from_Promotion_jurisdiction                 Promotion[]                 @relation("Promotion_jurisdiction")
@@ -373,6 +374,24 @@ model OperatorJurisdiction {
   updatedAt                                 DateTime                        @default(now()) @updatedAt
   from_Wager_operatorJurisdiction           Wager[]                         @relation("Wager_operatorJurisdiction")
   from_OperatorChannel_operatorJurisdiction OperatorChannel[]               @relation("OperatorChannel_operatorJurisdiction")
+
+  @@index([tenantId])
+  @@index([jurisdictionId])
+}
+
+model OperatorLicence {
+  id               String                     @id @default(cuid())
+  tenant           Tenant?                    @relation("OperatorLicence_tenant", fields: [tenantId], references: [id])
+  tenantId         String?                    @map("tenant")
+  jurisdiction     Jurisdiction?              @relation("OperatorLicence_jurisdiction", fields: [jurisdictionId], references: [id])
+  jurisdictionId   String?                    @map("jurisdiction")
+  licenceNumber    String                     @default("")
+  regulator        String                     @default("")
+  expiresAt        DateTime
+  permittedRegions Json?                      @default("[]")
+  status           OperatorLicenceStatusType? @default(ACTIVE)
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @default(now()) @updatedAt
 
   @@index([tenantId])
   @@index([jurisdictionId])
@@ -749,6 +768,7 @@ model Tenant {
   from_LedgerAccount_tenant              LedgerAccount[]              @relation("LedgerAccount_tenant")
   from_Market_tenant                     Market[]                     @relation("Market_tenant")
   from_OperatorJurisdiction_tenant       OperatorJurisdiction[]       @relation("OperatorJurisdiction_tenant")
+  from_OperatorLicence_tenant            OperatorLicence[]            @relation("OperatorLicence_tenant")
   from_OutboxMessage_tenant              OutboxMessage[]              @relation("OutboxMessage_tenant")
   from_Player_tenant                     Player[]                     @relation("Player_tenant")
   from_PlayerLimit_tenant                PlayerLimit[]                @relation("PlayerLimit_tenant")
@@ -3369,6 +3389,11 @@ enum MarketStatusType {
 
 enum OperatorJurisdictionStatusType {
   PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum OperatorLicenceStatusType {
   ACTIVE
   SUSPENDED
 }

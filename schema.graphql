@@ -1817,6 +1817,89 @@ input JurisdictionRelateToOneForCreateInput {
   connect: JurisdictionWhereUniqueInput
 }
 
+type OperatorLicence {
+  id: ID!
+  tenant: Tenant
+  jurisdiction: Jurisdiction
+  licenceNumber: String
+  regulator: String
+  expiresAt: DateTime
+  permittedRegions: JSON
+  status: OperatorLicenceStatusType
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum OperatorLicenceStatusType {
+  ACTIVE
+  SUSPENDED
+}
+
+input OperatorLicenceWhereUniqueInput {
+  id: ID
+}
+
+input OperatorLicenceWhereInput {
+  AND: [OperatorLicenceWhereInput!]
+  OR: [OperatorLicenceWhereInput!]
+  NOT: [OperatorLicenceWhereInput!]
+  id: IDFilter
+  tenant: TenantWhereInput
+  jurisdiction: JurisdictionWhereInput
+  licenceNumber: StringFilter
+  regulator: StringFilter
+  expiresAt: DateTimeFilter
+  status: OperatorLicenceStatusTypeNullableFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input OperatorLicenceStatusTypeNullableFilter {
+  equals: OperatorLicenceStatusType
+  in: [OperatorLicenceStatusType!]
+  notIn: [OperatorLicenceStatusType!]
+  not: OperatorLicenceStatusTypeNullableFilter
+}
+
+input OperatorLicenceOrderByInput {
+  id: OrderDirection
+  licenceNumber: OrderDirection
+  regulator: OrderDirection
+  expiresAt: OrderDirection
+  status: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input OperatorLicenceUpdateInput {
+  tenant: TenantRelateToOneForUpdateInput
+  jurisdiction: JurisdictionRelateToOneForUpdateInput
+  licenceNumber: String
+  regulator: String
+  expiresAt: DateTime
+  permittedRegions: JSON
+  status: OperatorLicenceStatusType
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input OperatorLicenceUpdateArgs {
+  where: OperatorLicenceWhereUniqueInput!
+  data: OperatorLicenceUpdateInput!
+}
+
+input OperatorLicenceCreateInput {
+  tenant: TenantRelateToOneForCreateInput
+  jurisdiction: JurisdictionRelateToOneForCreateInput
+  licenceNumber: String
+  regulator: String
+  expiresAt: DateTime
+  permittedRegions: JSON
+  status: OperatorLicenceStatusType
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
 type OutboxMessage {
   id: ID!
   tenant: Tenant
@@ -13595,6 +13678,12 @@ type Mutation {
   updateOperatorJurisdictions(data: [OperatorJurisdictionUpdateArgs!]!): [OperatorJurisdiction]
   deleteOperatorJurisdiction(where: OperatorJurisdictionWhereUniqueInput!): OperatorJurisdiction
   deleteOperatorJurisdictions(where: [OperatorJurisdictionWhereUniqueInput!]!): [OperatorJurisdiction]
+  createOperatorLicence(data: OperatorLicenceCreateInput!): OperatorLicence
+  createOperatorLicences(data: [OperatorLicenceCreateInput!]!): [OperatorLicence]
+  updateOperatorLicence(where: OperatorLicenceWhereUniqueInput!, data: OperatorLicenceUpdateInput!): OperatorLicence
+  updateOperatorLicences(data: [OperatorLicenceUpdateArgs!]!): [OperatorLicence]
+  deleteOperatorLicence(where: OperatorLicenceWhereUniqueInput!): OperatorLicence
+  deleteOperatorLicences(where: [OperatorLicenceWhereUniqueInput!]!): [OperatorLicence]
   createOutboxMessage(data: OutboxMessageCreateInput!): OutboxMessage
   createOutboxMessages(data: [OutboxMessageCreateInput!]!): [OutboxMessage]
   updateOutboxMessage(where: OutboxMessageWhereUniqueInput!, data: OutboxMessageUpdateInput!): OutboxMessage
@@ -14459,6 +14548,9 @@ type Query {
   operatorJurisdiction(where: OperatorJurisdictionWhereUniqueInput!): OperatorJurisdiction
   operatorJurisdictions(where: OperatorJurisdictionWhereInput! = {}, orderBy: [OperatorJurisdictionOrderByInput!]! = [], take: Int! = 100, skip: Int! = 0, cursor: OperatorJurisdictionWhereUniqueInput): [OperatorJurisdiction!]
   operatorJurisdictionsCount(where: OperatorJurisdictionWhereInput! = {}): Int
+  operatorLicence(where: OperatorLicenceWhereUniqueInput!): OperatorLicence
+  operatorLicences(where: OperatorLicenceWhereInput! = {}, orderBy: [OperatorLicenceOrderByInput!]! = [], take: Int! = 100, skip: Int! = 0, cursor: OperatorLicenceWhereUniqueInput): [OperatorLicence!]
+  operatorLicencesCount(where: OperatorLicenceWhereInput! = {}): Int
   outboxMessage(where: OutboxMessageWhereUniqueInput!): OutboxMessage
   outboxMessages(where: OutboxMessageWhereInput! = {}, orderBy: [OutboxMessageOrderByInput!]! = [], take: Int! = 100, skip: Int! = 0, cursor: OutboxMessageWhereUniqueInput): [OutboxMessage!]
   outboxMessagesCount(where: OutboxMessageWhereInput! = {}): Int
