@@ -190,6 +190,7 @@ const customerCopy: Record<string, string> = {
   GEO_BLOCKED: "Betting isn't available in your location.",
   OPERATOR_NOT_LICENSED: "This operator hasn't finished licensing setup.",
   PAYMENTS_NOT_CONFIGURED: "This operator hasn't finished payments setup.",
+  RESPONSIBLE_GAMING_NOT_CONFIGURED: "This operator hasn't finished responsible gaming setup.",
   SANDBOX_OPERATOR_NOT_CONFIGURED: 'This sportsbook isn’t open yet.',
   SANDBOX_BRAND_NOT_CONFIGURED: 'This sportsbook isn’t open yet.',
   SANDBOX_TENANT_NOT_CONFIGURED: 'This sportsbook isn’t open yet.',

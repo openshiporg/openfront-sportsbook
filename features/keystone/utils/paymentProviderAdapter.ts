@@ -1,6 +1,6 @@
 import { paymentProviderAdapters, sandboxAdapters } from '../../integrations/payment'
 
-type PaymentCommand = { type: 'deposit' | 'withdrawal'; payload: { amountMinor: string; currency: string } }
+type PaymentCommand = { type: 'deposit' | 'withdrawal'; payload: { amountMinor: string; currency: string; opaqueData?: { dataDescriptor: string; dataValue: string } } }
 type PaymentProvider = { id?: string; adapterId: string; configReference: string; secretReference?: string | null; certificationStatus?: string | null; status?: string | null }
 
 /** Narrow provider dispatch used by customer and operator payment lifecycles. */
@@ -13,13 +13,14 @@ export async function executePaymentProvider(provider: PaymentProvider, command:
     return sandboxAdapters.payments.execute({}, command, idempotencyKey)
   }
   if (!(provider.adapterId in paymentProviderAdapters)) throw new Error('PAYMENT_ADAPTER_UNSUPPORTED')
+  if (provider.secretReference && !process.env[provider.secretReference]) throw new Error('PAYMENT_ADAPTER_INVALID_CONFIG')
+  const adapter = await paymentProviderAdapters[provider.adapterId as keyof typeof paymentProviderAdapters]()
   if (command.type === 'withdrawal') {
     if (provider.adapterId !== 'manual') throw new Error('PAYMENT_ADAPTER_UNSUPPORTED')
     return { status: 'UNKNOWN', externalRef: idempotencyKey, reasonCode: 'OPERATOR_PAYOUT_REQUIRED' }
   }
-  const adapter = await paymentProviderAdapters[provider.adapterId as keyof typeof paymentProviderAdapters]()
-  if (provider.secretReference && !process.env[provider.secretReference]) throw new Error('PAYMENT_ADAPTER_INVALID_CONFIG')
-  const result = await adapter.createPaymentFunction({ amount: Number(command.payload.amountMinor), currency: command.payload.currency, idempotencyKey, captureNow: true })
+  if (provider.adapterId === 'manual') throw new Error('PAYMENT_ADAPTER_UNSUPPORTED')
+  const result = await adapter.createPaymentFunction({ amount: Number(command.payload.amountMinor), currency: command.payload.currency, idempotencyKey, captureNow: true, opaqueData: command.payload.opaqueData })
   if (result.status === 'succeeded') return { status: 'SUCCEEDED', externalRef: String(result.paymentIntentId ?? ''), reasonCode: '' }
   if (result.status === 'failed') return { status: 'FAILED', externalRef: '', reasonCode: 'PROVIDER_DECLINED' }
   return { status: 'UNKNOWN', externalRef: String(result.paymentIntentId ?? ''), reasonCode: 'PROVIDER_OUTCOME_UNKNOWN' }

@@ -92,7 +92,7 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
     <div className="flex flex-wrap items-end justify-between gap-3">
      <div className="min-w-0">
       <h1 id="events-heading" className="break-words font-sb-display text-4xl font-bold uppercase leading-none tracking-tight sm:text-5xl">{catalog.data&&catalog.data.liveCount>0&&<Dot tone="live" className="size-2.5 align-[0.35em]" />}{initialEventId?(initialEventName??'Event'):view==='LIVE'?'Live now':view==='FAVORITES'?'Favorites':competition!=='All'?competition:sport!=='All'?sportLabel(sport):'Live & upcoming'}</h1>
-      <p className="mt-2 text-xs  text-white/95">{initialEventId&&initialEventCompetition?<>{initialEventCompetition} · </>:null}{catalog.data?<>{catalog.data.liveCount} live · {catalog.data.total} event{catalog.data.total===1?'':'s'} · {formatDate(catalog.data.generatedAt)}</>:closed?'Board closed · practice play only':'Loading prices'}</p>
+      <p className="mt-2 text-xs  text-white/95">{initialEventId&&initialEventCompetition?<>{initialEventCompetition} · </>:null}{catalog.data?<>{catalog.data.liveCount} live · {catalog.data.total} event{catalog.data.total===1?'':'s'} · {formatDate(catalog.data.generatedAt)}</>:closed?'Board closed':'Loading prices'}</p>
      </div>
      {session.data?.authenticated&&<div className="text-right"><p className="text-[11px] font-semibold  text-white/95">Cash</p><p className="tabular-nums text-2xl font-semibold  text-sb-flood">{formatMinor(session.data.availableMinor??'0',session.data.currency??catalog.data?.currency??'USD')}</p></div>}
     </div>

@@ -35,7 +35,9 @@ export async function POST(request: Request) {
     if (await sandboxRateLimit(keystoneContext.prisma, request, 20, 60_000, 'customer-funding', { tenantId: actor.tenantId, identity: actor.playerId })) throw new CustomerError('RATE_LIMITED', 429)
     const body = await readJsonObject(request)
     if ('subject' in body || 'playerId' in body || 'tenantId' in body) throw new CustomerError('CALLER_OWNERSHIP_FORBIDDEN', 400)
-    const result = await fundCustomerWallet(keystoneContext.prisma, actor, { amountMinor: body.amountMinor, idempotencyKey: body.idempotencyKey, currency: body.currency })
+    const opaqueData = body.opaqueData
+    if (!opaqueData || typeof opaqueData !== 'object' || typeof (opaqueData as any).dataDescriptor !== 'string' || typeof (opaqueData as any).dataValue !== 'string') throw new CustomerError('PAYMENT_METHOD_REQUIRED', 400)
+    const result = await fundCustomerWallet(keystoneContext.prisma, actor, { amountMinor: body.amountMinor, idempotencyKey: body.idempotencyKey, currency: body.currency, opaqueData: opaqueData as any })
     return Response.json(result, { status: result.state === 'SUCCEEDED' ? (result.duplicate ? 200 : 201) : result.state === 'PENDING' || result.state === 'IN_PROGRESS' ? 202 : 422, headers: { 'cache-control': 'no-store' } })
   } catch (error) {
     return errorResponse(error)

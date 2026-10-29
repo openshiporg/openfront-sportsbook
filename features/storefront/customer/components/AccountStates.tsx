@@ -15,8 +15,8 @@ export function LoadingPanel({ label = 'Loading' }: { label?: string }) {
   </div>
 }
 
-/** The API refuses every customer action while the operator's betting runtime is switched off. */
-export const isClosedError = (error: CustomerApiError | null | undefined) => Boolean(error && ['SANDBOX_DISABLED', 'SANDBOX_ISOLATION_REQUIRED'].includes(error.code))
+/** Operator readiness failures are surfaced as normal service errors, not a sandbox-only closed state. */
+export const isClosedError = (error: CustomerApiError | null | undefined) => Boolean(error && ['OPERATOR_NOT_LICENSED', 'PAYMENTS_NOT_CONFIGURED', 'GEO_BLOCKED'].includes(error.code))
 
 /** Closed state. On the coupon it keeps the coupon's own frame (ruled 1 / X / 2 heads) with one row saying so;
  *  elsewhere it is a single ruled notice. No events or prices are shown because none are offered. */
@@ -30,15 +30,15 @@ export function ClosedPanel({ coupon = false }: { coupon?: boolean }) {
     </div>
     <div className="px-4 py-6 sm:px-5 sm:py-8">
       <p className="font-sb-display text-3xl font-bold uppercase leading-none text-sb-ink"><Dot tone="off" />Betting closed</p>
-      <p className="mt-3 max-w-prose text-sm leading-relaxed text-sb-ink">This public demo shows the board without prices. Practice-play betting only opens inside an isolated sandbox, and that sandbox isn&rsquo;t switched on here.</p>
-      <p className="mt-2 max-w-prose text-sm leading-relaxed text-sb-mute">No odds are offered and no bets, accounts or deposits can be made. No real money is involved.</p>
+      <p className="mt-3 max-w-prose text-sm leading-relaxed text-sb-ink">Betting is currently unavailable.</p>
+      <p className="mt-2 max-w-prose text-sm leading-relaxed text-sb-mute">21+. Gambling problem? Call 1-800-GAMBLER.</p>
       {actions}
     </div>
   </div>
   return <div role="status" className="mt-6 rounded-[2px] bg-sb-card px-5 py-6 ring-1 ring-sb-ink/15 sm:px-6">
     <p className="font-sb-display text-3xl font-bold uppercase leading-none text-sb-ink"><Dot tone="off" />Betting closed</p>
-    <p className="mt-3 max-w-prose text-sm leading-relaxed text-sb-ink">Sign-in, registration, wallets and bets only run inside an isolated practice sandbox, and that sandbox isn&rsquo;t switched on for this public demo.</p>
-    <p className="mt-2 max-w-prose text-sm leading-relaxed text-sb-mute">Nothing can be created or deposited here. Practice play only, no real money.</p>
+    <p className="mt-3 max-w-prose text-sm leading-relaxed text-sb-ink">Betting is currently unavailable.</p>
+    <p className="mt-2 max-w-prose text-sm leading-relaxed text-sb-mute">21+. Gambling problem? Call 1-800-GAMBLER.</p>
     {actions}
   </div>
 }

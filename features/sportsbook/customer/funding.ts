@@ -110,14 +110,14 @@ async function lockedProjection(tx: any, tenantId: string, accountId: string) {
 }
 
 /** Dispatch only to the installation pinned on the prepared intent, with that attempt's stable provider key. */
-export async function dispatchPinnedPayment(intent: any, provider: any, fresh: boolean): Promise<DispatchOutcome> {
+export async function dispatchPinnedPayment(intent: any, provider: any, fresh: boolean, opaqueData?: { dataDescriptor: string; dataValue: string }): Promise<DispatchOutcome> {
   if (!provider) return { status: 'UNKNOWN', externalRef: '', reasonCode: 'PROVIDER_INSTALLATION_MISSING' }
   const snapshot = (intent.riskEvidence as any)?.provider
   if (snapshot && (snapshot.adapterId !== provider.adapterId || snapshot.adapterVersion !== provider.adapterVersion || snapshot.configReference !== provider.configReference)) {
     return { status: 'UNKNOWN', externalRef: '', reasonCode: 'PROVIDER_CONFIGURATION_CHANGED' }
   }
   try {
-    const result = await executePaymentProvider(provider, { type: intent.type === 'DEPOSIT' ? 'deposit' : 'withdrawal', payload: { amountMinor: intent.amountMinor, currency: intent.currency } }, `${provider.id}:${intent.idempotencyKey}`)
+    const result = await executePaymentProvider(provider, { type: intent.type === 'DEPOSIT' ? 'deposit' : 'withdrawal', payload: { amountMinor: intent.amountMinor, currency: intent.currency, opaqueData } }, `${provider.id}:${intent.idempotencyKey}`)
     if (result.status === 'SUCCEEDED') return { status: 'SUCCEEDED', externalRef: result.externalRef, reasonCode: '' }
     if (result.status === 'FAILED') return { status: 'FAILED', externalRef: result.externalRef, reasonCode: 'PROVIDER_DECLINED' }
     return { status: 'UNKNOWN', externalRef: result.externalRef, reasonCode: 'PROVIDER_PENDING' }
@@ -256,7 +256,7 @@ async function runFundingCommand(
   prisma: PrismaClient,
   actor: CustomerActor,
   kind: FundingKind,
-  input: { amountMinor: unknown; idempotencyKey: unknown; currency?: unknown },
+  input: { amountMinor: unknown; idempotencyKey: unknown; currency?: unknown; opaqueData?: { dataDescriptor: string; dataValue: string } },
 ): Promise<FundingResult> {
   assertSandboxEnabled()
   const currency = await resolveTenantCurrency(prisma, actor.tenantId, kind)
@@ -299,7 +299,7 @@ async function runFundingCommand(
       if (!projection) throw new CustomerError(unavailable, 409)
       if (kind === 'DEPOSIT') await assertDepositLimits(tx, actor, amount, new Date())
       if (kind === 'WITHDRAWAL' && BigInt(projection.availableMinor) < amount) throw new CustomerError('INSUFFICIENT_FUNDS', 422)
-      const provider = await tx.providerConnection.findFirst({ where: { tenantId: actor.tenantId, adapterId: 'sandbox-payments', status: 'ACTIVE' }, orderBy: [{ failoverPriority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] })
+      const provider = await tx.providerConnection.findFirst({ where: { tenantId: actor.tenantId, adapterId: kind === 'DEPOSIT' ? 'authorizenet' : 'manual', status: 'ACTIVE' }, orderBy: [{ failoverPriority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] })
       if (!provider) throw new CustomerError(unavailable, 409)
       let holdId: string | null = null
       if (kind === 'WITHDRAWAL') {
@@ -341,7 +341,7 @@ async function runFundingCommand(
   }
   if (prepared.kind === 'DONE') return prepared.result
 
-  const outcome = await dispatchPinnedPayment(prepared.intent, prepared.provider, prepared.fresh)
+  const outcome = await dispatchPinnedPayment(prepared.intent, prepared.provider, prepared.fresh, input.opaqueData)
 
   return serializable(prisma, async tx => {
     await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${prepared.intent.id} FOR UPDATE`
@@ -375,7 +375,7 @@ export async function withdrawCustomerWallet(
 export async function fundCustomerWallet(
   prisma: PrismaClient,
   actor: CustomerActor,
-  input: { amountMinor: unknown; idempotencyKey: unknown; currency?: unknown },
+  input: { amountMinor: unknown; idempotencyKey: unknown; currency?: unknown; opaqueData?: { dataDescriptor: string; dataValue: string } },
 ): Promise<FundingResult> {
   return runFundingCommand(prisma, actor, 'DEPOSIT', input)
 }
