@@ -12,8 +12,12 @@ export class CustomerError extends Error {
 }
 
 export function assertSandboxEnabled() {
-  try { assertOperatorReady('', undefined) }
-  catch (error) { throw new CustomerError(error instanceof Error ? error.message : 'OPERATOR_NOT_LICENSED', 503, { closed: true }) }
+  // Operator readiness is checked asynchronously at the request boundary once the tenant is known.
+}
+
+export async function assertCustomerOperatorReady(prisma: any, tenantId: string, request?: Request) {
+  try { await assertOperatorReady(prisma, tenantId, request) }
+  catch (error) { throw new CustomerError(error instanceof Error ? error.message : 'OPERATOR_NOT_LICENSED', 403) }
 }
 
 export function errorResponse(error: unknown) {

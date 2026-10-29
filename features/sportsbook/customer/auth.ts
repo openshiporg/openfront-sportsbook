@@ -4,6 +4,7 @@ import { CustomerError } from './errors'
 import { resolveTenantCurrency } from './currency'
 import { bootstrapCustomerSessionTenant } from '../../keystone/identity-bootstrap'
 import { enterTenantScope, runWithTenantScope } from '../../keystone/tenant-scope'
+import { assertOperatorReady } from '../api/sandbox-policy'
 
 export const CUSTOMER_COOKIE = 'openfront_customer'
 export const CUSTOMER_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7
@@ -106,6 +107,7 @@ export async function authenticateCustomerToken(
   token: string,
   now = new Date(),
   servicing = false,
+  request?: Request,
 ): Promise<CustomerActor> {
   if (!/^[A-Za-z0-9_-]{40,128}$/.test(token)) {
     throw new CustomerError('AUTHENTICATION_REQUIRED', 401)
@@ -125,6 +127,7 @@ export async function authenticateCustomerToken(
   })
   // The rest of this customer request runs in the authenticated session's tenant scope.
   enterTenantScope(session.tenant.id)
+  await assertOperatorReady(prisma, session.tenant.id, request)
   return {
     sessionId: session.id,
     tenantId: session.tenant.id,
@@ -138,7 +141,7 @@ export async function authenticateCustomerToken(
 export async function authenticateCustomerRequest(prisma: PrismaClient, request: Request, servicing = false) {
   const token = cookieValue(request, CUSTOMER_COOKIE)
   if (!token) throw new CustomerError('AUTHENTICATION_REQUIRED', 401)
-  return authenticateCustomerToken(prisma, token, new Date(), servicing)
+  return authenticateCustomerToken(prisma, token, new Date(), servicing, request)
 }
 
 /** Owned private servicing (receipts, statements, cases, protections, sign-out) that survives a business pause. */
