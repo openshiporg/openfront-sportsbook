@@ -8,8 +8,12 @@ export async function assertOperatorReady(prisma: PrismaClient | any, tenantId: 
   if (!licence) throw new Error('OPERATOR_NOT_LICENSED')
   const payments = await prisma.providerConnection.findFirst({ where: { tenantId, status: 'ACTIVE', adapterId: { in: ['authorizenet', 'paysafe', 'aeropay', 'manual', 'sandbox-payments'] } }, select: { id: true } })
   if (!payments) throw new Error('PAYMENTS_NOT_CONFIGURED')
-  const responsible = await prisma.responsibleGamingConfig.findFirst({ where: { tenantId } }).catch(() => null)
-  if (prisma.responsibleGamingConfig && !responsible) throw new Error('RESPONSIBLE_GAMING_NOT_CONFIGURED')
+  // Until this vertical exposes a dedicated operator responsible-gaming settings list,
+  // active approved policy records are the authoritative readiness evidence.
+  const responsible = prisma.jurisdictionPolicyVersion
+    ? await prisma.jurisdictionPolicyVersion.findFirst({ where: { tenantId, status: 'ACTIVE' }, select: { id: true } })
+    : true
+  if (!responsible) throw new Error('RESPONSIBLE_GAMING_NOT_CONFIGURED')
   const region = request?.headers.get('x-vercel-ip-country-region') || request?.headers.get('cf-ipcountry') || request?.headers.get('x-geo-region') || (process.env.NODE_ENV !== 'production' ? process.env.GEO_DEV_REGION : '')
   if (!region || !licence.permittedRegions.includes(region.toUpperCase())) throw new Error('GEO_BLOCKED')
   return licence
