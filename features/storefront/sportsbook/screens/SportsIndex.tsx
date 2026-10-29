@@ -13,9 +13,11 @@ export type SportsIndexEntry = { key: string; name: string; events: number; comp
 export function SportsIndex({ sports }: { sports: SportsIndexEntry[] }) {
   const session = useCustomerResource<CustomerSessionSummary>('/api/sandbox/sportsbook/session')
   const total = sports.reduce((sum, sport) => sum + sport.events, 0)
-  return <CustomerShell authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference} closed={isClosedError(session.error)}>
+  return <CustomerShell authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference}>
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:py-10">
       <PageTitle title="Sports" meta={`${sports.length} sport${sports.length === 1 ? '' : 's'} · ${total} event${total === 1 ? '' : 's'}`} aside={<Track><PillLink href="/" variant="primary" size="sm">Live & upcoming</PillLink></Track>} />
+      {/* The catalog of published sports stays browsable while betting is closed; only prices and bets are withheld. */}
+      {isClosedError(session.error) && <p role="status" className="mt-6 max-w-prose rounded-[2px] bg-sb-card px-4 py-3 text-sm leading-relaxed text-sb-mute ring-1 ring-sb-line"><Dot tone="off" /><span className="font-semibold text-sb-ink">Betting closed.</span> Fixtures are listed for browsing; prices, bets and accounts open only in an isolated practice sandbox. No real money.</p>}
       {sports.length === 0 ? <div className="mt-6"><Empty>No sports published</Empty></div> : <div className="mt-6 grid gap-4 md:grid-cols-2">
         {sports.map(sport => <Card key={sport.key} className="overflow-hidden">
           <Link href={`/sports/${encodeURIComponent(sport.key)}`} className="flex items-center justify-between gap-3 bg-sb-night px-5 py-4 text-white hover:bg-sb-board">

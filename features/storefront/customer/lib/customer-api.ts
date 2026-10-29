@@ -187,8 +187,8 @@ export function useFrozenSubmission() {
 }
 
 const customerCopy: Record<string, string> = {
-  SANDBOX_DISABLED: 'Betting is closed right now.',
-  SANDBOX_ISOLATION_REQUIRED: 'Betting is closed right now.',
+  SANDBOX_DISABLED: 'Betting is closed in this demo. Practice play runs only in an isolated sandbox.',
+  SANDBOX_ISOLATION_REQUIRED: 'Betting is closed in this demo. Practice play runs only in an isolated sandbox.',
   SANDBOX_OPERATOR_NOT_CONFIGURED: 'This sportsbook isn’t open yet.',
   SANDBOX_BRAND_NOT_CONFIGURED: 'This sportsbook isn’t open yet.',
   SANDBOX_TENANT_NOT_CONFIGURED: 'This sportsbook isn’t open yet.',
@@ -205,6 +205,9 @@ const customerCopy: Record<string, string> = {
   VERIFICATION_REQUIRED: 'Verify your identity in Profile first.',
   LIMIT_EXCEEDED: 'This would exceed one of your limits.',
   OFFER_EXPIRED: 'The offer expired. Get a new one.',
+  STALE_PRICE: 'That price paused while the feed updated. Request current terms.',
+  PRICE_CHANGED: 'The price moved. Review the new terms.',
+  QUOTE_EXPIRED: 'The quote expired. Request current terms.',
   REQUEST_FAILED: 'Something went wrong. Try again.',
 }
 
