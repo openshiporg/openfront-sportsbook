@@ -1,6 +1,10 @@
+<!-- logo -->
+
 # Openfront Sportsbook
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fopenshiporg%2Fopenfront-sportsbook&env=DATABASE_URL%2CSESSION_SECRET)
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/openfront-sportsbook)
 
 Openfront Sportsbook is a self-hostable sportsbook development and operator application. Customer screens cover sports, events, markets, betslips, accounts, wallets, and wager history. Operators manage trading, risk, grading, settlement, finance, responsible gaming, compliance, and provider workflows. Sandbox use is not authorization to accept real-money wagers.
 
@@ -8,16 +12,14 @@ Openfront Sportsbook is a self-hostable sportsbook development and operator appl
 
 ## Demo
 
-Explore the application locally using the setup instructions below.
-
 | | |
 |---|---|
-| **Public application** | `/` on your development URL |
-| **Dashboard** | `/dashboard` on your development URL |
+| **Storefront** | [sportsbook.openship.org](https://sportsbook.openship.org) |
+| **Dashboard** | [sportsbook.openship.org/dashboard](https://sportsbook.openship.org/dashboard) |
 
 [Learn more →](https://openship.org/products/openfront-sportsbook)
 
-[Documentation →](features/keystone/models)
+[Documentation →](https://docs.openship.org/docs/openfront/sportsbook/)
 
 ## The Openfront Ecosystem
 
