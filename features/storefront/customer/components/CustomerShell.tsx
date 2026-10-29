@@ -149,7 +149,7 @@ export function CustomerShell({
 
       <footer className="bg-sb-night px-4 py-6 text-xs text-white/95">
         <div className="mx-auto flex max-w-[1560px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:px-2">
-          <p className=""><span aria-hidden="true" className="mr-2 inline-block size-1.5 rounded-full bg-sb-flood align-middle" />Practice play · no real money</p>
+          <p className="">21+. Gambling problem? Call 1-800-GAMBLER.</p>
           <div className="flex flex-wrap gap-x-5 gap-y-2">
             <Link href="/account/responsible-play" className="hover:text-white">Safer play</Link>
             <Link href="/account/disputes" className="hover:text-white">Support</Link>

@@ -1,4 +1,4 @@
-import { assertSameOrigin, assertSandboxRuntime } from '../api/sandbox-policy'
+import { assertSameOrigin, assertOperatorReady } from '../api/sandbox-policy'
 
 export class CustomerError extends Error {
   constructor(
@@ -12,13 +12,8 @@ export class CustomerError extends Error {
 }
 
 export function assertSandboxEnabled() {
-  try {
-    assertSandboxRuntime()
-  } catch (error) {
-    const code = error instanceof Error ? error.message : 'SANDBOX_DISABLED'
-    // Closed is a service state, not a missing route.
-    throw new CustomerError(code, 503, { closed: true })
-  }
+  try { assertOperatorReady('', undefined) }
+  catch (error) { throw new CustomerError(error instanceof Error ? error.message : 'OPERATOR_NOT_LICENSED', 503, { closed: true }) }
 }
 
 export function errorResponse(error: unknown) {
