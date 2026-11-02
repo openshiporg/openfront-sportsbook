@@ -174,7 +174,8 @@ export const sportsbookCheckoutResolvers = {
         step = 3
         const now = new Date()
         step = 4
-        await postJournal(tx, tenantId, reverseJournal(original, `deposit-refund:${p.depositId}`), p.intentId)
+        try { await postJournal(tx, tenantId, reverseJournal(original, `deposit-refund:${p.depositId}`), p.intentId) }
+        catch (inner) { const e = inner as any; console.error('refundDeposit journal failed', { code: e?.code, meta: e?.meta, line: String(e?.message ?? '').split('\n').filter((l: string) => l.trim()).slice(-2).join(' / ').slice(0, 300) }); throw inner }
         step = 5
         dbg = { cashEntryKeys: Object.keys(cashEntry), accountIdType: typeof cashEntry.accountId }
         const projection = await lockedProjection(tx, tenantId, cashEntry.accountId)
