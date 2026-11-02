@@ -27,7 +27,9 @@ export function errorResponse(error: unknown) {
       { status: error.status, headers: { 'cache-control': 'no-store' } },
     )
   }
-  console.error('Customer sportsbook request failed',{name:error instanceof Error?error.name:'UnknownError'})
+  // Name, Prisma/driver code and the first line of the message only (never argument values or payloads).
+  const detail = error as { name?: string; code?: string; message?: string; meta?: { modelName?: string; target?: unknown } }
+  console.error('Customer sportsbook request failed', { name: error instanceof Error ? error.name : 'UnknownError', code: detail?.code, model: detail?.meta?.modelName, where: String(detail?.message ?? '').split('\n').find(line => line.trim())?.slice(0, 160) })
   return Response.json(
     { error: 'REQUEST_FAILED', code: 'REQUEST_FAILED' },
     { status: 500, headers: { 'cache-control': 'no-store' } },
