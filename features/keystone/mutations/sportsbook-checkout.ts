@@ -159,7 +159,7 @@ export const sportsbookCheckoutResolvers = {
       }
 
       // 3. Settle: reverse the deposit journal, debit the wallet, close the intents.
-      let step = 0
+      let step = 0, dbg: Record<string, unknown> = {}
       return serializable(context.prisma, async (tx: any) => { try {
         await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${p.depositId} AND tenant = ${tenantId} FOR UPDATE`
         const refund = await tx.paymentIntent.findFirst({ where: { id: p.intentId, tenantId } })
@@ -176,7 +176,9 @@ export const sportsbookCheckoutResolvers = {
         step = 4
         await postJournal(tx, tenantId, reverseJournal(original, `deposit-refund:${p.depositId}`), p.intentId)
         step = 5
+        dbg = { cashEntryKeys: Object.keys(cashEntry), accountIdType: typeof cashEntry.accountId }
         const projection = await lockedProjection(tx, tenantId, cashEntry.accountId)
+        dbg = { ...dbg, projKeys: projection ? Object.keys(projection) : null }
         if (BigInt(projection.availableMinor) < BigInt(p.amountMinor)) throw new Error('INSUFFICIENT_WALLET_FUNDS')
         step = 6
         await tx.balanceProjection.create({ data: { tenantId, accountId: cashEntry.accountId, ...nextProjection(projection, postedChange(-BigInt(p.amountMinor)), now) } })
@@ -188,7 +190,7 @@ export const sportsbookCheckoutResolvers = {
         await emit(tx, tenantId, 'PAYMENT', p.intentId, 'payment.refunded.v1', { depositId: p.depositId, amountMinor: p.amountMinor, currency: p.currency })
         await appendAudit(tx, tenantId, p.actorId, 'deposit.refunded', 'PaymentIntent', p.depositId, reason, { refundIntentId: p.intentId, amountMinor: p.amountMinor, currency: p.currency, externalReference: outcome.externalRef })
         return p.intentId
-      } catch (error) { const e = error as any; console.error('refundDeposit settle failed', { step, p: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, typeof v])), code: e?.code, line: String(e?.message ?? '').split('\n').find((l: string) => l.trim())?.slice(0, 200), at: String(e?.stack ?? '').split('\n')[1]?.slice(0, 160) }); throw error } })
+      } catch (error) { const e = error as any; console.error('refundDeposit settle failed', { step, dbg, p: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, typeof v])), code: e?.code, line: String(e?.message ?? '').split('\n').find((l: string) => l.trim())?.slice(0, 200), at: String(e?.stack ?? '').split('\n')[1]?.slice(0, 160) }); throw error } })
     },
   },
 }
