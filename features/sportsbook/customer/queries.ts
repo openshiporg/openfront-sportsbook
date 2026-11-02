@@ -1,3 +1,4 @@
+import { cageDepositsEnabled } from './cage-deposit'
 import type { Prisma, PrismaClient } from '../../keystone/prisma'
 import { withCurrentCustomer, type CustomerActor } from './auth'
 import { orderQuoteLegTerms } from './combination-wagering'
@@ -125,6 +126,7 @@ async function getCustomerWalletUnderAuthority(prisma: Prisma.TransactionClient,
     fundingMaxMinor: String(fundingBoundsMinor(walletCurrency.exponent).maxMinor),
     depositsEnabled: walletCurrency.depositsEnabled,
     card: await cardDepositConfig(prisma, actor.tenantId),
+    cage: await cageDepositsEnabled(prisma, actor.tenantId),
     withdrawalsEnabled: walletCurrency.withdrawalsEnabled,
     availableMinor: projection.availableMinor,
     postedMinor: projection.postedMinor,

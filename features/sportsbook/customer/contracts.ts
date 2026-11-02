@@ -136,6 +136,8 @@ export type WalletResponse = {
   depositsEnabled: boolean
   withdrawalsEnabled: boolean
   /** Accept.js settings when the operator's card processor is installed and configured; null while card deposits are not open. */
+  /** True while the operator offers cash deposits at the retail cage. */
+  cage: boolean
   card: { apiLoginId: string; clientKey: string; env: 'sandbox' | 'production' } | null
   availableMinor: string
   postedMinor: string

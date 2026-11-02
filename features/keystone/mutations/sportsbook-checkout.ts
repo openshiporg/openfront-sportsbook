@@ -5,6 +5,7 @@ import { reverseJournal, type Journal } from '../../sportsbook/domain/ledger'
 import { nextProjection, postedChange } from '../../sportsbook/domain/balance'
 import { refundPaymentProvider } from '../utils/paymentProviderAdapter'
 import { assertCurrentActor } from './approval-control'
+import { applyPaymentOutcome } from '../../sportsbook/customer/funding'
 import { appendAudit, emit, lockWagerForSettlement, postJournal, requireTenant, serializable } from './sportsbook'
 
 const graphql = String.raw
@@ -13,6 +14,8 @@ export const sportsbookCheckoutTypeDefs = graphql`
   extend type Mutation {
     voidWager(wagerId: ID!, reason: String!): ID!
     refundDeposit(paymentId: ID!, reason: String!): ID!
+    confirmCageDeposit(reference: String!): ID!
+    rejectCageDeposit(reference: String!, reason: String!): ID!
   }
 `
 
@@ -77,6 +80,44 @@ export const sportsbookCheckoutResolvers = {
         await emit(tx, tenantId, 'WAGER', wager.id, 'wager.voided.v1', { stakeMinor: wager.stakeMinor, currency: wager.currency, reason })
         await appendAudit(tx, tenantId, actorId, 'wager.voided', 'Wager', wager.id, reason, { stakeMinor: wager.stakeMinor, currency: wager.currency, refundedToWallet: true })
         return wager.id
+      })
+    },
+
+    // Cash received at the cage: posts the deposit journal and credits the wallet exactly once.
+    confirmCageDeposit: async (_r: unknown, a: { reference: string }, context: any) => {
+      const tenantId = await requireTenant(context, 'canManageFinance')
+      const reference = String(a.reference ?? '').trim().toUpperCase()
+      if (!/^CG-[A-Z0-9]{6}$/.test(reference)) throw new Error('INVALID_REFERENCE')
+      return serializable(context.prisma, async (tx: any) => {
+        const actorId = await assertCurrentActor(tx, context, tenantId, 'canManageFinance')
+        const found = await tx.paymentIntent.findFirst({ where: { tenantId, type: 'DEPOSIT', providerSessionReference: reference, paymentMethodReference: 'cage-cash' } })
+        if (!found) throw new Error('Not found')
+        await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${found.id} AND tenant = ${tenantId} FOR UPDATE`
+        const intent = await tx.paymentIntent.findFirst({ where: { id: found.id, tenantId } })
+        if (intent.status === 'SUCCEEDED') return intent.id
+        if (intent.status !== 'PENDING') throw new Error('DEPOSIT_NOT_PENDING')
+        const result = await applyPaymentOutcome(tx, intent, { status: 'SUCCEEDED', externalRef: reference, reasonCode: 'CAGE_CASH_RECEIVED' }, new Date())
+        await emit(tx, tenantId, 'PAYMENT', intent.id, 'payment.completed.v1', { type: 'DEPOSIT', amountMinor: intent.amountMinor, currency: intent.currency, reasonCode: 'CAGE_CASH_RECEIVED' })
+        await appendAudit(tx, tenantId, actorId, 'cage_deposit.confirmed', 'PaymentIntent', intent.id, 'CASH_RECEIVED', { reference, amountMinor: intent.amountMinor, currency: intent.currency, status: result.status })
+        return intent.id
+      })
+    },
+
+    rejectCageDeposit: async (_r: unknown, a: { reference: string; reason: string }, context: any) => {
+      const tenantId = await requireTenant(context, 'canManageFinance')
+      const reference = String(a.reference ?? '').trim().toUpperCase()
+      const reason = reasonOf(a.reason)
+      return serializable(context.prisma, async (tx: any) => {
+        const actorId = await assertCurrentActor(tx, context, tenantId, 'canManageFinance')
+        const found = await tx.paymentIntent.findFirst({ where: { tenantId, type: 'DEPOSIT', providerSessionReference: reference, paymentMethodReference: 'cage-cash' } })
+        if (!found) throw new Error('Not found')
+        await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${found.id} AND tenant = ${tenantId} FOR UPDATE`
+        const intent = await tx.paymentIntent.findFirst({ where: { id: found.id, tenantId } })
+        if (intent.status === 'FAILED') return intent.id
+        if (intent.status !== 'PENDING') throw new Error('DEPOSIT_NOT_PENDING')
+        await applyPaymentOutcome(tx, intent, { status: 'FAILED', externalRef: reference, reasonCode: 'CAGE_CASH_NOT_RECEIVED' }, new Date())
+        await appendAudit(tx, tenantId, actorId, 'cage_deposit.rejected', 'PaymentIntent', intent.id, reason, { reference })
+        return intent.id
       })
     },
 

@@ -51,6 +51,8 @@ export async function getPaymentProviderStatus(provider: PaymentProvider, idempo
 export async function refundPaymentProvider(provider: PaymentProvider, reference: string, amountMinor: string, idempotencyKey: string): Promise<{ status: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN'; externalRef: string; method?: string }> {
   if (provider.status !== 'ACTIVE') throw new Error('PAYMENT_PROVIDER_UNAVAILABLE')
   if (provider.adapterId === 'sandbox-payments') return { status: 'SUCCEEDED', externalRef: `refund:${reference || idempotencyKey}`, method: 'sandbox' }
+  // Cage cash goes back over the counter: the operator's confirmation of the reversal is the record.
+  if (provider.adapterId === 'manual') return { status: 'SUCCEEDED', externalRef: `cash-return:${reference || idempotencyKey}`, method: 'cash' }
   if (provider.adapterId !== 'authorizenet' || !reference) throw new Error('PAYMENT_ADAPTER_UNSUPPORTED')
   const adapter: any = await paymentProviderAdapters.authorizenet()
   const result = await adapter.refundPaymentFunction({ paymentId: reference, amount: Number(amountMinor), currency: 'USD', idempotencyKey })

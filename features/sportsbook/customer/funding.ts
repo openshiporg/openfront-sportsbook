@@ -24,7 +24,7 @@ export function fundingBoundsMinor(exponent: number) {
   return { minMinor: 5n * scale, maxMinor: 500n * scale }
 }
 
-function validateFundingAmount(value: unknown, exponent: number) {
+export function validateFundingAmount(value: unknown, exponent: number) {
   const text = String(value ?? '')
   if (!/^\d{1,15}$/.test(text)) throw new CustomerError('INVALID_AMOUNT', 400)
   const amount = BigInt(text)
@@ -38,7 +38,7 @@ const periodStart = (period: string, now: Date) => {
   return new Date(now.getTime() - days * 86_400_000)
 }
 
-async function assertDepositLimits(tx: any, actor: CustomerActor, amount: bigint, now: Date) {
+export async function assertDepositLimits(tx: any, actor: CustomerActor, amount: bigint, now: Date) {
   const limits = await tx.playerLimit.findMany({
     where: {
       tenantId: actor.tenantId,

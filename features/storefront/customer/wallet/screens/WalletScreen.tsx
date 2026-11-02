@@ -28,6 +28,22 @@ export function WalletScreen() {
   const frozen = useFrozenSubmission()
   const [error, setError] = useState('')
   const [opaqueData, setOpaqueData] = useState<{dataDescriptor:string;dataValue:string}|null>(null)
+  const [cageAmount, setCageAmount] = useState('')
+  const [cageBusy, setCageBusy] = useState(false)
+  const [cageNotice, setCageNotice] = useState<{ reference: string; amount: string } | null>(null)
+  const [cageError, setCageError] = useState('')
+  async function requestCage() {
+    if (cageBusy || !wallet.data) return
+    const amountMinor = amountInputToMinor(cageAmount, wallet.data.currencyExponent)
+    if (!amountMinor || BigInt(amountMinor) < BigInt(wallet.data.fundingMinMinor) || BigInt(amountMinor) > BigInt(wallet.data.fundingMaxMinor)) { setCageError(`Enter an amount from ${formatMinor(wallet.data.fundingMinMinor, wallet.data.currency, wallet.data.currencyExponent)} to ${formatMinor(wallet.data.fundingMaxMinor, wallet.data.currency, wallet.data.currencyExponent)}.`); return }
+    setCageBusy(true); setCageError('')
+    try {
+      const result = await customerApi<{ reference: string; amountMinor: string; currency: string }>('/api/sandbox/sportsbook/cage-deposit', { method: 'POST', body: JSON.stringify({ amountMinor, idempotencyKey: `cage_${crypto.randomUUID()}` }) })
+      setCageNotice({ reference: result.reference, amount: formatMinor(result.amountMinor, result.currency, wallet.data.currencyExponent) })
+      setCageAmount(''); wallet.reload()
+    } catch (reason) { setCageError(customerMessage(reason, 'The deposit request wasn’t created. Try again.')) }
+    finally { setCageBusy(false) }
+  }
   const owner = session.data?.accountReference ?? ''
   const exponent = wallet.data?.currencyExponent ?? 0
   // Restore an unresolved original attempt for this account before any new action is offered.
@@ -140,6 +156,16 @@ export function WalletScreen() {
           <div className="min-w-0 flex-1"><label htmlFor="funding-amount" className="mb-1.5 block text-[11px] font-semibold  text-sb-mute">{(pendingIntent?.action ?? action)==='DEPOSIT'?'Deposit':'Withdrawal'} · {wallet.data.currency}</label><input id="funding-amount" value={pendingIntent?.amountInput ?? amount} onChange={event => { if (new RegExp(exponent > 0 ? `^\\d{0,12}(\\.\\d{0,${exponent}})?$` : '^\\d{0,12}$').test(event.target.value)) setAmount(event.target.value) }} disabled={funding || Boolean(pendingIntent)} placeholder={minorToAmountInput(wallet.data.fundingMinMinor, exponent)} inputMode="decimal" autoComplete="off" aria-describedby="funding-help" className={`${fieldClass} min-h-12 text-right tabular-nums text-xl font-semibold `} /><p id="funding-help" className="mt-1.5 tabular-nums text-[11px] text-sb-mute">{formatMinor(wallet.data.fundingMinMinor, wallet.data.currency, exponent)} – {formatMinor(wallet.data.fundingMaxMinor, wallet.data.currency, exponent)}</p></div>
           <Track className="self-start sm:mb-6 sm:self-auto"><Pill variant="primary" size="lg" onClick={fund} disabled={funding || Boolean(pendingIntent) || !enabled}>{funding ? <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <ArrowDownToLine aria-hidden="true" />}{funding ? 'Submitting…' : pendingIntent ? 'Awaiting recovery' : !enabled ? (action==='DEPOSIT'&&wallet.data.depositsEnabled?'Card deposits open soon':`${action==='DEPOSIT'?'Deposits':'Withdrawals'} off for ${wallet.data.currency}`) : action==='DEPOSIT'?'Add funds':'Withdraw funds'}</Pill></Track>
         </div>
+        {action === 'DEPOSIT' && wallet.data.cage && <div className="mt-6 border-t border-sb-line pt-5">
+          <h3 className="font-sb-display text-xl font-bold uppercase tracking-wide">Deposit at the cage</h3>
+          <p className="mt-1 text-sm text-sb-mute">Request an amount, then pay cash at the retail counter with your reference code.</p>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="min-w-0 flex-1"><label htmlFor="cage-amount" className="mb-1.5 block text-[12px] font-semibold text-sb-mute">Cash deposit · {wallet.data.currency}</label><input id="cage-amount" value={cageAmount} onChange={event => { if (/^\d{0,12}(\.\d{0,2})?$/.test(event.target.value)) setCageAmount(event.target.value) }} inputMode="decimal" autoComplete="off" placeholder={minorToAmountInput(wallet.data.fundingMinMinor, exponent)} className={`${fieldClass} min-h-12 text-right tabular-nums text-xl font-semibold`} /></div>
+            <Track className="self-start sm:self-auto"><Pill variant="primary" size="lg" onClick={requestCage} disabled={cageBusy}>{cageBusy ? 'Requesting…' : 'Request cage deposit'}</Pill></Track>
+          </div>
+          {cageNotice && <Notice tone="ok" className="mt-4">Show reference <span className="font-semibold tabular-nums">{cageNotice.reference}</span> at the cage to deposit {cageNotice.amount}. Your balance updates when the cage confirms receipt.</Notice>}
+          {cageError && <p role="alert" className="mt-3 text-sm text-red-800">{cageError}</p>}
+        </div>}
         {status && <Notice tone="ok" className="mt-4">{status}</Notice>}
         {pendingIntent && !error && !funding && <div role="status" className="mt-4 rounded-[2px] bg-amber-50 p-4 text-sm text-amber-950 ring-1 ring-amber-200"><p><Dot tone="wait" />Unconfirmed {pendingIntent.action.toLowerCase()} · <span className="tabular-nums">{pendingIntent.amountInput} {pendingIntent.currency}</span></p><div className="mt-3"><Track><Pill size="sm" onClick={fund}><RefreshCw aria-hidden="true" />Check again</Pill></Track></div></div>}
         {error && <div role="alert" className="mt-4 rounded-[2px] bg-red-50 p-4 text-sm text-red-950 ring-1 ring-red-200"><p><Dot tone="alert" />{error}</p>{pendingIntent && <><p className="mt-2 tabular-nums text-xs">{pendingIntent.action.toLowerCase()} {pendingIntent.amountInput} {pendingIntent.currency} · {pendingIntent.amountMinor} minor units</p><div className="mt-3"><Track><Pill size="sm" onClick={fund} disabled={funding}><RefreshCw aria-hidden="true" />Retry original {pendingIntent.action.toLowerCase()}</Pill></Track></div></>}</div>}
