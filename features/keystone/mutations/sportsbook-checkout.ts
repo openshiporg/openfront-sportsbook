@@ -178,7 +178,7 @@ export const sportsbookCheckoutResolvers = {
         step = 5
         dbg = { cashEntryKeys: Object.keys(cashEntry), accountIdType: typeof cashEntry.accountId }
         const projection = await lockedProjection(tx, tenantId, cashEntry.accountId)
-        dbg = { ...dbg, projKeys: projection ? Object.keys(projection) : null }
+        dbg = { ...dbg, projKeys: projection ? Object.keys(projection) : null, ctor: (projection as any)?.constructor?.name, msg: String((projection as any)?.message ?? '').split('\n')[0].slice(0, 200) }
         if (BigInt(projection.availableMinor) < BigInt(p.amountMinor)) throw new Error('INSUFFICIENT_WALLET_FUNDS')
         step = 6
         await tx.balanceProjection.create({ data: { tenantId, accountId: cashEntry.accountId, ...nextProjection(projection, postedChange(-BigInt(p.amountMinor)), now) } })
