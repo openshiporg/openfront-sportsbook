@@ -29,7 +29,7 @@ export const LimitProfile=f({name:t(),version:integer(),status:st(['DRAFT','ACTI
 export const LimitRule=f({profile:rel('LimitProfile'),scopeType:t(),scopeId:text(),maxStakeMinor:text(),maxPayoutMinor:text(),maxLiabilityMinor:text(),currency:t(),priority:integer()},scopedAccess('canManageRisk'))
 export const ExposurePosition=f({scopeType:t(),scopeId:t(),currency:t(),stakeMinor:t(),liabilityMinor:t(),version:integer(),asOf:timestamp()},scopedAccess('canManageRisk'))
 
-export const BetSlip=f({player:rel('Player'),currency:t(),status:st(['OPEN','QUOTED','EXPIRED','ACCEPTED']),expiresAt:timestamp(),version:integer()},scopedAccess('canManageRisk'))
+export const BetSlip=f({player:rel('Player'),currency:t(),status:st(['OPEN','QUOTED','EXPIRED','ACCEPTED']),expiresAt:timestamp(),version:integer(),quoteKey:text()},scopedAccess('canManageRisk'))
 export const BetSlipItem=f({betSlip:rel('BetSlip'),selection:rel('Selection'),priceSnapshot:rel('PriceSnapshot'),requestedOdds:t(),line:text()},scopedAccess('canManageRisk'))
 export const WagerStatusEvent=f({wager:rel('Wager'),fromStatus:text(),toStatus:t(),reasonCode:t(),actorId:text(),effectiveAt:timestamp()},scopedAccess('canManageRisk'))
 export const MarketGrade=f({market:rel('Market'),resultVersion:rel('ResultVersion'),ruleVersion:t(),outcome:t(),factorNumerator:text(),factorDenominator:text(),trace:json(),inputHash:t()},scopedAccess('canManageRisk'))

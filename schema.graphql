@@ -4205,6 +4205,7 @@ type BetSlip {
   status: BetSlipStatusType
   expiresAt: DateTime
   version: Int
+  quoteKey: String
   createdAt: DateTime
   updatedAt: DateTime
 }
@@ -4231,6 +4232,7 @@ input BetSlipWhereInput {
   status: BetSlipStatusTypeNullableFilter
   expiresAt: DateTimeNullableFilter
   version: IntNullableFilter
+  quoteKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -4248,6 +4250,7 @@ input BetSlipOrderByInput {
   status: OrderDirection
   expiresAt: OrderDirection
   version: OrderDirection
+  quoteKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -4259,6 +4262,7 @@ input BetSlipUpdateInput {
   status: BetSlipStatusType
   expiresAt: DateTime
   version: Int
+  quoteKey: String
   createdAt: DateTime
   updatedAt: DateTime
 }
@@ -4275,6 +4279,7 @@ input BetSlipCreateInput {
   status: BetSlipStatusType
   expiresAt: DateTime
   version: Int
+  quoteKey: String
   createdAt: DateTime
   updatedAt: DateTime
 }

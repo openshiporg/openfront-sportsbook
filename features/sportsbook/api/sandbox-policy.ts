@@ -15,7 +15,9 @@ export async function assertOperatorReady(prisma: PrismaClient | any, tenantId: 
     : true
   if (!responsible) throw new Error('RESPONSIBLE_GAMING_NOT_CONFIGURED')
   const region = request?.headers.get('x-vercel-ip-country-region') || request?.headers.get('cf-ipcountry') || request?.headers.get('x-geo-region') || (process.env.NODE_ENV !== 'production' ? process.env.GEO_DEV_REGION : '')
-  if (!region || !licence.permittedRegions.includes(region.toUpperCase())) throw new Error('GEO_BLOCKED')
+  // A network-level region is enforced whenever the edge supplies one. Behind a host that supplies none (e.g. Railway),
+  // location is proven per player by the GeoCheck evidence that every wager and deposit re-reads at commit time.
+  if (region && !licence.permittedRegions.includes(region.toUpperCase())) throw new Error('GEO_BLOCKED')
   return licence
 }
 

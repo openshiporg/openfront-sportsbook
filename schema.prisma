@@ -1110,6 +1110,7 @@ model BetSlip {
   status                   BetSlipStatusType? @default(OPEN)
   expiresAt                DateTime?
   version                  Int?
+  quoteKey                 String             @default("")
   createdAt                DateTime           @default(now())
   updatedAt                DateTime           @default(now()) @updatedAt
   from_BetSlipItem_betSlip BetSlipItem[]      @relation("BetSlipItem_betSlip")

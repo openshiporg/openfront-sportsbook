@@ -135,6 +135,8 @@ export type WalletResponse = {
   fundingMaxMinor: string
   depositsEnabled: boolean
   withdrawalsEnabled: boolean
+  /** Accept.js settings when the operator's card processor is installed and configured; null while card deposits are not open. */
+  card: { apiLoginId: string; clientKey: string; env: 'sandbox' | 'production' } | null
   availableMinor: string
   postedMinor: string
   pendingMinor: string

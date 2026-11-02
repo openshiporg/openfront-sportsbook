@@ -43,3 +43,17 @@ export async function getPaymentProviderStatus(provider: PaymentProvider, idempo
   const result: any = await adapter.getPaymentStatusFunction({ paymentId: idempotencyKey })
   return { status: result.status === 'succeeded' ? 'SUCCEEDED' : result.status === 'failed' ? 'FAILED' : 'UNKNOWN', externalRef: String(result.paymentIntentId ?? result.data?.transId ?? ''), payload: { amountMinor: result.amount, currency: result.currency } }
 }
+
+/**
+ * Refund (settled) or void (unsettled) a captured payment at the processor, keyed to the original processor transaction.
+ * Only SUCCEEDED means the money is back with the cardholder; anything else leaves the wallet untouched.
+ */
+export async function refundPaymentProvider(provider: PaymentProvider, reference: string, amountMinor: string, idempotencyKey: string): Promise<{ status: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN'; externalRef: string; method?: string }> {
+  if (provider.status !== 'ACTIVE') throw new Error('PAYMENT_PROVIDER_UNAVAILABLE')
+  if (provider.adapterId === 'sandbox-payments') return { status: 'SUCCEEDED', externalRef: `refund:${reference || idempotencyKey}`, method: 'sandbox' }
+  if (provider.adapterId !== 'authorizenet' || !reference) throw new Error('PAYMENT_ADAPTER_UNSUPPORTED')
+  const adapter: any = await paymentProviderAdapters.authorizenet()
+  const result = await adapter.refundPaymentFunction({ paymentId: reference, amount: Number(amountMinor), currency: 'USD', idempotencyKey })
+  if (result.status === 'refunded') return { status: 'SUCCEEDED', externalRef: String(result.data?.transId && result.data.transId !== '0' ? result.data.transId : reference), method: result.method }
+  return { status: result.status === 'failed' ? 'FAILED' : 'UNKNOWN', externalRef: '' }
+}

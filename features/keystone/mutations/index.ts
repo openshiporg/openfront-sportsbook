@@ -4,6 +4,7 @@ import redirectToInit from "./redirectToInit";
 import { createInitialUser, createInitialUserTypeDefs } from "./createInitialUser";
 import { sportsbookResolvers, sportsbookTypeDefs } from './sportsbook';
 import { sportsbookFullResolvers, sportsbookFullTypeDefs } from './sportsbook-full';
+import { sportsbookCheckoutResolvers, sportsbookCheckoutTypeDefs } from './sportsbook-checkout';
 
 const graphql = String.raw;
 
@@ -14,7 +15,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       type Query {
         redirectToInit: Boolean
       }
-    `, createInitialUserTypeDefs, sportsbookTypeDefs, sportsbookFullTypeDefs],
+    `, createInitialUserTypeDefs, sportsbookTypeDefs, sportsbookFullTypeDefs, sportsbookCheckoutTypeDefs],
     resolvers: [{
       Query: { 
         redirectToInit,
@@ -22,6 +23,6 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       Mutation: {
         createInitialUser,
       },
-    }, sportsbookResolvers, sportsbookFullResolvers],
+    }, sportsbookResolvers, sportsbookFullResolvers, sportsbookCheckoutResolvers],
   });
 }
