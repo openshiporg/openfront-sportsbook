@@ -188,7 +188,7 @@ export const sportsbookCheckoutResolvers = {
         await emit(tx, tenantId, 'PAYMENT', p.intentId, 'payment.refunded.v1', { depositId: p.depositId, amountMinor: p.amountMinor, currency: p.currency })
         await appendAudit(tx, tenantId, p.actorId, 'deposit.refunded', 'PaymentIntent', p.depositId, reason, { refundIntentId: p.intentId, amountMinor: p.amountMinor, currency: p.currency, externalReference: outcome.externalRef })
         return p.intentId
-      } catch (error) { const e = error as any; console.error('refundDeposit settle failed', { step, code: e?.code, line: String(e?.message ?? '').split('\n').find((l: string) => l.trim())?.slice(0, 200), at: String(e?.stack ?? '').split('\n')[1]?.slice(0, 160) }); throw error } })
+      } catch (error) { const e = error as any; console.error('refundDeposit settle failed', { step, p: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, typeof v])), code: e?.code, line: String(e?.message ?? '').split('\n').find((l: string) => l.trim())?.slice(0, 200), at: String(e?.stack ?? '').split('\n')[1]?.slice(0, 160) }); throw error } })
     },
   },
 }
