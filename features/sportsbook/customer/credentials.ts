@@ -26,6 +26,10 @@ const DUMMY_PASSWORD_HASH = 'scrypt$v1$BwcHBwcHBwcHBwcHBwcHBw$PwrbhqcmnULvCstrBo
 function identitySecret() {
   const configured = process.env.CUSTOMER_IDENTITY_SECRET
   if (configured && configured.length >= 32) return configured
+  // Same pattern as the operator MFA key: derive a domain-separated key from the deployment's SESSION_SECRET
+  // (Keystone will not boot without one of at least 32 characters), so a fresh deploy can register customers.
+  const session = process.env.SESSION_SECRET
+  if (session && session.length >= 32) return createHmac('sha256', session).update('customer-identity:v1').digest('hex')
   if (process.env.NODE_ENV === 'production') throw new Error('CUSTOMER_IDENTITY_SECRET_REQUIRED')
   return 'local-sandbox-customer-identity-secret-only'
 }
