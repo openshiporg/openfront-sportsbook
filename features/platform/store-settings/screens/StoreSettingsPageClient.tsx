@@ -15,7 +15,11 @@ import { updateStoreSettings } from '../actions';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Code } from 'lucide-react';
-import { Pill, StatusDot, Track } from '../../components/kit';
+import { Pill, StatusDot } from '../../components/kit';
+import { StoreSettingsSaveBar } from '../components/StoreSettingsSaveBar';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
+import * as SelectPrimitive from '@radix-ui/react-select';
 
 interface StoreSettingsPageClientProps {
   initialData: {
@@ -131,10 +135,10 @@ export function StoreSettingsPageClient({
   const disabled = isLoading || Boolean(disabledReason);
 
   return (
-    <div className="min-w-0 space-y-5">
+    <div className="min-w-0 space-y-5 pb-24 md:pb-0">
       <StorefrontHeaderPreview name={name} logoIcon={logoIcon} logoColor={logoColor} />
 
-      <div className="grid min-w-0 gap-5 rounded-[4px] border bg-card p-4 text-card-foreground lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-5 rounded-[4px] border bg-card p-4 text-card-foreground">
         <div className="min-w-0 space-y-5">
           <div>
             <Label htmlFor="store-name">Brand name</Label>
@@ -146,102 +150,143 @@ export function StoreSettingsPageClient({
             />
           </div>
 
+          {/* Logo Icon Selector */}
           <div>
-            <p className="text-sm font-medium leading-none">Accent hue</p>
-            <Track label="Accent hue" className="mt-2">
-              {HUE_PRESETS.map((preset) => {
-                const value = preset.value.toString();
-                return (
-                  <Pill
-                    key={preset.value}
-                    size="sm"
-                    variant="flat"
-                    aria-pressed={logoColor === value}
-                    aria-label={preset.name}
-                    title={preset.name}
-                    onClick={() => setLogoColor(value)}
-                    className="w-8 px-0"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="size-4 rounded-[4px] ring-1 ring-black/10"
-                      style={{ backgroundColor: BRAND_ACCENT, filter: `hue-rotate(${preset.value}deg)` }}
-                    />
-                  </Pill>
-                );
-              })}
-            </Track>
-          </div>
-        </div>
-
-        <div className="min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <Label id="logo-icon-label">Logo</Label>
-            <span className="truncate tabular-nums text-xs text-muted-foreground">{selectedIcon?.name ?? 'Custom SVG'}</span>
-          </div>
-          <div role="radiogroup" aria-labelledby="logo-icon-label" className="mt-2 grid grid-cols-5 gap-1.5 sm:grid-cols-8 lg:grid-cols-6 xl:grid-cols-8">
-            {LOGO_ICONS.map((icon) => {
-              const active = selectedIcon?.id === icon.id;
-              return (
-                <button
-                  key={icon.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  aria-label={icon.name}
-                  title={icon.name}
-                  onClick={() => setLogoIcon(icon.lightSvg)}
+            <Label>Logo Icon</Label>
+            <div className="mt-2 flex items-center gap-2">
+              <Select
+                value={selectedIcon?.id || ''}
+                onValueChange={(id) => {
+                  const icon = LOGO_ICONS.find((i) => i.id === id);
+                  if (icon) setLogoIcon(icon.lightSvg);
+                }}
+              >
+                <SelectPrimitive.Trigger
                   className={cn(
-                    'grid aspect-square min-w-0 place-items-center rounded-[4px] bg-muted/60 ring-1 ring-inset ring-transparent transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    active && 'bg-background ring-foreground/70 dark:bg-zinc-800'
+                    'flex h-12 w-12 shrink-0 rounded-lg border border-input bg-background focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 p-0 overflow-hidden items-center justify-center'
                   )}
                 >
-                  <span
-                    aria-hidden="true"
-                    dangerouslySetInnerHTML={{ __html: icon.lightSvg }}
+                  <div
+                    dangerouslySetInnerHTML={{ __html: logoIcon }}
                     style={{ filter: `hue-rotate(${logoColor}deg)` }}
-                    className="h-6 w-6 [&>svg]:h-full [&>svg]:w-full"
+                    className="[&>svg]:w-6 [&>svg]:h-6"
                   />
-                </button>
-              );
-            })}
+                </SelectPrimitive.Trigger>
+                <SelectContent className="border-border dark:border-blue-700">
+                  {LOGO_ICONS.map((icon) => (
+                    <SelectItem key={icon.id} value={icon.id}>
+                      <span className="flex items-center gap-3">
+                        <div
+                          dangerouslySetInnerHTML={{ __html: icon.lightSvg }}
+                          style={{ filter: `hue-rotate(${logoColor}deg)` }}
+                          className="[&>svg]:w-6 [&>svg]:h-6"
+                        />
+                        <span>
+                          <span className="block font-medium text-gray-900 dark:text-gray-100">
+                            {icon.name}
+                          </span>
+                        </span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* SVG Code Editor Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-12 w-12 shrink-0"
+                    type="button"
+                  >
+                    <Code className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[min(500px,calc(100vw-2rem))]" align="start">
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="font-medium mb-2">Edit SVG Code</h4>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Edit the SVG code directly. Changes will be reflected in the icon preview.
+                      </p>
+                    </div>
+                    <Textarea
+                      value={logoIcon}
+                      onChange={(e) => setLogoIcon(e.target.value)}
+                      className="font-mono text-xs min-h-[300px]"
+                      placeholder="<svg>...</svg>"
+                    />
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm text-muted-foreground">Preview:</div>
+                      <div
+                        dangerouslySetInnerHTML={{ __html: logoIcon }}
+                        style={{ filter: `hue-rotate(${logoColor}deg)` }}
+                        className="[&>svg]:w-8 [&>svg]:h-8 flex items-center justify-center p-2 border rounded"
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          {/* Logo Color Selector */}
+          <div>
+            <Label>Logo Color</Label>
+            <div className="mt-2">
+              <Select
+                value={logoColor}
+                onValueChange={(value) => setLogoColor(value)}
+              >
+                <SelectPrimitive.Trigger
+                  className={cn(
+                    'flex h-12 w-12 shrink-0 rounded-lg border border-input bg-background focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 p-0 overflow-hidden items-center justify-center'
+                  )}
+                >
+                  <SelectValue>
+                    <div
+                      className="w-6 h-6 rounded-full"
+                      style={{
+                        background: `hsl(${(240 + parseInt(logoColor)) % 360}, 70%, 50%)`
+                      }}
+                    />
+                  </SelectValue>
+                </SelectPrimitive.Trigger>
+                <SelectContent className="border-border dark:border-blue-700">
+                  <div className="grid grid-cols-4 gap-2 p-2">
+                    {HUE_PRESETS.map((preset) => (
+                      <SelectItem
+                        key={preset.value}
+                        value={preset.value.toString()}
+                        className="cursor-pointer p-0 h-12 w-12 flex items-center justify-center [&>span:first-child]:hidden"
+                      >
+                        <div
+                          className="w-6 h-6 rounded-full"
+                          style={{
+                            background: `hsl(${(240 + preset.value) % 360}, 70%, 50%)`
+                          }}
+                        />
+                      </SelectItem>
+                    ))}
+                  </div>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Track>
-          <Pill variant="primary" onClick={handleSave} disabled={disabled}>
-            {isLoading ? 'Saving…' : 'Save branding'}
-          </Pill>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Pill aria-label="Edit SVG code">
-                <Code aria-hidden="true" />SVG
-              </Pill>
-            </PopoverTrigger>
-            <PopoverContent className="w-[min(500px,calc(100vw-2rem))]" align="start">
-              <div className="space-y-3">
-                <h4 className="text-sm font-medium">Logo SVG</h4>
-                <Textarea
-                  value={logoIcon}
-                  onChange={(e) => setLogoIcon(e.target.value)}
-                  className="min-h-[300px] tabular-nums text-xs"
-                  placeholder="<svg>...</svg>"
-                  aria-label="Logo SVG"
-                />
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Preview</span>
-                  <div
-                    dangerouslySetInnerHTML={{ __html: logoIcon }}
-                    style={{ filter: `hue-rotate(${logoColor}deg)` }}
-                    className="flex items-center justify-center rounded-md bg-[#0a0e14] p-2 [&>svg]:h-8 [&>svg]:w-8"
-                  />
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-        </Track>
+        <StoreSettingsSaveBar
+          isSaving={isLoading}
+          button={
+            <Pill variant="primary" onClick={handleSave} disabled={disabled}>
+              {isLoading ? 'Saving…' : 'Save branding'}
+            </Pill>
+          }
+        />
         {disabledReason ? <p className="text-sm text-muted-foreground"><StatusDot tone="off" />{disabledReason}</p> : null}
       </div>
     </div>
