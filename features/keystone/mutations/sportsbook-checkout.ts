@@ -159,27 +159,36 @@ export const sportsbookCheckoutResolvers = {
       }
 
       // 3. Settle: reverse the deposit journal, debit the wallet, close the intents.
+      let step = 0
       return serializable(context.prisma, async (tx: any) => { try {
         await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${p.depositId} AND tenant = ${tenantId} FOR UPDATE`
         const refund = await tx.paymentIntent.findFirst({ where: { id: p.intentId, tenantId } })
         if (refund?.status === 'SUCCEEDED') return refund.id
+        step = 1
         const depositJournal = await tx.journalTransaction.findFirst({ where: { tenantId, correlationId: p.depositId, type: 'DEPOSIT' }, include: { from_JournalEntry_transaction: true } })
         if (!depositJournal) throw new Error('DEPOSIT_JOURNAL_NOT_FOUND')
+        step = 2
         const original = journalOf(depositJournal)
         const cashEntry = original.entries.find(entry => entry.side === 'CREDIT')
         if (!cashEntry) throw new Error('DEPOSIT_JOURNAL_NOT_FOUND')
+        step = 3
         const now = new Date()
+        step = 4
         await postJournal(tx, tenantId, reverseJournal(original, `deposit-refund:${p.depositId}`), p.intentId)
+        step = 5
         const projection = await lockedProjection(tx, tenantId, cashEntry.accountId)
         if (BigInt(projection.availableMinor) < BigInt(p.amountMinor)) throw new Error('INSUFFICIENT_WALLET_FUNDS')
+        step = 6
         await tx.balanceProjection.create({ data: { tenantId, accountId: cashEntry.accountId, ...nextProjection(projection, postedChange(-BigInt(p.amountMinor)), now) } })
+        step = 7
         await tx.paymentIntent.update({ where: { id: p.intentId }, data: { status: 'SUCCEEDED', completedAt: now, providerSessionReference: outcome.externalRef } })
+        step = 8
         await tx.paymentAttempt.create({ data: { tenantId, paymentIntentId: p.intentId, attempt: 1, externalReference: outcome.externalRef, status: 'SUCCEEDED', reasonCode: outcome.method === 'void' ? 'PROCESSOR_VOID' : 'PROCESSOR_REFUND' } })
         await tx.paymentIntent.update({ where: { id: p.depositId }, data: { status: 'CANCELLED' } })
         await emit(tx, tenantId, 'PAYMENT', p.intentId, 'payment.refunded.v1', { depositId: p.depositId, amountMinor: p.amountMinor, currency: p.currency })
         await appendAudit(tx, tenantId, p.actorId, 'deposit.refunded', 'PaymentIntent', p.depositId, reason, { refundIntentId: p.intentId, amountMinor: p.amountMinor, currency: p.currency, externalReference: outcome.externalRef })
         return p.intentId
-      } catch (error) { const e = error as any; console.error('refundDeposit settle failed', { code: e?.code, line: String(e?.message ?? '').split('\n').find((l: string) => l.trim())?.slice(0, 200), at: String(e?.stack ?? '').split('\n')[1]?.slice(0, 160) }); throw error } })
+      } catch (error) { const e = error as any; console.error('refundDeposit settle failed', { step, code: e?.code, line: String(e?.message ?? '').split('\n').find((l: string) => l.trim())?.slice(0, 200), at: String(e?.stack ?? '').split('\n')[1]?.slice(0, 160) }); throw error } })
     },
   },
 }
