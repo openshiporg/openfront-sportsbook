@@ -2,7 +2,7 @@ import { createAuth } from "@keystone-6/auth";
 import { config } from "@keystone-6/core";
 import "dotenv/config";
 import { models } from "./models";
-import { withCreateAwareUi, withItemViewAwareUi } from "./ui-create-access";
+import { withCreateAwareUi, withDeleteAwareUi, withItemViewAwareUi } from "./ui-create-access";
 import { statelessSessions } from "@keystone-6/core/session";
 import { extendGraphqlSchema } from "./mutations";
 import { extendSportsbookPrismaSchema } from "./prisma-contract";
@@ -91,7 +91,7 @@ export default withAuth(
       extendPrismaSchema: extendSportsbookPrismaSchema,
       extendPrismaClient: (client) => tenantScopedPrisma(client),
     },
-    lists: withItemViewAwareUi(withCreateAwareUi(models)),
+    lists: withItemViewAwareUi(withDeleteAwareUi(withCreateAwareUi(models))),
     ui: {
       isAccessAllowed: ({ session }) => session?.data.role?.canAccessDashboard ?? false,
     },
