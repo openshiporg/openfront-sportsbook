@@ -31,6 +31,8 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
  const pendingPlacement=useRef<PlacementIntent|null>(null),placementSending=useRef(false)
  const[placementLocked,setPlacementLocked]=useState(false)
  const quoteGeneration=useRef(0)
+ const[slipInView,setSlipInView]=useState(false)
+ useEffect(()=>{const el=document.getElementById('bet-slip');if(!el||typeof IntersectionObserver==='undefined')return;const observer=new IntersectionObserver(entries=>setSlipInView(entries.some(entry=>entry.isIntersecting)),{threshold:0.05});observer.observe(el);return()=>observer.disconnect()})
  // Filters, search and paging run in the catalog query itself, before the page limit (never over a truncated subset).
  const[sport,setSport]=useState(initialSport??'All'),[debouncedQuery,setDebouncedQuery]=useState(''),[cursors,setCursors]=useState<string[]>([])
  useEffect(()=>{const timer=window.setTimeout(()=>setDebouncedQuery(query.trim()),300);return()=>window.clearTimeout(timer)},[query])
@@ -132,7 +134,7 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
    {catalog.data&&(cursors.length>0||catalog.data.nextCursor)&&<nav aria-label="Event pages" className="mt-4 flex items-center justify-between gap-3"><Track><Pill size="sm" disabled={cursors.length===0||catalog.loading} onClick={()=>setCursors(current=>current.slice(0,-1))}>Previous</Pill><Pill size="sm" disabled={!catalog.data.nextCursor||catalog.loading} onClick={()=>{const next=catalog.data?.nextCursor;if(next)setCursors(current=>[...current,next])}}>Next</Pill></Track><span className="tabular-nums text-xs  text-sb-mute">{catalog.data.total} event{catalog.data.total===1?'':'s'}</span></nav>}
   </section>
 
-  <aside id="bet-slip" className="min-w-0 scroll-mt-24 xl:sticky xl:top-24 xl:h-fit" aria-label="Bet slip">
+  <aside id="bet-slip" className="min-w-0 scroll-mt-24 scroll-mb-24 xl:sticky xl:top-24 xl:h-fit" aria-label="Bet slip">
    <div className="overflow-hidden rounded-[2px] bg-sb-card ring-1 ring-sb-line">
     <div className="flex items-center justify-between gap-3 bg-sb-night px-5 py-4 text-white">
      <p className="font-sb-display text-2xl font-bold uppercase leading-none tracking-wide">Bet slip<span className="ml-2 tabular-nums text-sm font-normal  text-sb-flood">{selected.length}</span></p>
@@ -185,6 +187,6 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
    </div>
   </aside>
 
-  {selected.length>0&&<a href="#bet-slip" className="fixed inset-x-4 bottom-4 z-20 flex min-h-14 items-center justify-between gap-3 rounded-[2px] bg-sb-night px-5 text-white ring-1 ring-white/10 xl:hidden"><span className="font-sb-display text-xl font-bold uppercase tracking-wide">Bet slip <span className="tabular-nums text-sm font-normal text-sb-flood">{selected.length}</span></span><span className="tabular-nums text-sm  text-white/95">{stakeMinor?formatMinor(stakeMinor,currency):'—'}</span></a>}
+  {selected.length>0&&!slipInView&&<a href="#bet-slip" className="fixed inset-x-4 bottom-4 z-20 flex min-h-14 items-center justify-between gap-3 rounded-[2px] bg-sb-night px-5 text-white ring-1 ring-white/10 xl:hidden"><span className="font-sb-display text-xl font-bold uppercase tracking-wide">Bet slip <span className="tabular-nums text-sm font-normal text-sb-flood">{selected.length}</span></span><span className="tabular-nums text-sm  text-white/95">{stakeMinor?formatMinor(stakeMinor,currency):'—'}</span></a>}
  </div></CustomerShell>
 }
