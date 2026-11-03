@@ -194,3 +194,33 @@ test('server target is loopback with a signed end-user identity; unknown PORT fa
     else process.env.SESSION_SECRET = prevSecret
   }
 })
+
+test('two visitors get two different signed identities: nothing freezes the first visitor', async () => {
+  const prevPort = process.env.PORT
+  const prevSecret = process.env.SESSION_SECRET
+  const original = globalThis.fetch
+  process.env.PORT = '4321'
+  process.env.SESSION_SECRET = SECRET
+  const seen: string[] = []
+  globalThis.fetch = (async (_u: any, init: any) => { seen.push(new Headers(init.headers).get('x-openfront-client-identity') || ''); return new Response('{}') }) as typeof fetch
+  try {
+    const { getServerGraphQLTarget } = await import('../../dashboard/lib/getBaseUrl')
+    const visitor = (ip: string) => ({ get: (n: string) => (n === 'x-real-ip' ? ip : null) })
+    // Same module instance, same process: a target is built per request from THAT request's headers.
+    const a = await getServerGraphQLTarget(visitor('203.0.113.7'))
+    const b = await getServerGraphQLTarget(visitor('203.0.113.8'))
+    await a.fetch!(a.endpoint, { method: 'POST' })
+    await b.fetch!(b.endpoint, { method: 'POST' })
+    await a.fetch!(a.endpoint, { method: 'POST' })
+    assert.equal(seen.length, 3)
+    assert.match(seen[0], /^[a-f0-9]{64}$/)
+    assert.notEqual(seen[0], seen[1])
+    assert.equal(seen[0], seen[2])
+  } finally {
+    globalThis.fetch = original
+    if (prevPort === undefined) delete process.env.PORT
+    else process.env.PORT = prevPort
+    if (prevSecret === undefined) delete process.env.SESSION_SECRET
+    else process.env.SESSION_SECRET = prevSecret
+  }
+})
