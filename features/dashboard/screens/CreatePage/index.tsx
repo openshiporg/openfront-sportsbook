@@ -34,7 +34,7 @@ function CreateUnavailable({ list }: { list: any }) {
       <div className="w-full max-w-2xl p-4 md:p-6">
         <h1 className="text-lg font-semibold md:text-2xl">Creating {list.label.toLowerCase()} is not available here</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {list.label} records are created by the sportsbook&apos;s own workflows, or need a permission this session
+          {list.label} are created by the sportsbook&apos;s own workflows, or need a permission this session
           doesn&apos;t have. If you manage {list.label.toLowerCase()}, verify MFA in Operator security first.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
