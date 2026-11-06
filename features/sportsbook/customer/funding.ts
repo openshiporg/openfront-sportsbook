@@ -81,7 +81,10 @@ async function serializable<T>(prisma: PrismaClient, fn: (tx: any) => Promise<T>
 }
 
 type FundingKind = 'DEPOSIT' | 'WITHDRAWAL'
-export type DispatchOutcome = { status: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN'; externalRef: string; reasonCode: string }
+export type DispatchOutcome = { status: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN'; externalRef: string; reasonCode: string; redirectUrl?: string }
+
+/** Card processors customers can deposit through, in failover order. */
+export const CARD_DEPOSIT_ADAPTERS = ['stripe', 'authorizenet']
 
 /** Intent states whose provider effect is not yet definitive; reserved funds and limit headroom stay held. */
 const IN_FLIGHT = new Set(['PENDING', 'PROCESSING', 'UNKNOWN'])
@@ -110,17 +113,17 @@ async function lockedProjection(tx: any, tenantId: string, accountId: string) {
 }
 
 /** Dispatch only to the installation pinned on the prepared intent, with that attempt's stable provider key. */
-export async function dispatchPinnedPayment(intent: any, provider: any, fresh: boolean, opaqueData?: { dataDescriptor: string; dataValue: string }): Promise<DispatchOutcome> {
+export async function dispatchPinnedPayment(intent: any, provider: any, fresh: boolean, opaqueData?: { dataDescriptor: string; dataValue: string }, returnUrl?: string): Promise<DispatchOutcome> {
   if (!provider) return { status: 'UNKNOWN', externalRef: '', reasonCode: 'PROVIDER_INSTALLATION_MISSING' }
   const snapshot = (intent.riskEvidence as any)?.provider
   if (snapshot && (snapshot.adapterId !== provider.adapterId || snapshot.adapterVersion !== provider.adapterVersion || snapshot.configReference !== provider.configReference)) {
     return { status: 'UNKNOWN', externalRef: '', reasonCode: 'PROVIDER_CONFIGURATION_CHANGED' }
   }
   try {
-    const result = await executePaymentProvider(provider, { type: intent.type === 'DEPOSIT' ? 'deposit' : 'withdrawal', payload: { amountMinor: intent.amountMinor, currency: intent.currency, opaqueData } }, `${provider.id}:${intent.idempotencyKey}`)
+    const result = await executePaymentProvider(provider, { type: intent.type === 'DEPOSIT' ? 'deposit' : 'withdrawal', payload: { amountMinor: intent.amountMinor, currency: intent.currency, opaqueData, returnUrl, existingReference: String(intent.providerSessionReference ?? '') || undefined } }, `${provider.id}:${intent.idempotencyKey}`) as { status: string; externalRef: string; redirectUrl?: string }
     if (result.status === 'SUCCEEDED') return { status: 'SUCCEEDED', externalRef: result.externalRef, reasonCode: '' }
     if (result.status === 'FAILED') return { status: 'FAILED', externalRef: result.externalRef, reasonCode: 'PROVIDER_DECLINED' }
-    return { status: 'UNKNOWN', externalRef: result.externalRef, reasonCode: 'PROVIDER_PENDING' }
+    return { status: 'UNKNOWN', externalRef: result.externalRef, reasonCode: 'PROVIDER_PENDING', ...(result.redirectUrl ? { redirectUrl: result.redirectUrl } : {}) }
   } catch (error) {
     const code = error instanceof Error ? error.message : ''
     // A refusal before I/O proves non-effect only for an attempt first dispatched by this request.
@@ -208,7 +211,7 @@ export async function reconcileUnknownPayment(
   }
   let observed: { status: string; externalRef: string; payload?: unknown }
   try {
-    observed = await getPaymentProviderStatus(provider, `${provider.id}:${intent.idempotencyKey}`)
+    observed = await getPaymentProviderStatus(provider, `${provider.id}:${intent.idempotencyKey}`, String(intent.providerSessionReference ?? ''))
   } catch (error) {
     throw new Error(`PAYMENT_STILL_UNKNOWN:${error instanceof Error ? error.message : 'PROVIDER_QUERY_FAILED'}`)
   }
@@ -256,7 +259,7 @@ async function runFundingCommand(
   prisma: PrismaClient,
   actor: CustomerActor,
   kind: FundingKind,
-  input: { amountMinor: unknown; idempotencyKey: unknown; currency?: unknown; opaqueData?: { dataDescriptor: string; dataValue: string } },
+  input: { amountMinor: unknown; idempotencyKey: unknown; currency?: unknown; opaqueData?: { dataDescriptor: string; dataValue: string }; returnUrl?: string },
 ): Promise<FundingResult> {
   assertSandboxEnabled()
   const currency = await resolveTenantCurrency(prisma, actor.tenantId, kind)
@@ -299,8 +302,10 @@ async function runFundingCommand(
       if (!projection) throw new CustomerError(unavailable, 409)
       if (kind === 'DEPOSIT') await assertDepositLimits(tx, actor, amount, new Date())
       if (kind === 'WITHDRAWAL' && BigInt(projection.availableMinor) < amount) throw new CustomerError('INSUFFICIENT_FUNDS', 422)
-      const provider = await tx.providerConnection.findFirst({ where: { tenantId: actor.tenantId, adapterId: kind === 'DEPOSIT' ? 'authorizenet' : 'manual', status: 'ACTIVE' }, orderBy: [{ failoverPriority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] })
+      const provider = await tx.providerConnection.findFirst({ where: { tenantId: actor.tenantId, adapterId: kind === 'DEPOSIT' ? { in: CARD_DEPOSIT_ADAPTERS } : 'manual', status: 'ACTIVE' }, orderBy: [{ failoverPriority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] })
       if (!provider) throw new CustomerError(unavailable, 409)
+      // Accept.js cards arrive tokenized; hosted Checkout collects the card on Stripe's page instead.
+      if (kind === 'DEPOSIT' && provider.adapterId === 'authorizenet' && !input.opaqueData) throw new CustomerError('PAYMENT_METHOD_REQUIRED', 400)
       let holdId: string | null = null
       if (kind === 'WITHDRAWAL') {
         // Reserve before dispatch: spendable funds drop now; posted moves only on confirmed payout.
@@ -310,7 +315,7 @@ async function runFundingCommand(
       }
       const intent = await tx.paymentIntent.create({ data: {
         tenantId: actor.tenantId, playerId: actor.playerId, providerConnectionId: provider.id, holdId, type: kind, amountMinor: String(amount), feeMinor: '0', currency: currency.code, idempotencyKey: paymentKey,
-        paymentMethodReference: kind === 'DEPOSIT' ? 'sandbox-hosted-token' : 'sandbox-tokenized-payout', providerSessionReference: '',
+        paymentMethodReference: kind === 'DEPOSIT' ? (provider.adapterId === 'stripe' ? 'stripe-checkout' : 'sandbox-hosted-token') : 'sandbox-tokenized-payout', providerSessionReference: '',
         riskEvidence: { mode: 'SANDBOX', requestHash: claimed.command.requestHash, currencyExponent: currency.exponent, provider: { connectionId: provider.id, adapterId: provider.adapterId, adapterVersion: provider.adapterVersion, configReference: provider.configReference, certificationStatus: provider.certificationStatus } },
         status: 'PROCESSING', completedAt: null,
       } })
@@ -341,7 +346,7 @@ async function runFundingCommand(
   }
   if (prepared.kind === 'DONE') return prepared.result
 
-  const outcome = await dispatchPinnedPayment(prepared.intent, prepared.provider, prepared.fresh, input.opaqueData)
+  const outcome = await dispatchPinnedPayment(prepared.intent, prepared.provider, prepared.fresh, input.opaqueData, input.returnUrl)
 
   return serializable(prisma, async tx => {
     await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${prepared.intent.id} FOR UPDATE`
@@ -358,6 +363,7 @@ async function runFundingCommand(
     await tx.outboxMessage.create({ data: { tenantId: actor.tenantId, aggregateType: 'PAYMENT', aggregateId: current.id, eventType: status === 'SUCCEEDED' ? 'payment.completed.v1' : status === 'FAILED' ? 'payment.failed.v1' : 'payment.unknown.v1', payload: { type: current.type, amountMinor: current.amountMinor, currency: current.currency, providerConnectionId: current.providerConnectionId, reasonCode: outcome.reasonCode }, status: 'PENDING', attempts: 0, maxAttempts: 10, availableAt: now } })
     await appendCustomerAudit(tx, { tenantId: actor.tenantId, playerId: actor.playerId, action: current.type === 'DEPOSIT' ? 'customer.wallet_funded' : 'customer.withdrawal_requested', targetType: 'PaymentIntent', targetId: current.id, reason: status === 'SUCCEEDED' ? 'SANDBOX_CONFIRMED' : status === 'FAILED' ? 'SANDBOX_PROVIDER_FAILED' : 'PROVIDER_OUTCOME_UNKNOWN', payload: { amountMinor: current.amountMinor, currency: current.currency, holdId: current.holdId, externalReference: outcome.externalRef, reasonCode: outcome.reasonCode } })
     const result = fundingResultFor(intent, duplicate, await availableFor(tx, actor, current.currency), currency.exponent)
+    if (status === 'UNKNOWN' && outcome.redirectUrl) Object.assign(result, { pendingCode: 'PAYER_ACTION_REQUIRED', redirectUrl: outcome.redirectUrl })
     if (status === 'UNKNOWN') await recordCustomerCommandProgress(tx, commandId, result)
     else await finishCustomerCommand(tx, commandId, status === 'SUCCEEDED' ? 'SUCCEEDED' : 'REJECTED', result)
     return result
@@ -375,7 +381,7 @@ export async function withdrawCustomerWallet(
 export async function fundCustomerWallet(
   prisma: PrismaClient,
   actor: CustomerActor,
-  input: { amountMinor: unknown; idempotencyKey: unknown; currency?: unknown; opaqueData?: { dataDescriptor: string; dataValue: string } },
+  input: { amountMinor: unknown; idempotencyKey: unknown; currency?: unknown; opaqueData?: { dataDescriptor: string; dataValue: string }; returnUrl?: string },
 ): Promise<FundingResult> {
   return runFundingCommand(prisma, actor, 'DEPOSIT', input)
 }

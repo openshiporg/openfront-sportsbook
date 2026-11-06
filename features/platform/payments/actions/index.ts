@@ -15,7 +15,7 @@ export async function saveOperatorLicence(input: { id?: string; licenceNumber: s
 
 import { canMarkWithdrawalPaid, withdrawalAlreadyResolved } from '../withdrawal-policy'
 
-const adapters = ['authorizenet','paysafe','aeropay','manual'] as const
+const adapters = ['stripe','authorizenet','paysafe','aeropay','manual'] as const
 export async function savePaymentProvider(input: { id?: string; adapterId: string; adapterVersion: string; configReference: string; secretReference: string; status: string }) {
   const operator = await getOperatorContext('canManageIntegrations')
   if (!operator) throw new Error('FORBIDDEN')

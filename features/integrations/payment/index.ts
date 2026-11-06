@@ -3,5 +3,6 @@ export { SandboxAdapter, sandboxAdapters } from '../../sportsbook/adapters/sandb
 
 export const paymentProviderAdapters = {
   authorizenet: () => import('./authorizenet'),
+  stripe: () => import('./stripe'),
   manual: () => import('./manual'),
 } as const

@@ -53,6 +53,19 @@ export function WalletScreen() {
     const restored = loadPersistedFundingIntent(owner)
     if (restored) { pendingIntentRef.current = restored; setPendingIntent(restored) }
   }, [owner])
+  // Back from Stripe Checkout: confirm the same deposit attempt once (same key; nothing new is charged).
+  const returnChecked = useRef(false)
+  useEffect(() => {
+    if (returnChecked.current || !pendingIntent || !wallet.data) return
+    const params = new URLSearchParams(window.location.search)
+    const back = params.get('deposit')
+    if (!back) return
+    returnChecked.current = true
+    window.history.replaceState(null, '', window.location.pathname)
+    if (back === 'cancelled') setStatus('Card payment cancelled. Check again if you finished paying, or wait for it to expire.')
+    void fund()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingIntent, wallet.data])
 
   async function fund() {
     if (fundingLockRef.current) return
@@ -83,7 +96,7 @@ export function WalletScreen() {
         persistFundingIntent(owner, intent)
       }
 
-      if (intent.action === 'DEPOSIT' && !opaqueData) {
+      if (intent.action === 'DEPOSIT' && wallet.data?.card?.provider === 'authorizenet' && !opaqueData) {
         setError('Enter your card details and securely tokenize them before adding funds.')
         return
       }
@@ -95,6 +108,11 @@ export function WalletScreen() {
       const amountLabel = formatMinor(result.amountMinor ?? intent.amountMinor, result.currency ?? intent.currency, result.currencyExponent ?? exponent)
       wallet.reload()
       session.reload()
+      if (result.state === 'PENDING' && result.redirectUrl && /^https:\/\/checkout\.stripe\.com\//.test(result.redirectUrl)) {
+        setStatus('Opening secure card payment…')
+        window.location.assign(result.redirectUrl)
+        return
+      }
       if (result.state === 'PENDING' || result.state === 'IN_PROGRESS') {
         // Not definitive: keep the original attempt locked (funds stay reserved server-side for withdrawals).
         setStatus(`Your ${actionLabel} of ${amountLabel} isn’t confirmed yet. ${intent.action === 'WITHDRAWAL' ? 'The amount stays reserved. ' : ''}Check again to follow up on the same request.`)
@@ -153,7 +171,7 @@ export function WalletScreen() {
           <h2 id="fund-wallet" className="font-sb-display text-2xl font-bold uppercase tracking-wide">{pendingIntent ? <Dot tone="wait" /> : null}Move funds</h2>
           <Track label="Wallet action"><Pill variant="flat" size="sm" onClick={()=>{setAction('DEPOSIT');setStatus('');setError('')}} disabled={funding || Boolean(pendingIntent)} aria-pressed={action==='DEPOSIT'}>Deposit</Pill><Pill variant="flat" size="sm" onClick={()=>{setAction('WITHDRAWAL');setStatus('');setError('')}} disabled={funding || Boolean(pendingIntent)} aria-pressed={action==='WITHDRAWAL'}>Withdraw</Pill></Track>
         </div>
-        {action === 'DEPOSIT' && (wallet.data.card ? <AuthorizeNetCardForm apiLoginId={wallet.data.card.apiLoginId} clientKey={wallet.data.card.clientKey} env={wallet.data.card.env} onToken={setOpaqueData} /> : <p role="status" className="mt-4 text-sm text-sb-mute">Card deposits open soon</p>)}
+        {action === 'DEPOSIT' && (wallet.data.card?.provider === 'authorizenet' ? <AuthorizeNetCardForm apiLoginId={wallet.data.card.apiLoginId} clientKey={wallet.data.card.clientKey} env={wallet.data.card.env} onToken={setOpaqueData} /> : wallet.data.card?.provider === 'stripe' ? <p className="mt-4 text-sm text-sb-mute">Pay by card on Stripe&apos;s secure page. Your balance updates as soon as the payment clears.</p> : <p role="status" className="mt-4 text-sm text-sb-mute">Card deposits open soon</p>)}
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="min-w-0 flex-1"><label htmlFor="funding-amount" className="mb-1.5 block text-xs font-semibold  text-sb-mute">{(pendingIntent?.action ?? action)==='DEPOSIT'?'Deposit':'Withdrawal'} · {wallet.data.currency}</label><input id="funding-amount" value={pendingIntent?.amountInput ?? amount} onChange={event => { if (new RegExp(exponent > 0 ? `^\\d{0,12}(\\.\\d{0,${exponent}})?$` : '^\\d{0,12}$').test(event.target.value)) setAmount(event.target.value) }} disabled={funding || Boolean(pendingIntent)} placeholder={minorToAmountInput(wallet.data.fundingMinMinor, exponent)} inputMode="decimal" autoComplete="off" aria-describedby="funding-help" className={`${fieldClass} min-h-12 text-right tabular-nums text-xl font-semibold `} /><p id="funding-help" className="mt-1.5 tabular-nums text-xs text-sb-mute">{formatMinor(wallet.data.fundingMinMinor, wallet.data.currency, exponent)} – {formatMinor(wallet.data.fundingMaxMinor, wallet.data.currency, exponent)}</p></div>
           <Track className="self-start sm:mb-6 sm:self-auto"><Pill variant="primary" size="lg" onClick={fund} disabled={funding || Boolean(pendingIntent) || !enabled}>{funding ? <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <ArrowDownToLine aria-hidden="true" />}{funding ? 'Submitting…' : pendingIntent ? 'Awaiting recovery' : !enabled ? (action==='DEPOSIT'&&wallet.data.depositsEnabled?'Card deposits open soon':`${action==='DEPOSIT'?'Deposits':'Withdrawals'} off for ${wallet.data.currency}`) : action==='DEPOSIT'?'Add funds':'Withdraw funds'}</Pill></Track>

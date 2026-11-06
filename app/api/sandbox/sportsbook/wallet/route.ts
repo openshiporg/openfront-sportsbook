@@ -36,10 +36,19 @@ export async function POST(request: Request) {
     const body = await readJsonObject(request)
     if ('subject' in body || 'playerId' in body || 'tenantId' in body) throw new CustomerError('CALLER_OWNERSHIP_FORBIDDEN', 400)
     const opaqueData = body.opaqueData
-    if (!opaqueData || typeof opaqueData !== 'object' || typeof (opaqueData as any).dataDescriptor !== 'string' || typeof (opaqueData as any).dataValue !== 'string') throw new CustomerError('PAYMENT_METHOD_REQUIRED', 400)
-    const result = await fundCustomerWallet(keystoneContext.prisma, actor, { amountMinor: body.amountMinor, idempotencyKey: body.idempotencyKey, currency: body.currency, opaqueData: opaqueData as any })
+    // Accept.js deposits carry a card token; hosted Checkout deposits carry none (the adapter decides which is required).
+    if (opaqueData !== undefined && (!opaqueData || typeof opaqueData !== 'object' || typeof (opaqueData as any).dataDescriptor !== 'string' || typeof (opaqueData as any).dataValue !== 'string')) throw new CustomerError('PAYMENT_METHOD_REQUIRED', 400)
+    const result = await fundCustomerWallet(keystoneContext.prisma, actor, { amountMinor: body.amountMinor, idempotencyKey: body.idempotencyKey, currency: body.currency, opaqueData: opaqueData as any, returnUrl: walletReturnUrl(request) })
     return Response.json(result, { status: result.state === 'SUCCEEDED' ? (result.duplicate ? 200 : 201) : result.state === 'PENDING' || result.state === 'IN_PROGRESS' ? 202 : 422, headers: { 'cache-control': 'no-store' } })
   } catch (error) {
     return errorResponse(error)
   }
+}
+
+/** The page Stripe returns the player to: this site's wallet, from configuration, never from request headers. */
+function walletReturnUrl(request: Request) {
+  const configured = String(process.env.PUBLIC_APP_URL ?? '').replace(/\/$/, '')
+  if (/^https:\/\//.test(configured)) return `${configured}/account/wallet`
+  const origin = new URL(request.url).origin
+  return `${origin}/account/wallet`
 }
