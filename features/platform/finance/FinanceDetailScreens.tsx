@@ -156,7 +156,7 @@ export async function LedgerAdjustmentDetailScreen({ adjustmentId }: { adjustmen
     <DetailGrid items={[
       { label: "Request ID", value: <code className="break-all text-xs">{adjustment.id}</code> },
       { label: "State", value: <StatusBadge value={adjustment.status} /> },
-      { label: "Amount", value: <Mono>{money(adjustment.amountMinor, adjustment.currency)} ({adjustment.amountMinor ?? "—"} minor {adjustment.currency ?? ""})</Mono> },
+      { label: "Amount", value: <Mono>{money(adjustment.amountMinor, adjustment.currency)}</Mono> },
       { label: "Account", value: adjustment.account ? <Mono className="break-all">{adjustment.account.key} · {adjustment.account.id}</Mono> : "—" },
       { label: "Player", value: adjustment.player?.subject || (operator.capabilities.canManageCompliance ? "—" : "Hidden") },
       { label: "Reason code", value: adjustment.reasonCode || "—" },
