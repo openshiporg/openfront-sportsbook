@@ -45,12 +45,12 @@ async function feedTenant(prisma: any, tenantId: string, now: Date) {
   }
   const markets = await prisma.market.findMany({
     where: { tenantId, status: 'OPEN', tradingMode: 'PREMATCH', event: { status: 'SCHEDULED', startAt: { gt: now, lt: new Date(now.getTime() + 8 * DAY_MS) }, externalKey: { startsWith: 'feed:' } } },
-    select: { id: true, selections: { where: { status: 'OPEN' }, select: { id: true } } },
+    select: { id: true, from_Selection_market: { where: { status: 'OPEN' }, select: { id: true } } },
     take: 200,
   })
   const provider = await prisma.providerConnection.findFirst({ where: { tenantId, adapterId: 'sandbox-sports', certificationStatus: 'SANDBOX', status: 'ACTIVE' }, select: { id: true } })
   if (!provider) return { created, refreshed }
-  for (const market of markets) for (const selection of market.selections) {
+  for (const market of markets) for (const selection of market.from_Selection_market) {
     const latest = await prisma.priceSnapshot.findFirst({ where: { tenantId, selectionId: selection.id, status: 'OPEN' }, orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }], select: { decimalOdds: true, line: true, sequence: true, receivedAt: true } })
     if (!latest || now.getTime() - latest.receivedAt.getTime() < REFRESH_AFTER_MS) continue
     const sequence = String((Number.parseInt(latest.sequence, 10) || 0) + 1)
