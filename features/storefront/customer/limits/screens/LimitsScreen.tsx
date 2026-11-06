@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { LoaderCircle } from 'lucide-react'
 import type { CustomerSessionSummary, LimitActionResult, LimitsResponse } from '@/features/sportsbook/customer/contracts'
-import { AccountPageHeader, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
+import { AccountPageHeader, AuthenticationRequired, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
 import { CustomerShell } from '../../components/CustomerShell'
 import { Card, Dot, Empty, Notice, Pill, Section, Track, fieldClass, label, toneFor } from '../../components/kit'
 import { amountInputToMinor, currencyExponent, CustomerApiError, formatDate, formatMinor, useCustomerResource, useFrozenSubmission, customerMessage } from '../../lib/customer-api'
@@ -12,7 +12,8 @@ const SESSION_PERIOD_MINUTES: Record<'DAILY' | 'WEEKLY' | 'MONTHLY', number> = {
 
 export function LimitsScreen() {
   const session = useCustomerResource<CustomerSessionSummary>('/api/sandbox/sportsbook/session')
-  const limits = useCustomerResource<LimitsResponse>('/api/sandbox/sportsbook/limits')
+  const limits = useCustomerResource<LimitsResponse>(session.data?.authenticated ? '/api/sandbox/sportsbook/limits' : null)
+  const signedOut = session.data?.authenticated === false
   const [type, setType] = useState<'STAKE' | 'DEPOSIT' | 'LOSS' | 'SESSION'>('STAKE')
   const [period, setPeriod] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY')
   const [amount, setAmount] = useState('100.00')
@@ -58,16 +59,17 @@ export function LimitsScreen() {
   const periods = [['DAILY', '24 hours'], ['WEEKLY', '7 days'], ['MONTHLY', '30 days']] as const
   return <CustomerShell current="limits" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference} closed={isClosedError(session.error)}>
     <AccountPageHeader title="Limits" meta={limits.data ? `Increases wait ${limits.data.coolingOffHours} h · decreases apply now` : undefined} />
-    {limits.loading && <LoadingPanel label="Loading limits" />}
+    {(session.loading || limits.loading) && <LoadingPanel label="Loading limits" />}
+    {signedOut && <AuthenticationRequired />}
     {limits.error && <ErrorPanel error={limits.error} retry={limits.reload} />}
     {limits.data && <>
       <section aria-labelledby="set-limit-heading" className="mt-6 rounded-[2px] bg-sb-card p-5 ring-1 ring-sb-line sm:p-6">
         <h2 id="set-limit-heading" className="font-sb-display text-2xl font-bold uppercase tracking-wide">{unresolved ? <Dot tone="wait" /> : null}Set a limit</h2>
         <div className="mt-4 space-y-4">
-          <div><p className="mb-1.5 text-[11px] font-semibold  text-sb-mute">Type</p><div className="sb-scroll -mx-1 px-1"><Track label="Limit type">{types.map(([value, text]) => <Pill key={value} variant="flat" size="sm" aria-pressed={type === value} disabled={unresolved || saving} onClick={() => setType(value)}>{text}</Pill>)}</Track></div></div>
-          <div><p className="mb-1.5 text-[11px] font-semibold  text-sb-mute">Rolling period</p><Track label="Period">{periods.map(([value, text]) => <Pill key={value} variant="flat" size="sm" aria-pressed={period === value} disabled={unresolved || saving} onClick={() => setPeriod(value)}>{text}</Pill>)}</Track></div>
+          <div><p className="mb-1.5 text-xs font-semibold  text-sb-mute">Type</p><div className="sb-scroll -mx-1 px-1"><Track label="Limit type">{types.map(([value, text]) => <Pill key={value} variant="flat" size="sm" aria-pressed={type === value} disabled={unresolved || saving} onClick={() => setType(value)}>{text}</Pill>)}</Track></div></div>
+          <div><p className="mb-1.5 text-xs font-semibold  text-sb-mute">Rolling period</p><Track label="Period">{periods.map(([value, text]) => <Pill key={value} variant="flat" size="sm" aria-pressed={period === value} disabled={unresolved || saving} onClick={() => setPeriod(value)}>{text}</Pill>)}</Track></div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1 sm:max-w-xs"><label htmlFor="limit-amount" className="mb-1.5 block text-[11px] font-semibold  text-sb-mute">{type==='SESSION'?'Minutes':`Amount · ${session.data?.currency ?? 'wallet currency'}`}</label>{type==='SESSION'?<input id="limit-amount" value={minutes} onChange={event => { if (/^\d{0,5}$/.test(event.target.value)) { setMinutes(event.target.value) } }} disabled={unresolved || saving} inputMode="numeric" autoComplete="off" className={`${fieldClass} min-h-12 text-right tabular-nums text-lg font-semibold `} />:<input id="limit-amount" value={amount} onChange={event => { if (/^\d{0,9}(\.\d{0,6})?$/.test(event.target.value)) { setAmount(event.target.value) } }} disabled={unresolved || saving} inputMode="decimal" autoComplete="off" className={`${fieldClass} min-h-12 text-right tabular-nums text-lg font-semibold `} />}</div>
+            <div className="min-w-0 flex-1 sm:max-w-xs"><label htmlFor="limit-amount" className="mb-1.5 block text-xs font-semibold  text-sb-mute">{type==='SESSION'?'Minutes':`Amount · ${session.data?.currency ?? 'wallet currency'}`}</label>{type==='SESSION'?<input id="limit-amount" value={minutes} onChange={event => { if (/^\d{0,5}$/.test(event.target.value)) { setMinutes(event.target.value) } }} disabled={unresolved || saving} inputMode="numeric" autoComplete="off" className={`${fieldClass} min-h-12 text-right tabular-nums text-lg font-semibold `} />:<input id="limit-amount" value={amount} onChange={event => { if (/^\d{0,9}(\.\d{0,6})?$/.test(event.target.value)) { setAmount(event.target.value) } }} disabled={unresolved || saving} inputMode="decimal" autoComplete="off" className={`${fieldClass} min-h-12 text-right tabular-nums text-lg font-semibold `} />}</div>
             <Track className="self-start sm:self-auto"><Pill variant="primary" size="lg" onClick={saveLimit} disabled={saving}>{saving && <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" />}{saving ? 'Saving…' : unresolved ? 'Retry original request' : 'Save limit'}</Pill></Track>
           </div>
         </div>
@@ -78,7 +80,7 @@ export function LimitsScreen() {
       <Section id="saved-limits" title="Saved limits" count={limits.data.limits.length}>
         {limits.data.limits.length === 0 ? <Empty>No limits set</Empty> : <Card className="divide-y divide-sb-line">
           {limits.data.limits.map(limit => <div key={limit.id} className="flex min-w-0 items-center justify-between gap-3 px-4 py-3.5">
-            <div className="min-w-0"><p className="text-sm font-semibold"><Dot tone={toneFor(limit.state)} />{label(limit.type)} limit<span className="ml-2 text-xs font-normal text-sb-mute">{label(limit.state)}</span></p><p className="mt-0.5 tabular-nums text-[11px] text-sb-mute">{label(limit.period)} · from {formatDate(limit.effectiveFrom)}{limit.effectiveTo ? ` · ends ${formatDate(limit.effectiveTo)}` : ''}</p></div>
+            <div className="min-w-0"><p className="text-sm font-semibold"><Dot tone={toneFor(limit.state)} />{label(limit.type)} limit<span className="ml-2 text-xs font-normal text-sb-mute">{label(limit.state)}</span></p><p className="mt-0.5 tabular-nums text-xs text-sb-mute">{label(limit.period)} · from {formatDate(limit.effectiveFrom)}{limit.effectiveTo ? ` · ends ${formatDate(limit.effectiveTo)}` : ''}</p></div>
             <p className="shrink-0 tabular-nums text-lg font-semibold ">{limit.type==='SESSION'?`${limit.amountMinor} min`:formatMinor(limit.amountMinor, limit.currency)}</p>
           </div>)}
         </Card>}

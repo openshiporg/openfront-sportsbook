@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from '../../keystone/prisma'
 import { evidenceHash } from '../domain/engine'
 import { fullCombinationEvidence, materializeCombination, parseExactDecimal, type WagerStructure } from '../domain/combination'
 import { loadQuoteCandidate } from './catalog'
+import { isEventAcceptingBets, isLivePricing, maxPriceAgeMs } from '../domain/trading-eligibility'
 import { assertCurrentCustomerActor, type CustomerActor } from './auth'
 import { appendCustomerAudit } from './audit'
 import { CustomerError, assertSandboxEnabled } from './errors'
@@ -14,7 +15,6 @@ import { activeHouseRule, approvedHouseRuleEvidence } from '../domain/house-rule
 
 const MAX_LEGS = 12
 const MAX_PAYOUT_MINOR = 1_000_000n
-const MAX_PRICE_AGE_MS = () => Number(process.env.MAX_PRICE_AGE_MS ?? 30_000)
 
 export function orderQuoteLegTerms<T extends { legIndex: string }>(legs: T[]): T[] {
   const ordered = [...legs].sort((left, right) => Number(left.legIndex) - Number(right.legIndex))
@@ -318,7 +318,7 @@ export async function placeCombinationWager(prisma: PrismaClient, actor: Custome
       const exactDenied = changed && terms.priceChangeConsent === 'EXACT'
       const betterDenied = changed && terms.priceChangeConsent === 'ACCEPT_BETTER' && (!sameContract || !better)
       const toleranceDenied = changed && terms.priceChangeConsent === 'ACCEPT_WITHIN_TOLERANCE' && (!sameContract || !latest || !withinWorsePriceTolerance(leg.decimalOdds, latest.decimalOdds, currentPolicy.priceToleranceBps))
-      const invalid = !selection?.market?.event || selection.status !== 'OPEN' || selection.market.status !== 'OPEN' || !['SCHEDULED', 'LIVE'].includes(selection.market.event.status ?? '') || !latest || latest.status !== 'OPEN' || now.getTime() - latest.receivedAt.getTime() > MAX_PRICE_AGE_MS() || exactDenied || betterDenied || toleranceDenied
+      const invalid = !selection?.market?.event || selection.status !== 'OPEN' || selection.market.status !== 'OPEN' || !isEventAcceptingBets(selection.market.event, now) || !latest || latest.status !== 'OPEN' || now.getTime() - latest.receivedAt.getTime() > maxPriceAgeMs(isLivePricing(selection.market.event.status, selection.market.tradingMode)) || exactDenied || betterDenied || toleranceDenied
       if (invalid) invalidLegIndexes.push(index)
       else acceptedLegPrices.set(index, { snapshotId: changed ? latest!.id : leg.priceSnapshotId, decimalOdds: latest!.decimalOdds, line: currentLine })
     }

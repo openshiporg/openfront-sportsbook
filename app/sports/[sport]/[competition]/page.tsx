@@ -14,7 +14,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 export default async function Page({ params }: Params) {
   const value = await params
-  const competition = decodeURIComponent(value.competition)
-  if (!(await findPublishedCompetition(value.sport, competition))) notFound()
-  return <SportsbookHome initialSport={value.sport} initialCompetition={competition} />
+  const match = await findPublishedCompetition(value.sport, decodeURIComponent(value.competition))
+  if (!match) notFound()
+  // The board filters by the competition's display name; the URL carries its key.
+  return <SportsbookHome initialSport={value.sport} initialCompetition={match.competition} />
 }

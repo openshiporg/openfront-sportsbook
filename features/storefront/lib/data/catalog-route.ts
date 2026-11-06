@@ -1,7 +1,8 @@
 import { cache } from 'react'
 import { keystoneContext } from '@/features/keystone/context'
 import { getStorefrontDisplayBrand } from './brand'
-import { PUBLIC_EVENT_STATUSES } from '@/features/sportsbook/customer/catalog'
+import { PUBLIC_EVENT_STATUSES } from '../../../sportsbook/customer/catalog'
+import { pastStartScheduledExclusion } from '../../../sportsbook/domain/trading-eligibility'
 
 /**
  * Route lookups for the storefront's catalog pages: a slug only renders when it names a record the operator has
@@ -27,7 +28,7 @@ export const findPublishedEvent = cache(async function (eventId: string) {
   if (!tenant) return null
   const prisma: any = keystoneContext.prisma
   const match = await prisma.event.findFirst({
-    where: { id: eventId, tenantId: tenant, status: { in: [...PUBLIC_EVENT_STATUSES] }, competition: { is: { tenantId: tenant, status: 'ACTIVE', sport: { is: { tenantId: tenant, active: true } } } } },
+    where: { id: eventId, tenantId: tenant, status: { in: [...PUBLIC_EVENT_STATUSES] }, ...pastStartScheduledExclusion(), competition: { is: { tenantId: tenant, status: 'ACTIVE', sport: { is: { tenantId: tenant, active: true } } } } },
     select: { name: true, competition: { select: { name: true } } },
   })
   return match ? { name: match.name as string, competition: (match.competition?.name ?? null) as string | null } : null
@@ -46,7 +47,7 @@ export const listPublishedSports = cache(async function () {
   })
   const counts = await prisma.event.groupBy({
     by: ['competitionId'],
-    where: { tenantId: tenant, status: { in: [...PUBLIC_EVENT_STATUSES] }, competition: { is: { tenantId: tenant, status: 'ACTIVE', sport: { is: { tenantId: tenant, active: true } } } } },
+    where: { tenantId: tenant, status: { in: [...PUBLIC_EVENT_STATUSES] }, ...pastStartScheduledExclusion(), competition: { is: { tenantId: tenant, status: 'ACTIVE', sport: { is: { tenantId: tenant, active: true } } } } },
     _count: { _all: true },
   })
   const eventsByCompetition = new Map<string, number>(counts.map((row: any) => [row.competitionId, row._count._all]))

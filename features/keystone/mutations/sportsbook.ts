@@ -3,6 +3,7 @@ const graphql = String.raw
 import { evaluateAcceptance, evidenceHash, settlementAmount } from '../../sportsbook/domain/engine'
 import { reverseJournal, settlementJournal, validateJournal, type Journal } from '../../sportsbook/domain/ledger'
 import { buildOnboardingFixture, ensurePromotionsThenComplete, prepareSandboxPromotionProgress } from '../../sportsbook/domain/onboarding'
+import { isEventAcceptingBets, isLivePricing, maxPriceAgeMs } from '../../sportsbook/domain/trading-eligibility'
 import { assertOnboardingCatalog, ensureOnboardingCatalogEvents, ensureOnboardingCatalogRoots } from './onboarding-catalog'
 import { dispatchPinnedPayment } from '../../sportsbook/customer/funding'
 import { captureChange, nextProjection, postedChange, releaseChange, reserveChange } from '../../sportsbook/domain/balance'
@@ -342,7 +343,7 @@ const report=await tx.complianceReport.create({data:{tenantId,type:a.type,period
           tx.tenant.findFirst({where:{id:tenantId,status:'ACTIVE'}}),
           tx.priceSnapshot.findFirst({where:{tenantId,selectionId:quote.selectionId},orderBy:{receivedAt:'desc'}}),
         ])
-        const eventTradable=['SCHEDULED','LIVE'].includes(quote.selection?.market?.event?.status??'')
+        const eventTradable=Boolean(quote.selection?.market?.event&&isEventAcceptingBets(quote.selection.market.event,now))
         const priceCurrent=Boolean(latestPrice&&latestPrice.status==='OPEN'&&(latestPrice.id===quote.priceSnapshotId||(latestPrice.decimalOdds===quote.decimalOdds&&String(latestPrice.line??'')===String(quote.priceSnapshot?.line??''))))
         const [geoApproved,kycApproved,provenance]=await Promise.all([
           currentGeoApproved(tx,tenantId,quote.playerId,now),
@@ -359,7 +360,7 @@ const report=await tx.complianceReport.create({data:{tenantId,type:a.type,period
         const fullLimitViolation=await wagerLimitViolation(tx,tenantId,quote.playerId,BigInt(quote.stakeMinor),now,customerActor?.sessionId)
         let projection=account?await tx.balanceProjection.findFirst({where:{tenantId,accountId:account.id},orderBy:{version:'desc'}}):null
         if(projection){ await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${projection.id} FOR UPDATE`; projection=await tx.balanceProjection.findFirst({where:{tenantId,accountId:account.id},orderBy:{version:'desc'}}) }
-        let decision:any=evaluateAcceptance({id:quote.id,tenantId,playerId:quote.playerId,selectionId:quote.selectionId,snapshotId:quote.priceSnapshotId,decimalOdds:quote.decimalOdds,stake:BigInt(quote.stakeMinor),currency:quote.currency,expiresAt:quote.expiresAt,policyVersion:quote.policyVersion,rulesHash:quote.termsHash},{now,tenantActive:Boolean(currentTenant),playerActive:quote.player.status==='ACTIVE',kycApproved,geoApproved:Boolean(geo),selfExcluded:Boolean(exclusion||restriction),wageredInPeriod:fullLimitViolation?1n:responsibleLimit?.wageredInPeriod??0n,periodLimit:fullLimitViolation?0n:responsibleLimit?.periodLimit,marketOpen:eventTradable&&quote.selection.market.status==='OPEN'&&quote.selection.status==='OPEN',priceReceivedAt:quote.priceSnapshot.receivedAt,maxPriceAgeMs:Number(process.env.MAX_PRICE_AGE_MS??30_000),available:BigInt(projection?.availableMinor??'0'),currentLiability:0n,maxLiability:BigInt(process.env.SANDBOX_MAX_LIABILITY_MINOR??'100000000')})
+        let decision:any=evaluateAcceptance({id:quote.id,tenantId,playerId:quote.playerId,selectionId:quote.selectionId,snapshotId:quote.priceSnapshotId,decimalOdds:quote.decimalOdds,stake:BigInt(quote.stakeMinor),currency:quote.currency,expiresAt:quote.expiresAt,policyVersion:quote.policyVersion,rulesHash:quote.termsHash},{now,tenantActive:Boolean(currentTenant),playerActive:quote.player.status==='ACTIVE',kycApproved,geoApproved:Boolean(geo),selfExcluded:Boolean(exclusion||restriction),wageredInPeriod:fullLimitViolation?1n:responsibleLimit?.wageredInPeriod??0n,periodLimit:fullLimitViolation?0n:responsibleLimit?.periodLimit,marketOpen:eventTradable&&quote.selection.market.status==='OPEN'&&quote.selection.status==='OPEN',priceReceivedAt:quote.priceSnapshot.receivedAt,maxPriceAgeMs:maxPriceAgeMs(isLivePricing(quote.selection?.market?.event?.status,quote.selection?.market?.tradingMode)),available:BigInt(projection?.availableMinor??'0'),currentLiability:0n,maxLiability:BigInt(process.env.SANDBOX_MAX_LIABILITY_MINOR??'100000000')})
         if(decision.accepted){
           const extra=!priceCurrent?'PRICE_CHANGED':(await riskLimitViolation(tx,{tenantId,playerId:quote.playerId,currency:quote.currency,stakeMinor:BigInt(quote.stakeMinor),potentialReturnMinor:decision.potentialReturn,allocations:[{marketId:quote.selection.marketId,eventId:quote.selection.market.eventId??null,stakeMinor:BigInt(quote.stakeMinor),liabilityMinor:decision.liability}],now}))?.code
           if(extra)decision={...decision,accepted:false,rejectionCode:extra,gates:[...decision.gates,{gate:extra==='PRICE_CHANGED'?'currentPrice':'riskLimits',passed:false,code:extra}]}

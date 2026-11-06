@@ -3,6 +3,7 @@ import { evidenceHash, potentialReturn } from '../domain/engine'
 import { sportsbookResolvers } from '../../keystone/mutations/sportsbook'
 import { assertCurrentCustomerActor, type CustomerActor } from './auth'
 import { loadQuoteCandidate } from './catalog'
+import { isEventAcceptingBets, isLivePricing, maxPriceAgeMs } from '../domain/trading-eligibility'
 import { resolveCustomerPolicy } from './policy'
 import type { CustomerQuote, CustomerWagerResult } from './contracts'
 import { CustomerError, assertSandboxEnabled } from './errors'
@@ -14,7 +15,6 @@ import {
 } from './idempotency'
 
 const QUOTE_LIFETIME_MS = 25_000
-const MAX_PRICE_AGE_MS = () => Number(process.env.MAX_PRICE_AGE_MS ?? 30_000)
 
 function validateStake(value: unknown) {
   const text = String(value ?? '')
@@ -245,7 +245,7 @@ export async function placeCustomerWager(
     orderBy: { receivedAt: 'desc' },
   })
   const suspended = quote.selection.status !== 'OPEN' || quote.selection.market.status !== 'OPEN' ||
-    !['SCHEDULED', 'LIVE'].includes(quote.selection.market.event.status ?? '') || latest?.status !== 'OPEN'
+    !isEventAcceptingBets(quote.selection.market.event) || latest?.status !== 'OPEN'
   if (suspended) {
     return finishPreflight(prisma, claimed.command.id, {
       state: 'SUSPENDED', accepted: false, duplicate: claimed.duplicate, rejectionCode: 'SELECTION_SUSPENDED', termsHash: terms.termsHash,
@@ -253,7 +253,7 @@ export async function placeCustomerWager(
   }
 
   const expired = quote.expiresAt <= new Date()
-  const stale = Date.now() - quote.priceSnapshot.receivedAt.getTime() > MAX_PRICE_AGE_MS()
+  const stale = Date.now() - quote.priceSnapshot.receivedAt.getTime() > maxPriceAgeMs(isLivePricing(quote.selection.market.event.status, quote.selection.market.tradingMode))
   const changed = Boolean(latest && latest.id !== quote.priceSnapshotId && latest.decimalOdds !== quote.decimalOdds)
   if (expired || stale || changed) {
     const replacement = await createCustomerQuote(prisma, actor, { selectionId: quote.selectionId, stakeMinor: quote.stakeMinor })

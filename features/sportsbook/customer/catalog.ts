@@ -3,8 +3,7 @@ import type { CatalogEvent, CatalogFilters, CatalogResponse } from './contracts'
 import { CustomerError, assertSandboxEnabled } from './errors'
 import { resolveSandboxTenant } from '../api/sandbox-tenant'
 import { resolveTenantCurrency } from './currency'
-
-const MAX_PRICE_AGE_MS = () => Number(process.env.MAX_PRICE_AGE_MS ?? 30_000)
+import { isEventAcceptingBets, isLivePricing, maxPriceAgeMs, pastStartScheduledExclusion } from '../domain/trading-eligibility'
 export const PUBLIC_EVENT_STATUSES = ['SCHEDULED', 'LIVE', 'SUSPENDED'] as const
 const DEFAULT_PAGE_SIZE = 20
 const MAX_PAGE_SIZE = 50
@@ -52,6 +51,8 @@ export async function getSandboxCatalog(prisma: PrismaClient, filters: CatalogFi
   const published: any = {
     tenantId,
     status: { in: [...PUBLIC_EVENT_STATUSES] },
+    // A pre-match event whose start has passed without going live is off the board (no past-posting).
+    ...pastStartScheduledExclusion(now),
     competition: { is: { tenantId, status: 'ACTIVE', sport: { is: { tenantId, active: true } } } },
   }
   const where: any = { AND: [published] }
@@ -59,7 +60,7 @@ export async function getSandboxCatalog(prisma: PrismaClient, filters: CatalogFi
   if (filters.ids) where.AND.push({ id: { in: filters.ids } })
   if (filters.live) where.AND.push({ status: 'LIVE' })
   if (filters.sport) where.AND.push({ competition: { is: { sport: { is: { key: filters.sport } } } } })
-  if (filters.competition) where.AND.push({ OR: [{ competitionId: filters.competition }, { competition: { is: { name: filters.competition } } }] })
+  if (filters.competition) where.AND.push({ OR: [{ competitionId: filters.competition }, { competition: { is: { key: filters.competition } } }, { competition: { is: { name: filters.competition } } }] })
   if (filters.query) where.AND.push({ OR: [
     { name: { contains: filters.query, mode: insensitive } },
     { competition: { is: { name: { contains: filters.query, mode: insensitive } } } },
@@ -131,7 +132,7 @@ export async function getSandboxCatalog(prisma: PrismaClient, filters: CatalogFi
         state: market.status === 'OPEN' || market.status === 'SUSPENDED' ? market.status : 'CLOSED',
         selections: selections.filter(selection => selection.marketId === market.id).map(selection => {
           const snapshot = latestBySelection.get(selection.id)
-          const stale = !snapshot || now.getTime() - snapshot.receivedAt.getTime() > MAX_PRICE_AGE_MS()
+          const stale = !snapshot || now.getTime() - snapshot.receivedAt.getTime() > maxPriceAgeMs(isLivePricing(event.status, market.tradingMode))
           const state = selection.status !== 'OPEN'
             ? selection.status === 'SUSPENDED' ? 'SUSPENDED' as const : 'CLOSED' as const
             : snapshot?.status !== 'OPEN' ? 'SUSPENDED' as const
@@ -159,13 +160,13 @@ export async function loadQuoteCandidate(prisma: PrismaClient, tenantId: string,
   if (selection.market.event.status === 'SUSPENDED' || selection.market.status === 'SUSPENDED' || selection.status === 'SUSPENDED') {
     throw new CustomerError('SELECTION_SUSPENDED', 409, { state: 'SUSPENDED' })
   }
-  if (selection.market.status !== 'OPEN' || selection.status !== 'OPEN' || !['SCHEDULED', 'LIVE'].includes(selection.market.event.status ?? '')) {
+  if (selection.market.status !== 'OPEN' || selection.status !== 'OPEN' || !isEventAcceptingBets(selection.market.event)) {
     throw new CustomerError('SELECTION_CLOSED', 409, { state: 'SUSPENDED' })
   }
 
   const snapshot = await prisma.priceSnapshot.findFirst({ where: { tenantId, selectionId, status: 'OPEN' }, orderBy: { receivedAt: 'desc' } })
   if (!snapshot) throw new CustomerError('PRICE_UNAVAILABLE', 409, { state: 'SUSPENDED' })
-  if (Date.now() - snapshot.receivedAt.getTime() > MAX_PRICE_AGE_MS()) {
+  if (Date.now() - snapshot.receivedAt.getTime() > maxPriceAgeMs(isLivePricing(selection.market.event.status, selection.market.tradingMode))) {
     throw new CustomerError('STALE_PRICE', 409, { state: 'REQUOTE_REQUIRED' })
   }
 

@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { AccountPageHeader, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
+import { AccountPageHeader, AuthenticationRequired, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
 import { CustomerShell } from '../../components/CustomerShell'
 import { Card, Dot, Notice, Pill, Readouts, Section, Track, label, pillClass, toneFor } from '../../components/kit'
 import { CustomerApiError, formatDate, useCustomerResource, useFrozenSubmission, customerMessage } from '../../lib/customer-api'
@@ -22,7 +22,8 @@ const durationLabel = (days: number | null) => days === null ? 'permanent self-e
 
 export function ResponsiblePlayScreen() {
   const session = useCustomerResource<CustomerSessionSummary>('/api/sandbox/sportsbook/session')
-  const responsible = useCustomerResource<ResponsiblePlayResponse>('/api/sandbox/sportsbook/responsible-play')
+  const responsible = useCustomerResource<ResponsiblePlayResponse>(session.data?.authenticated ? '/api/sandbox/sportsbook/responsible-play' : null)
+  const signedOut = session.data?.authenticated === false
   const [pendingDuration, setPendingDuration] = useState<number | null | undefined>(undefined)
   // An unconfirmed exclusion stays frozen (exact duration and key) until the server answers definitively;
   // starting another break meanwhile reopens the original request instead of minting a new key.
@@ -80,7 +81,8 @@ export function ResponsiblePlayScreen() {
 
   return <CustomerShell current="responsible-play" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference} closed={isClosedError(session.error)}>
     <AccountPageHeader title="Safer play" tone={responsible.data ? (responsible.data.wageringRestricted ? 'alert' : 'win') : undefined} meta={responsible.data ? (responsible.data.wageringRestricted ? 'Betting restricted' : 'Betting available') : undefined} />
-    {responsible.loading && <LoadingPanel label="Loading controls" />}
+    {(session.loading || responsible.loading) && <LoadingPanel label="Loading controls" />}
+    {signedOut && <AuthenticationRequired />}
     {responsible.error && <ErrorPanel error={responsible.error} retry={responsible.reload} />}
     {responsible.data && <>
       <Readouts className="mt-6" items={[
@@ -106,7 +108,7 @@ export function ResponsiblePlayScreen() {
         <Track label="Independent help"><a href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noreferrer" className={pillClass('raised')}>NCPG help and treatment <ExternalLink aria-hidden="true" /></a><a href="https://www.gamblersanonymous.org/" target="_blank" rel="noreferrer" className={pillClass('raised')}>Gamblers Anonymous <ExternalLink aria-hidden="true" /></a></Track>
       </Section>
 
-      {responsible.data.history.length > 0 && <Section id="exclusion-history" title="History" count={responsible.data.history.length}><Card className="divide-y divide-sb-line">{responsible.data.history.map(item => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3.5"><div className="min-w-0"><p className="text-sm font-semibold"><Dot tone={toneFor(item.status)} />{label(item.scope)} exclusion<span className="ml-2 text-xs font-normal text-sb-mute">{label(item.status)}</span></p><p className="mt-0.5 tabular-nums text-[11px] text-sb-mute">{label(item.source)} · from {formatDate(item.startsAt)} · {item.endsAt ? `until ${formatDate(item.endsAt)}` : 'no end date'}</p></div></div>)}</Card></Section>}
+      {responsible.data.history.length > 0 && <Section id="exclusion-history" title="History" count={responsible.data.history.length}><Card className="divide-y divide-sb-line">{responsible.data.history.map(item => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3.5"><div className="min-w-0"><p className="text-sm font-semibold"><Dot tone={toneFor(item.status)} />{label(item.scope)} exclusion<span className="ml-2 text-xs font-normal text-sb-mute">{label(item.status)}</span></p><p className="mt-0.5 tabular-nums text-xs text-sb-mute">{label(item.source)} · from {formatDate(item.startsAt)} · {item.endsAt ? `until ${formatDate(item.endsAt)}` : 'no end date'}</p></div></div>)}</Card></Section>}
     </>}
 
     <AlertDialog open={pendingDuration !== undefined} onOpenChange={open => { if (!open) closeDialog() }}>

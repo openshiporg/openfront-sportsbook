@@ -113,7 +113,7 @@ export function CustomerShell({
           </div>
           <nav id="customer-navigation" hidden={!menuOpen} className="w-full border-t border-white/10 pb-2 pt-3 md:hidden" aria-label="Mobile navigation">
             {[{ label: 'Browse', links: [{ href: '/', label: 'Live & upcoming', key: 'board' }, { href: '/sports', label: 'Sports', key: 'sports' }, { href: '/promotions', label: 'Promotions', key: 'offers' }] }, { label: 'Account', links: accountLinks }].map(group => <div key={group.label} className="mt-1 first:mt-0">
-              <p className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-white/60">{group.label}</p>
+              <p className="px-4 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-white/60">{group.label}</p>
               <div className="grid grid-cols-2 gap-1">
                 {group.links.map(link => <Link key={link.key} onClick={() => setMenuOpen(false)} aria-current={isCurrent(link.href) ? 'page' : undefined} className="flex min-h-11 items-center rounded-[2px] px-4 text-sm text-white/85 hover:bg-white/10 hover:text-white aria-[current=page]:bg-sb-rule aria-[current=page]:text-white" href={link.href}>{link.label}</Link>)}
               </div>
@@ -135,7 +135,7 @@ export function CustomerShell({
                     key={link.key}
                     href={link.href}
                     aria-current={active ? 'page' : undefined}
-                    className={cn(pillClass('flat', 'sm'), 'md:justify-start md:px-3.5')}
+                    className={cn(pillClass('flat', 'sm'), 'shrink-0 whitespace-nowrap md:justify-start md:px-3.5')}
                   >
                     <Icon aria-hidden="true" />{link.label}
                   </Link>

@@ -31,3 +31,32 @@ export function assertMarketFirstOpenAllowed(input: { eventStatus: unknown; crea
   if (!input.createdAwaitingPrices || input.everOpened) throw new Error('MARKET_REOPENING_REQUIRES_REVIEWED_POLICY')
   if (input.selections === 0 || input.unpricedSelections > 0) throw new Error('MARKET_NOT_FULLY_PRICED')
 }
+
+/**
+ * A pre-match event only takes bets before its start time: a SCHEDULED event that has passed its start without
+ * going LIVE is withdrawn from the board, so nobody can bet on a game already under way (past-posting).
+ */
+export function isEventAcceptingBets(event: { status?: unknown; startAt?: Date | string | null }, now: Date = new Date()) {
+  if (event.status === 'LIVE') return true
+  if (event.status !== 'SCHEDULED' || !event.startAt) return false
+  return new Date(event.startAt).getTime() > now.getTime()
+}
+
+/** Where-clause fragment matching the same rule as `isEventAcceptingBets` for listing (SUSPENDED stays visible). */
+export function pastStartScheduledExclusion(now: Date = new Date()) {
+  return { NOT: { status: 'SCHEDULED', startAt: { lte: now } } }
+}
+
+/**
+ * Price freshness. In-play prices expire quickly (MAX_PRICE_AGE_MS, default 30s) because the game moves; a
+ * pre-match price set by a trader or feed stands until it is replaced, bounded by MAX_PREMATCH_PRICE_AGE_MS
+ * (default 24h).
+ */
+export function maxPriceAgeMs(live: boolean) {
+  const value = Number(live ? process.env.MAX_PRICE_AGE_MS ?? 30_000 : process.env.MAX_PREMATCH_PRICE_AGE_MS ?? 86_400_000)
+  return Number.isFinite(value) && value > 0 ? value : live ? 30_000 : 86_400_000
+}
+
+export function isLivePricing(eventStatus: unknown, tradingMode?: unknown) {
+  return eventStatus === 'LIVE' || tradingMode === 'LIVE'
+}
