@@ -11,7 +11,7 @@ import { CustomerShell } from '../../customer/components/CustomerShell'
 import { ClosedPanel, isClosedError } from '../../customer/components/AccountStates'
 import { Dot, Pill, PillLink, Track, checkClass, fieldClass, pillClass } from '../../customer/components/kit'
 import { placementOutcome, resolvePlacementIntent, type PlacementIntent } from '../placement-intent'
-import { amountInputToMinor, currencyExponent, customerApi, CustomerApiError, formatDate, formatMinor, formatOdds, useCustomerResource, customerMessage } from '../../customer/lib/customer-api'
+import { amountInputToMinor, currencyExponent, customerApi, CustomerApiError, formatDate, formatMinor, formatOdds, partLabel, useCustomerResource, customerMessage } from '../../customer/lib/customer-api'
 
 type Selected = { event: CatalogEvent; market: CatalogMarket; selection: CatalogSelection }
 type FavoriteResponse = { favorites: Array<{ targetType: string; targetId: string }> }
@@ -160,7 +160,7 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
 
       {quote&&<div className="mt-4 rounded-[2px] bg-sb-night p-4 text-white">
        <div className="flex items-center justify-between gap-3 text-xs"><span className="font-semibold  text-white/95">{quote.structure.replaceAll('_',' ')} · {quote.parts.length} part{quote.parts.length===1?'':'s'}</span><span className={cn('tabular-nums ',quoteSeconds<=5?'text-sb-live':'text-white/70')}><Dot tone={quoteSeconds>0?'win':'alert'}/>{quoteSeconds}s</span></div>
-       <ul className="mt-3 space-y-1 tabular-nums text-xs text-white/75">{(receipt?.accepted&&receipt.acceptedParts?receipt.acceptedParts:quote.parts).map(part=><li key={part.index} className="flex justify-between gap-2"><span className="truncate">{part.key} · {formatMinor(part.stakeMinor,quote.currency)} @ {part.decimalOdds}</span><span className="text-white">{formatMinor(part.potentialReturnMinor,quote.currency)}</span></li>)}</ul>
+       <ul className="mt-3 space-y-1 tabular-nums text-xs text-white/75">{(receipt?.accepted&&receipt.acceptedParts?receipt.acceptedParts:quote.parts).map((part,_i,all)=><li key={part.index} className="flex justify-between gap-2"><span className="truncate">{partLabel(part.key,all.length)} · {formatMinor(part.stakeMinor,quote.currency)} @ {formatOdds(part.decimalOdds)}</span><span className="text-white">{formatMinor(part.potentialReturnMinor,quote.currency)}</span></li>)}</ul>
        <div className="mt-3 flex items-end justify-between gap-3 border-t border-white/10 pt-3"><span className="text-xs font-semibold  text-white/95">Potential return</span><span className="tabular-nums text-2xl font-semibold  text-sb-flood">{receipt?.accepted?formatMinor(receipt.potentialReturnMinor??'0',quote.currency):formatMinor(quote.potentialReturnMinor,quote.currency)}</span></div>
        {quote.liveDelayMs>0&&<p className="mt-2 text-xs text-white/70"><Dot tone="live"/>Live delay {quote.liveDelayMs/1000}s</p>}
        <details className="mt-2 text-xs text-white/95"><summary className="cursor-pointer font-semibold">References</summary><p className="mt-1 break-all tabular-nums text-xs">Quote {quote.quoteId}<br/>Terms {quote.termsHash}<br/>Prices {quote.legs.map(leg=>leg.priceSnapshotId).join(', ')}</p></details>
@@ -175,8 +175,8 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
        <dl className="mt-2 space-y-1 tabular-nums text-xs">
         <div className="flex justify-between gap-3"><dt>Stake</dt><dd>{formatMinor(receipt.acceptedStakeMinor??'',currency)}</dd></div>
         <div className="flex justify-between gap-3"><dt>Return</dt><dd>{formatMinor(receipt.potentialReturnMinor??'',currency)}</dd></div>
-        {receipt.acceptedParts?.map(part=><div key={part.index} className="flex justify-between gap-3"><dt className="truncate">{part.key}</dt><dd>{formatMinor(part.stakeMinor,quote?.currency??'USD')} @ {part.decimalOdds}</dd></div>)}
-        {receipt.acceptedPrices?.length?<div className="flex justify-between gap-3"><dt>Prices</dt><dd className="text-right">{receipt.acceptedPrices.map(price=>`#${price.legIndex+1} ${price.decimalOdds}${price.line?` (${price.line})`:''}`).join(' · ')}</dd></div>:null}
+        {receipt.acceptedParts?.map((part,_i,all)=><div key={part.index} className="flex justify-between gap-3"><dt className="truncate">{partLabel(part.key,all.length)}</dt><dd>{formatMinor(part.stakeMinor,quote?.currency??'USD')} @ {formatOdds(part.decimalOdds)}</dd></div>)}
+        {receipt.acceptedPrices?.length?<div className="flex justify-between gap-3"><dt>Prices</dt><dd className="text-right">{receipt.acceptedPrices.map(price=>`#${price.legIndex+1} ${formatOdds(price.decimalOdds)}${price.line?` (${price.line})`:''}`).join(' · ')}</dd></div>:null}
         {receipt.rejectedPartIndexes?.length?<div className="flex justify-between gap-3"><dt>Rejected parts</dt><dd>{receipt.rejectedPartIndexes.join(', ')}</dd></div>:null}
        </dl>
        <p className="mt-2 break-all tabular-nums text-xs text-emerald-900/70">Receipt {receipt.receiptId} · Terms {receipt.termsHash}</p>

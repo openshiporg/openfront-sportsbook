@@ -14,6 +14,13 @@ function eventState(status: string): CatalogEvent['state'] {
   return 'CLOSED'
 }
 
+/** Customer-facing market name: the stored name, else the definition key in words (match-result → Match result). */
+export function marketDisplayName(parameters: unknown, definitionKey: string | null | undefined) {
+  if (typeof parameters === 'object' && parameters && 'name' in parameters && String((parameters as { name: unknown }).name).trim()) return String((parameters as { name: unknown }).name)
+  const words = String(definitionKey ?? '').replace(/[-_]+/g, ' ').trim()
+  return words ? words[0].toUpperCase() + words.slice(1) : 'Market'
+}
+
 const text = (value: unknown, max = 120) => typeof value === 'string' ? value.trim().slice(0, max) : ''
 
 /** Parse untrusted query parameters into bounded catalog filters. */
@@ -128,7 +135,7 @@ export async function getSandboxCatalog(prisma: PrismaClient, filters: CatalogFi
       clockSeconds: event.clockSeconds,
       markets: markets.filter(market => market.eventId === event.id).map(market => ({
         marketId: market.id,
-        name: typeof market.parameters === 'object' && market.parameters && 'name' in market.parameters ? String(market.parameters.name) : market.definitionKey,
+        name: marketDisplayName(market.parameters, market.definitionKey),
         state: market.status === 'OPEN' || market.status === 'SUSPENDED' ? market.status : 'CLOSED',
         selections: selections.filter(selection => selection.marketId === market.id).map(selection => {
           const snapshot = latestBySelection.get(selection.id)
@@ -170,8 +177,6 @@ export async function loadQuoteCandidate(prisma: PrismaClient, tenantId: string,
     throw new CustomerError('STALE_PRICE', 409, { state: 'REQUOTE_REQUIRED' })
   }
 
-  const marketName = typeof selection.market.parameters === 'object' && selection.market.parameters && 'name' in selection.market.parameters
-    ? String(selection.market.parameters.name)
-    : selection.market.definitionKey
+  const marketName = marketDisplayName(selection.market.parameters, selection.market.definitionKey)
   return { selection, market: selection.market, event: selection.market.event, snapshot, marketName }
 }

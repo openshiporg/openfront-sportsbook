@@ -205,6 +205,8 @@ const customerCopy: Record<string, string> = {
   SELF_EXCLUDED: 'Unavailable while self-exclusion is active.',
   ACCOUNT_RESTRICTED: 'Unavailable while your account is restricted.',
   VERIFICATION_REQUIRED: 'Verify your identity in Profile first.',
+  KYC_REQUIRED: 'Verify your identity in Profile first.',
+  GEO_REQUIRED: 'Confirm your location in Profile first.',
   LIMIT_EXCEEDED: 'This would exceed one of your limits.',
   OFFER_EXPIRED: 'The offer expired. Get a new one.',
   STALE_PRICE: 'That price paused while the feed updated. Request current terms.',
@@ -218,4 +220,12 @@ export function customerMessage(error: unknown, fallback = 'Something went wrong
   if (!(error instanceof CustomerApiError)) return fallback
   const code = String(error.payload.rejectionCode ?? error.code)
   return customerCopy[code] ?? fallback
+}
+
+/** Wager part keys (`STRAIGHT:0`, `ROUND_ROBIN:3`) in customer words: "Straight", "Round robin #4". */
+export function partLabel(key: string, total = 1) {
+  const [structure = '', index = '0'] = String(key).split(':')
+  const words = structure.toLowerCase().replaceAll('_', ' ')
+  const name = words ? words[0].toUpperCase() + words.slice(1) : 'Bet'
+  return total > 1 ? `${name} #${Number(index) + 1}` : name
 }
