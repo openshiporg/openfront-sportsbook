@@ -53,8 +53,8 @@ export async function ResultsScreen({ eventId, searchParams }: { eventId?: strin
     return hash ? approvals.find((approval: any) => approval.payloadHash === hash) : undefined;
   };
   // The selected event's own complete market/selection tree feeds the typed outcome editor.
-  const selectedEvent = eventId ? await prisma.event.findFirst({ where: { id: eventId, tenantId: operator.tenantId, status: { in: ["SCHEDULED", "LIVE", "ENDED"] }, startAt: { lte: new Date() } }, include: { from_Market_event: { orderBy: { createdAt: "asc" }, include: { from_Selection_market: { orderBy: { key: "asc" } } } } } }) : null;
-  const editorMarkets: ResultEditorMarket[] = (selectedEvent?.from_Market_event ?? []).map((market: any) => ({ id: market.id, label: market.definitionKey, selections: market.from_Selection_market.map((selection: any) => ({ key: selection.key, label: selection.label })) }));
+  const selectedEvent = eventId ? await prisma.event.findFirst({ where: { id: eventId, tenantId: operator.tenantId, status: { in: ["SCHEDULED", "LIVE", "ENDED"] }, startAt: { lte: new Date() } }, include: { from_Market_event: { orderBy: { createdAt: "asc" }, include: { from_Selection_market: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } } } } }) : null;
+  const editorMarkets: ResultEditorMarket[] = (selectedEvent?.from_Market_event ?? []).map((market: any) => ({ id: market.id, label: typeof market.parameters === "object" && market.parameters?.name ? String(market.parameters.name) : market.definitionKey, selections: market.from_Selection_market.map((selection: any) => ({ key: selection.key, label: selection.label })) }));
   const resultsPath = "/dashboard/platform/results";
   const eventPages = Math.max(1, Math.ceil(eventTotal / EVENT_PICKER_SIZE));
   return <OperatorShell active="Results" title="Results" tone={pendingTotal ? "wait" : "ok"} meta={`${pendingTotal} pending · ${approvedTotal} approved · ${resultTotal} versions`} tenantName={operator.tenantName}>

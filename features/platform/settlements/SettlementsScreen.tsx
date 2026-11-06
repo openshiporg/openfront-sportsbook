@@ -4,11 +4,21 @@ import { Mono, PillLink, Track } from "../components/kit";
 import { MetricGrid, RecordList, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, money, shortId } from "../lib/format";
 import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
-import { keystoneClient } from "@/features/dashboard/lib/keystoneClient";
+import { domainQuery } from "../lib/domain-query";
 import type { FullStraightPlan } from "@/features/sportsbook/settlement/full-straight";
 import { STRAIGHT_PLAN_QUERY } from "./settlement-intent";
 import { FullStraightSettlementActions } from "./FullStraightSettlementActions";
 import { hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
+
+/** Plain-language fixes for the settlement refusals an operator can resolve from another desk. */
+const blockerCopy: Record<string, string> = {
+  SETTLEMENT_TAX_POLICY_REQUIRED: "The accepted house rule has no tax policy. Approve a rule with taxPolicy \"NONE\" in Configuration.",
+  ACCEPTED_CURRENCY_EXPONENT_EVIDENCE_REQUIRED: "The accepted house rule has no currencyExponent. Approve a rule with currencyExponent 2 in Configuration.",
+  ACCEPTED_RULE_APPROVAL_REQUIRED: "The house rule this bet was accepted under was not independently approved.",
+  EXACT_SELECTION_GRADE_COVERAGE_REQUIRED: "Grade this selection in Grading first.",
+  INDEPENDENT_RESULT_EVIDENCE_REQUIRED: "The result needs an independent approval in Results.",
+  CANONICAL_SELECTION_RESULT_REQUIRED: "No approved result covers this selection yet.",
+};
 
 export async function SettlementsScreen({ searchParams }: { searchParams?: PlatformSearchParams } = {}) {
   const page = pageFrom((await searchParams) ?? {});
@@ -30,8 +40,8 @@ export async function SettlementsScreen({ searchParams }: { searchParams?: Platf
   const activeCashOuts = cashOuts.filter((item: any) => item.status === 'ACCEPTED' && !reversedAcceptanceIds.has(item.id));
   const readiness = await Promise.all(candidates.map(async (wager: any) => {
     try {
-      const response = await keystoneClient<{ fullStraightSettlementPlan: string }>(STRAIGHT_PLAN_QUERY, { wagerId: wager.id });
-      if (!response.success) throw new Error(response.error);
+      const response = await domainQuery<{ fullStraightSettlementPlan: string }>(STRAIGHT_PLAN_QUERY, { wagerId: wager.id });
+      if (!response.data) throw new Error(response.code);
       const plan = JSON.parse(response.data.fullStraightSettlementPlan) as FullStraightPlan;
       if (plan.state !== "READY" || plan.wagerId !== wager.id || plan.tenantId !== operator.tenantId) throw new Error("SETTLEMENT_PLAN_SCOPE_CHANGED");
       return { wager, plan, reason: null };
@@ -58,7 +68,7 @@ export async function SettlementsScreen({ searchParams }: { searchParams?: Platf
       { label: "Payouts on page", value: payoutSummary, detail: incompletePayout ? "incomplete · not net" : "by currency · not net", tone: incompletePayout ? "alert" : undefined },
     ]} />
     <FullStraightSettlementActions key={`${operator.tenantId}:${operator.userId}`} tenantId={operator.tenantId} actorId={operator.userId} plans={ready} />
-    <RecordList title="Not ready" tone={notReady.length ? "alert" : undefined} columns={["Wager", "Structure", "Blocked by"]} rows={notReady.map(item => ({ id: item.wager.id, href: `/dashboard/platform/settlements/${item.wager.id}`, cells: [<Mono key="wager">{shortId(item.wager.id)}</Mono>, item.wager.structure || "LEGACY", <Mono key="reason" className="break-all text-xs">{item.reason}</Mono>] }))} emptyTitle="No blocked candidates" />
+    <RecordList title="Not ready" tone={notReady.length ? "alert" : undefined} columns={["Wager", "Structure", "Blocked by"]} rows={notReady.map(item => ({ id: item.wager.id, href: `/dashboard/platform/settlements/${item.wager.id}`, cells: [<Mono key="wager">{shortId(item.wager.id)}</Mono>, item.wager.structure || "LEGACY", <span key="reason" className="text-xs">{blockerCopy[item.reason ?? ""] ? <>{blockerCopy[item.reason ?? ""]} <Mono className="break-all text-muted-foreground">{item.reason}</Mono></> : <Mono className="break-all">{item.reason}</Mono>}</span>] }))} emptyTitle="No blocked candidates" />
     <RecordList title="Ledger" columns={["Wager", "Outcome", "Payout", "Version"]} rows={settlements.map((settlement: any) => ({ id: settlement.id, href: settlement.wagerId ? `/dashboard/platform/settlements/${settlement.wagerId}` : undefined, cells: [<Mono key="wager">{shortId(settlement.wagerId || settlement.id)}</Mono>, <StatusBadge key="outcome" value={settlement.outcome} />, <span key="payout"><Mono className="text-foreground">{money(settlement.payoutMinor, settlement.wager?.currency)}</Mono><span className="block text-xs">{dateTime(settlement.createdAt)}</span></span>, <span key="version"><Mono>v{settlement.version}</Mono> · {settlement.reversalOfId ? "correction" : "original"}</span>] }))} emptyTitle="No settlements" emptyAction={<Track><PillLink size="sm" href="/dashboard/platform/results">Open Results</PillLink></Track>} pagination={{ page, pageSize: PLATFORM_PAGE_SIZE, total: settlementTotal, hrefForPage: (next) => hrefWith("/dashboard/platform/settlements", { page: next }) }} />
     <RecordList title="Runs" tone={failedRuns ? "alert" : undefined} columns={["Event", "Trigger", "Wagers settled", "Started", "Completed"]} rows={runs.map((run: any) => ({ id: run.id, status: run.status ?? undefined, cells: [<span key="event">{run.resultVersion?.event?.name || "Event unavailable"}<span className="block text-xs font-normal text-muted-foreground">result <Mono>v{run.resultVersion?.version ?? "—"}</Mono> · {String(run.status || "unknown").toLowerCase()}</span>{run.status === "FAILED" && run.errorSummary ? <Mono className="block break-all text-xs font-normal text-red-600 dark:text-red-400">{run.errorSummary}</Mono> : null}</span>, String(run.triggerType || "—").replaceAll("_", " ").toLowerCase(), <Mono key="counts">{run.wagersSettled ?? 0} / {run.wagersConsidered ?? 0}</Mono>, dateTime(run.startedAt), dateTime(run.completedAt)] }))} emptyTitle="No settlement runs" />
     <section aria-labelledby="settlement-corrections" className="space-y-3">
