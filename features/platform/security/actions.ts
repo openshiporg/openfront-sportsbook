@@ -54,3 +54,18 @@ export async function verifyMfaSession(code: string): Promise<{ success: true } 
   revalidatePath('/dashboard', 'layout')
   return { success: true }
 }
+
+/** Replace all recovery codes. Needs a verified session and a current six-digit authenticator code. */
+export async function regenerateRecoveryCodes(code: string): Promise<{ success: true; recoveryCodes: string[] } | { success: false; message: string }> {
+  const supplied = String(code ?? '').trim()
+  if (!/^\d{6}$/.test(supplied)) return { success: false, message: 'Enter the six-digit code from your authenticator app.' }
+  const token = (await cookies()).get('keystonejs-session')?.value
+  if (!token) return { success: false, message: 'Sign in again before replacing recovery codes.' }
+  try {
+    const data = await keystoneClient<{ regenerateOperatorMfaRecoveryCodes: string[] }>('mutation($code:String!){regenerateOperatorMfaRecoveryCodes(code:$code)}', { code: supplied }, { headers: { cookie: `keystonejs-session=${token}` } })
+    if (!data.success || !data.data?.regenerateOperatorMfaRecoveryCodes?.length) return { success: false, message: 'That code did not match. Recovery codes were not changed.' }
+    return { success: true, recoveryCodes: data.data.regenerateOperatorMfaRecoveryCodes }
+  } catch {
+    return { success: false, message: 'That code did not match. Recovery codes were not changed.' }
+  }
+}
