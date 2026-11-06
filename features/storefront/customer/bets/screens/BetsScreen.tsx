@@ -1,5 +1,6 @@
 'use client'
 
+import { betReference } from '@/features/sportsbook/domain/references'
 import { useState } from 'react'
 import type { BetsResponse, CustomerSessionSummary } from '@/features/sportsbook/customer/contracts'
 import { AccountPageHeader, AuthenticationRequired, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
@@ -30,7 +31,7 @@ export function BetsScreen() {
       {bets.data.bets.map(bet => {const open=['ACCEPTED','OPEN','PARTIALLY_CASHED_OUT'].includes(bet.status);return <article key={bet.id} className="min-w-0 overflow-hidden rounded-[2px] bg-sb-card ring-1 ring-sb-line">
         <div className="grid min-w-0 md:grid-cols-[minmax(0,1fr)_220px]">
           <div className="min-w-0 p-4 sm:p-5">
-            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"><span className="font-semibold  text-sb-mute">{label(bet.structure)} · {bet.parts.length||1} part{bet.parts.length===1?'':'s'}</span><span className="tabular-nums text-sb-mute">{formatDate(bet.acceptedAt ?? bet.createdAt)}</span></p>
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"><span className="font-semibold  text-sb-mute">{label(bet.structure)} · {bet.parts.length||1} part{bet.parts.length===1?'':'s'}</span><span className="tabular-nums text-sb-mute">{formatDate(bet.acceptedAt ?? bet.createdAt)}</span><span className="tabular-nums font-semibold text-sb-ink">{betReference(bet.id)}</span></p>
             <h2 className="mt-1.5 break-words font-sb-display text-2xl font-bold uppercase leading-tight tracking-wide"><Dot tone={toneFor(bet.status)} />{bet.eventName}</h2>
             <p className="mt-1 break-words text-sm"><span className="font-semibold">{bet.selectionName}</span> <span className="text-sb-mute">· {bet.marketName}</span> <span className="ml-1 tabular-nums font-semibold ">@ {formatOdds(bet.decimalOdds)}</span></p>
             <p className="mt-2 text-xs font-semibold  text-sb-mute">{label(bet.status)}</p>
@@ -52,6 +53,7 @@ export function BetsScreen() {
         <details className="border-t border-sb-line px-4 py-3 text-xs text-sb-mute sm:px-5">
           <summary className="cursor-pointer font-semibold text-sb-ink">References</summary>
           <Ledger className="mt-2 text-xs" rows={[
+            ['Bet reference', betReference(bet.id)],
             ['Wager', bet.id],
             ['Quote', bet.quoteId || '—'],
             ['Price snapshot', bet.priceSnapshotId || '—'],

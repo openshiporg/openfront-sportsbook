@@ -60,7 +60,7 @@ export async function getFinanceOverview({ journals, payments, runs }: { journal
 export type ReconciliationItemRecord = { id: string; internalReference: string | null; providerReference: string | null; differenceMinor: string | null; currency: string | null; status: string | null; createdAt: string | null; run: { id: string; type: string | null } | null; resolutionJournal: { id: string } | null };
 export type SafeguardingAccountRecord = { id: string; accountReference: string | null; classification: string | null; currency: string | null; status: string | null };
 export type SafeguardingControlRecord = { id: string; asOf: string | null; differenceMinor: string | null; status: string | null; safeguardingAccount: { id: string; currency: string | null; accountReference: string | null } | null };
-export type AdjustmentRecord = { id: string; amountMinor: string | null; currency: string | null; direction: string | null; reasonCode: string | null; status: string | null; createdAt: string | null; account: { id: string; key: string | null } | null; journalTransaction: { id: string } | null };
+export type AdjustmentRecord = { id: string; amountMinor: string | null; currency: string | null; direction: string | null; reasonCode: string | null; evidence?: unknown; status: string | null; createdAt: string | null; account: { id: string; key: string | null; player?: { id: string } | null } | null; journalTransaction: { id: string } | null };
 
 export type ReconciliationWorkspace = {
   runCount: number;
@@ -101,7 +101,7 @@ export async function getReconciliationWorkspace({ items, controls, adjustments,
       safeguardingReconciliations(orderBy: [{ asOf: desc }, { id: desc }], take: $cTake, skip: $cSkip) { id asOf differenceMinor status safeguardingAccount { id currency accountReference } }
       controlTotal: safeguardingReconciliationsCount
       shortfalls: safeguardingReconciliationsCount(where: { status: { equals: SHORTFALL } })
-      ledgerAdjustmentRequests(orderBy: [{ createdAt: desc }, { id: desc }], take: $aTake, skip: $aSkip) { id amountMinor currency direction reasonCode status createdAt account { id key } journalTransaction { id } }
+      ledgerAdjustmentRequests(orderBy: [{ createdAt: desc }, { id: desc }], take: $aTake, skip: $aSkip) { id amountMinor currency direction reasonCode evidence status createdAt account { id key player { id } } journalTransaction { id } }
       adjustmentTotal: ledgerAdjustmentRequestsCount
       pendingAdjustments: ledgerAdjustmentRequestsCount(where: { status: { equals: PENDING } })
     }
@@ -131,7 +131,7 @@ export type ReconciliationItemDetail = {
   item: (ReconciliationItemRecord & { updatedAt: string | null; run: { id: string; type: string | null; status: string | null; windowFrom: string | null; windowTo: string | null; inputHash: string | null } | null }) | null;
   internalJournal: { id: string; type: string | null; status: string | null; effectiveAt: string | null } | null;
   resolvingAdjustments: AdjustmentRecord[];
-  candidateAccounts: { id: string; key: string | null; currency: string | null; player: { subject: string | null } | null }[];
+  candidateAccounts: { id: string; key: string | null; currency: string | null; player: { id: string; subject: string | null } | null }[];
 };
 
 /** One exception with its run, the internal journal it names, the resolving journal's adjustment and ledger accounts in its currency. */
@@ -150,7 +150,7 @@ export async function getReconciliationItem(itemId: string): Promise<KeystoneRes
     query ReconciliationItemRelated($journalId: ID!, $resolutionId: ID!, $hasResolution: Boolean!, $hasJournal: Boolean!, $currency: String!) {
       internalJournal: journalTransaction(where: { id: $journalId }) @include(if: $hasJournal) { id type status effectiveAt }
       resolvingAdjustments: ledgerAdjustmentRequests(where: { journalTransaction: { id: { equals: $resolutionId } } }, take: 10) @include(if: $hasResolution) { id amountMinor currency direction reasonCode status createdAt account { id key } journalTransaction { id } }
-      candidateAccounts: ledgerAccounts(where: { currency: { equals: $currency }, status: { equals: ACTIVE } }, orderBy: [{ key: asc }, { id: asc }], take: 100) { id key currency player { subject } }
+      candidateAccounts: ledgerAccounts(where: { currency: { equals: $currency }, status: { equals: ACTIVE } }, orderBy: [{ key: asc }, { id: asc }], take: 100) { id key currency player { id subject } }
     }
   `, { journalId: internalJournalId ?? "", resolutionId: item.resolutionJournal?.id ?? "", hasResolution: Boolean(item.resolutionJournal?.id), hasJournal: Boolean(internalJournalId), currency: item.currency ?? "" });
   if (!related.success) return related;

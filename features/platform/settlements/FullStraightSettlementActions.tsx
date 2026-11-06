@@ -6,6 +6,7 @@ import { Mono, Pill, PillLink, pillClass, StatusDot, Track } from '../components
 import { money } from '../lib/format'
 import { StatusBadge } from '../components/WorkflowUI'
 import { createSettlementIntent, restoreSettlementIntent, settlementAcknowledgement, settlementIntentStorageKey, type SettlementIntent } from './settlement-intent'
+import { betReference } from '../../sportsbook/domain/references'
 
 type ReviewedPlan = { wagerId: string; planHash: string; outcome: string; stakeMinor: string; payoutMinor: string; currency: string; currencyExponent: number; resultVersionId: string; ruleVersion: string }
 
@@ -56,13 +57,13 @@ export function FullStraightSettlementActions({ tenantId, actorId, plans }: { te
       <Track><PillLink size="sm" variant="flat" href="/dashboard/platform/configuration">House rules</PillLink><PillLink size="sm" variant="flat" href="/dashboard/platform/grading">Grading</PillLink></Track>
     </div>
     {pending ? <div role="status" className="min-w-0 rounded-[4px] bg-amber-50 px-4 py-3 text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-100 dark:ring-amber-900/50">
-      <p className="break-all text-sm font-medium"><StatusDot tone="wait" />Unresolved attempt · <Mono>{pending.wagerId}</Mono></p>
+      <p className="break-all text-sm font-medium"><StatusDot tone="wait" />Unresolved attempt · <Mono>{betReference(pending.wagerId)}</Mono></p>
       <p className="mt-1 break-all pl-4 tabular-nums text-xs opacity-80">plan {pending.planHash} · key {pending.idempotencyKey}</p>
       <div className="mt-3 pl-4"><Track><Pill size="sm" variant="primary" onClick={() => void send()} disabled={busy || blocked}>{busy ? 'Resolving…' : 'Retry original settlement'}</Pill><a className={pillClass('flat', 'sm')} href={`/dashboard/platform/settlements/${encodeURIComponent(pending.wagerId)}`}>Reconcile history</a></Track></div>
     </div> : null}
     {plans.length ? <ul className="min-w-0 divide-y overflow-hidden rounded-[4px] border bg-card">{plans.map(plan => <li key={plan.wagerId} className="flex min-w-0 flex-wrap items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0 flex-1 basis-64">
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-medium"><Mono className="break-all">{plan.wagerId}</Mono><StatusBadge value={plan.outcome} /></p>
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-medium"><Mono className="font-medium">{betReference(plan.wagerId)}</Mono><StatusBadge value={plan.outcome} /><span className="basis-full break-all tabular-nums text-xs font-normal text-muted-foreground">{plan.wagerId}</span></p>
         <p className="mt-1 tabular-nums text-sm ">Stake {money(plan.stakeMinor, plan.currency, plan.currencyExponent)} → payout <span className="font-semibold">{money(plan.payoutMinor, plan.currency, plan.currencyExponent)}</span></p>
         <p className="mt-1 break-all tabular-nums text-[11px] text-muted-foreground">result {plan.resultVersionId} · rule {plan.ruleVersion} · plan {plan.planHash}</p>
       </div>

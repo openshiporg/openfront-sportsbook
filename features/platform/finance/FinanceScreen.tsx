@@ -5,6 +5,7 @@ import { ReadFailed } from "../components/ReadFailed";
 import { WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, displayTimeZone, money, moneyTotals, shortId } from "../lib/format";
 import { getOperatorContext } from "../lib/operator";
+import { playerLabels, playerLabelText } from "../lib/players";
 import { pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { getFinanceOverview } from "./actions";
 import { journalSideTotals, playerAvailableTotals, runDifferenceTotals } from "../lib/aggregates";
@@ -28,6 +29,7 @@ export async function FinanceScreen({ searchParams }: { searchParams?: PlatformS
   const shell = (children: ReactNode, state?: { tone: "ok" | "wait" | "alert"; meta: string }) => <OperatorShell active="Finance" title="Finance" tenantName={operator.tenantName} tone={state?.tone ?? "alert"} meta={state?.meta}>{children}</OperatorShell>;
   if (!result.success) return shell(<ReadFailed subject="finance records" />);
   const data = result.data;
+  const financePlayers = await playerLabels(operator.tenantId, [...data.players.map((player) => player.id), ...data.payments.map((payment) => payment.player?.id)]);
   // Exact aggregates (server-only SQL, finance capability + tenant re-checked): every PLAYER_CASH
   // account's latest projection, every entry of each listed journal, every item of each listed run.
   const [cash, sidesByJournal, differencesByRun] = await Promise.all([
@@ -41,7 +43,7 @@ export async function FinanceScreen({ searchParams }: { searchParams?: PlatformS
   const canFinance = operator.capabilities.canManageFinance;
   const currencies = [...new Set([...cash.currencies])];
   const playerPickerMessage = data.players.length ? null : operator.capabilities.canManageCompliance ? "Needs a player with ledger accounts" : "Compliance access required to choose a player";
-  const forms = <div className="grid gap-4 xl:grid-cols-2">{data.players.length ? <MutationForm title="Run sandbox payment" description="Sandbox only" mutation={paymentMutation} fields={[{ name: "playerId", label: "Player", type: "select", options: data.players.map((player) => ({ label: `${player.subject || "Player"} · ${shortId(player.id)}`, value: player.id })), help: data.players.length >= 100 ? "First 100 active players" : undefined }, { name: "type", label: "Type", type: "select", options: [{ label: "Deposit", value: "DEPOSIT" }, { label: "Withdrawal", value: "WITHDRAWAL" }] }, { name: "amountMinor", label: "Amount", transform: "money", defaultValue: 1000 }, { name: "currency", label: "Currency (player cash account)", type: "select", options: currencies.map((code) => ({ label: code, value: code })) }, { name: "idempotencyKey", label: "Request key (reuse only to retry this payment)", defaultValue: `payment:${crypto.randomUUID()}` }]} submitLabel="Post sandbox payment" successMessage="Sandbox payment recorded." disabledReason={canFinance ? undefined : "Your role does not include finance capability."} /> : <WorkflowNote title="No player available">{playerPickerMessage}</WorkflowNote>}
+  const forms = <div className="grid gap-4 xl:grid-cols-2">{data.players.length ? <MutationForm title="Run sandbox payment" description="Sandbox only" mutation={paymentMutation} fields={[{ name: "playerId", label: "Player", type: "select", options: data.players.map((player) => ({ label: playerLabelText(financePlayers.get(player.id)), value: player.id })), help: data.players.length >= 100 ? "First 100 active players" : undefined }, { name: "type", label: "Type", type: "select", options: [{ label: "Deposit", value: "DEPOSIT" }, { label: "Withdrawal", value: "WITHDRAWAL" }] }, { name: "amountMinor", label: "Amount", transform: "money", defaultValue: 1000 }, { name: "currency", label: "Currency (player cash account)", type: "select", options: currencies.map((code) => ({ label: code, value: code })) }, { name: "idempotencyKey", label: "Request key (reuse only to retry this payment)", defaultValue: `payment:${crypto.randomUUID()}` }]} submitLabel="Post sandbox payment" successMessage="Sandbox payment recorded." disabledReason={canFinance ? undefined : "Your role does not include finance capability."} /> : <WorkflowNote title="No player available">{playerPickerMessage}</WorkflowNote>}
       <MutationForm title="Run ledger reconciliation" mutation={reconMutation} fields={[{ name: "type", label: "Control", type: "select", options: [{ label: "Journal balance", value: "JOURNAL_BALANCE" }, { label: "Daily close", value: "DAILY_CLOSE" }] }, { name: "windowFrom", label: `From (${displayTimeZone()})`, type: "datetime-local" }, { name: "windowTo", label: `To (${displayTimeZone()})`, type: "datetime-local", help: "No DST-gap times; repeated DST times need an offset" }]} submitLabel="Run reconciliation" successMessage="Reconciliation run completed." disabledReason={canFinance ? undefined : "Your role does not include finance capability."} /></div>;
   const unbalanced = journalRows.filter((row) => !row.balanced).length;
   const financeState = { tone: data.openReconItems || unbalanced ? "alert" as const : "ok" as const, meta: `${data.openReconItems} recon exceptions · ${unbalanced} unbalanced on page · ${data.paymentTotal} payments` };
@@ -58,7 +60,7 @@ export async function FinanceScreen({ searchParams }: { searchParams?: PlatformS
     journalPage: { ...journals, total: data.journalTotal },
     runs: data.runs.map((run) => { const differences = differencesByRun.get(run.id) ?? new Map<string, bigint>(); return { id: run.id, reference: shortId(run.id), window: `${run.type || "—"} · ${dateTime(run.windowFrom)} → ${dateTime(run.windowTo)}`, difference: differences.size ? moneyTotals(differences) : "None", status: run.status }; }),
     runPage: { ...runs, total: data.runTotal },
-    payments: data.payments.map((payment) => ({ id: payment.id, player: payment.player?.subject || (operator.capabilities.canManageCompliance ? "Unknown player" : "Player hidden"), type: `${payment.type || "—"} · ${shortId(payment.id)}`, amount: `${money(payment.amountMinor, payment.currency)} · ${dateTime(payment.createdAt)}`, status: payment.status })),
+    payments: data.payments.map((payment) => ({ id: payment.id, player: payment.player?.id ? playerLabelText(financePlayers.get(payment.player.id)) : (operator.capabilities.canManageCompliance ? "Unknown player" : "Player hidden"), type: `${payment.type || "—"} · ${shortId(payment.id)}`, amount: `${money(payment.amountMinor, payment.currency)} · ${dateTime(payment.createdAt)}`, status: payment.status })),
     paymentPage: { ...payments, total: data.paymentTotal },
   }} />, financeState);
 }
