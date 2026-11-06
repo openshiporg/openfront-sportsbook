@@ -58,7 +58,7 @@ export function BetsScreen() {
             ['Terms', bet.termsHash || '—'],
             ...(bet.settlementEvidence ? [
               ['Settlement', `${bet.settlementEvidence.receiptId} · ${bet.settlementEvidence.outcome}`],
-              ['Payout', `${bet.settlementEvidence.payoutMinor} minor ${bet.currency} · exp ${bet.settlementEvidence.currencyExponent}`],
+              ['Payout', formatMinor(bet.settlementEvidence.payoutMinor, bet.currency, bet.settlementEvidence.currencyExponent)],
               ['Result / rule', `${bet.settlementEvidence.resultVersionId} · ${bet.settlementEvidence.ruleVersion}`],
               ['Payment', `${bet.settlementEvidence.journalId} · ${bet.settlementEvidence.capturedHoldId}`],
               ['Plan', bet.settlementEvidence.planHash],

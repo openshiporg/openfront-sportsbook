@@ -94,7 +94,7 @@ export async function ReconciliationItemDetailScreen({ itemId }: { itemId: strin
     <DetailGrid items={[
       { label: "Item ID", value: <code className="break-all text-xs">{item.id}</code> },
       { label: "State", value: <StatusBadge value={item.status} /> },
-      { label: "Difference", value: <Mono>{money(item.differenceMinor, item.currency)} ({item.differenceMinor ?? "—"} minor {item.currency ?? ""})</Mono> },
+      { label: "Difference", value: <Mono>{money(item.differenceMinor, item.currency)}</Mono> },
       { label: "Internal reference", value: internalJournal ? <Link className="break-all underline" href={journalHref(internalJournal.id)}>{item.internalReference}</Link> : <code className="break-all text-xs">{item.internalReference || "—"}</code> },
       { label: "Provider reference", value: <code className="break-all text-xs">{item.providerReference || "—"}</code> },
       { label: "Run", value: item.run ? <Link className="underline" href={`${reconciliationHref}/runs/${item.run.id}`}>{item.run.type} · {item.run.status}</Link> : "—" },
@@ -131,7 +131,7 @@ export async function SafeguardingControlDetailScreen({ controlId }: { controlId
       { label: "As of", value: <Mono>{dateTime(control.asOf)}</Mono> },
       { label: "Attested asset", value: <Mono>{money(control.safeguardedAssetMinor, currency)}</Mono> },
       { label: "Player liability (ledger)", value: <Mono>{money(control.playerLiabilityMinor, currency)}</Mono> },
-      { label: "Difference", value: <Mono>{money(control.differenceMinor, currency)} ({control.differenceMinor ?? "—"} minor {currency ?? ""})</Mono> },
+      { label: "Difference", value: <Mono>{money(control.differenceMinor, currency)}</Mono> },
       { label: "Account", value: control.safeguardingAccount ? `${control.safeguardingAccount.accountReference} · ${control.safeguardingAccount.classification} · ${control.safeguardingAccount.status}` : "—" },
       { label: "Disclosure version", value: control.safeguardingAccount?.disclosureVersion || "—" },
       { label: "Reconciliation run", value: control.reconciliationRun ? <Link className="underline" href={`${reconciliationHref}/runs/${control.reconciliationRun.id}`}>{control.reconciliationRun.type} · {control.reconciliationRun.status}</Link> : "None linked" },

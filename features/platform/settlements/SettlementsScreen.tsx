@@ -58,7 +58,7 @@ export async function SettlementsScreen({ searchParams }: { searchParams?: Platf
     if (!currency || !/^\d+$/.test(settlement.payoutMinor)) { incompletePayout = true; continue; }
     payoutByCurrency.set(currency, (payoutByCurrency.get(currency) || 0n) + BigInt(settlement.payoutMinor));
   }
-  const payoutSummary = [...payoutByCurrency].map(([currency, amount]) => `${amount} minor ${currency}`).join(" · ") || "No amount evidence";
+  const payoutSummary = [...payoutByCurrency].map(([currency, amount]) => money(amount.toString(), currency)).join(" · ") || "No amount evidence";
   const notReady = readiness.filter(item => !item.plan);
   return <OperatorShell active="Settlement" title="Settlement" tone={ready.length || pendingApprovals ? "wait" : "ok"} meta={`${ready.length} ready · ${notReady.length} not ready · ${pendingApprovals} approvals pending`} tenantName={operator.tenantName}>
     <MetricGrid items={[

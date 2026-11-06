@@ -44,9 +44,9 @@ export function money(amountMinor: string | number | bigint | null | undefined, 
   if (amountMinor === null || amountMinor === undefined || amountMinor === "") return "—";
   let amount: bigint;
   try { amount = BigInt(amountMinor); } catch { return `${String(amountMinor)} (invalid amount)`; }
-  if (!currency) return `${amount} minor units (currency unknown)`;
+  if (!currency) return `${amount} (currency unknown)`;
   const scale = exponent ?? currencyExponent(currency);
-  if (scale === undefined || scale === null || !Number.isInteger(scale) || scale < 0) return `${amount} minor units ${currency} (exponent unknown)`;
+  if (scale === undefined || scale === null || !Number.isInteger(scale) || scale < 0) return `${amount} ${currency} (decimal places unknown)`;
   const negative = amount < 0n;
   const absolute = negative ? -amount : amount;
   const divisor = 10n ** BigInt(scale);

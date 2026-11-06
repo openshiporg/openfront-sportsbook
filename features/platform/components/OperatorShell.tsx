@@ -102,10 +102,10 @@ export function OperatorShell({
           {meta ? <p className="mt-1 tabular-nums text-xs  text-muted-foreground">{meta}</p> : null}
         </div>
         {tenantName ? (
-          <span className="inline-flex items-center rounded-[4px] bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground ring-1 ring-inset ring-black/5 dark:ring-white/5">
+          <p className="text-sm font-medium text-muted-foreground">
             <span className="sr-only">Operator: </span>
             {tenantName}
-          </span>
+          </p>
         ) : null}
       </div>
       <div className="min-w-0 space-y-6 px-4 py-4 md:px-6 md:py-6">{children}</div>

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Mono, Pill, PillLink, pillClass, StatusDot, Track } from '../components/kit'
+import { money } from '../lib/format'
 import { StatusBadge } from '../components/WorkflowUI'
 import { createSettlementIntent, restoreSettlementIntent, settlementAcknowledgement, settlementIntentStorageKey, type SettlementIntent } from './settlement-intent'
 
@@ -62,7 +63,7 @@ export function FullStraightSettlementActions({ tenantId, actorId, plans }: { te
     {plans.length ? <ul className="min-w-0 divide-y overflow-hidden rounded-[4px] border bg-card">{plans.map(plan => <li key={plan.wagerId} className="flex min-w-0 flex-wrap items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0 flex-1 basis-64">
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-medium"><Mono className="break-all">{plan.wagerId}</Mono><StatusBadge value={plan.outcome} /></p>
-        <p className="mt-1 tabular-nums text-sm ">{plan.stakeMinor} → <span className="font-semibold">{plan.payoutMinor}</span> <span className="text-xs text-muted-foreground">minor {plan.currency} · exp {plan.currencyExponent}</span></p>
+        <p className="mt-1 tabular-nums text-sm ">Stake {money(plan.stakeMinor, plan.currency, plan.currencyExponent)} → payout <span className="font-semibold">{money(plan.payoutMinor, plan.currency, plan.currencyExponent)}</span></p>
         <p className="mt-1 break-all tabular-nums text-[11px] text-muted-foreground">result {plan.resultVersionId} · rule {plan.ruleVersion} · plan {plan.planHash}</p>
       </div>
       <Track><Pill size="sm" variant="primary" onClick={() => void send(plan)} disabled={!loaded || busy || blocked || Boolean(pending)}>Settle reviewed {plan.outcome}</Pill></Track>

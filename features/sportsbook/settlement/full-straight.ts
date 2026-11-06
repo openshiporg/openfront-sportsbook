@@ -145,6 +145,33 @@ export async function settleFullStraight(tx: any, tenantId: string, actorId: str
   if (!/^[A-Za-z0-9:_-]{8,128}$/.test(input.idempotencyKey) || !/^[a-f0-9]{64}$/.test(input.planHash ?? '')) fail('REVIEWED_SETTLEMENT_PLAN_REQUIRED')
   if (input.expectedActorId !== actorId || input.expectedTenantId !== tenantId) fail('SETTLEMENT_INTENT_SCOPE_CHANGED')
   await assertCurrentRiskOperator(tx, tenantId, actorId)
+  return executeFullStraight(tx, tenantId, actorId, input, () => assertHumanSession(session, actorId), 'REVIEWED_FULL_STRAIGHT_PLAN')
+}
+
+export const AUTOMATIC_SETTLEMENT_ACTOR = 'sportsbook-worker'
+export const automaticSettlementKey = (wagerId: string, resultVersionId: string) => `auto:${wagerId}:${resultVersionId}`
+
+/**
+ * The worker's settlement.requested path. Its authority is the approved result itself (entered by one operator and
+ * approved by an independent approver). It plans and settles in one transaction through the same evidence checks and
+ * posting code as the operator's Settle button. The key derives from wager + result, so a retried or replayed job
+ * returns the original settlement instead of paying twice.
+ */
+export async function settleFullStraightAutomatically(tx: any, tenantId: string, wagerId: string, resultVersionId: string, guard: () => void = () => undefined) {
+  const idempotencyKey = automaticSettlementKey(wagerId, resultVersionId)
+  await lockWagerForSettlement(tx, tenantId, wagerId)
+  const prior = await tx.settlement.findFirst({ where: { tenantId, inputHash: idempotencyKey } })
+  let planHash: string | undefined
+  if (prior) planHash = (await tx.settlementLine.findFirst({ where: { tenantId, settlementId: prior.id } }))?.trace?.planHash
+  else {
+    const plan = (await loadFullStraightPlan(tx, tenantId, wagerId)).plan
+    if (plan.resultVersionId !== resultVersionId) fail('STALE_SETTLEMENT_REQUEST')
+    planHash = plan.planHash
+  }
+  return executeFullStraight(tx, tenantId, AUTOMATIC_SETTLEMENT_ACTOR, { wagerId, idempotencyKey, planHash }, guard, 'APPROVED_RESULT_AUTOMATIC')
+}
+
+async function executeFullStraight(tx: any, tenantId: string, actorId: string, input: { wagerId: string; idempotencyKey: string; planHash?: string }, guard: () => void, reason: string) {
   await lockWagerForSettlement(tx, tenantId, input.wagerId)
   const wager = await tx.wager.findFirst({ where: { id: input.wagerId, tenantId } })
   if (!wager?.playerId) fail('SETTLEMENT_PLAYER_SCOPE_MISMATCH')
@@ -165,7 +192,7 @@ export async function settleFullStraight(tx: any, tenantId: string, actorId: str
     const originalEntries = await tx.journalEntry.findMany({ where: { tenantId, transactionId: prior.journalTransactionId }, take: originalJournal.entries.length + 1 })
     const signature = (entry: any) => `${entry.accountId}:${entry.side}:${entry.currency}:${entry.amountMinor ?? String(entry.amount)}`
     if (evidenceHash(originalEntries.map(signature).sort()) !== evidenceHash(originalJournal.entries.map(signature).sort())) fail('ORIGINAL_SETTLEMENT_RECEIPT_REQUIRED')
-    assertHumanSession(session, actorId)
+    guard()
     return prior.id // Recover committed original acknowledgement before reevaluating current result/rule.
   }
   const data = await loadFullStraightPlan(tx, tenantId, input.wagerId), { plan, accounts, balance } = data
@@ -174,7 +201,7 @@ export async function settleFullStraight(tx: any, tenantId: string, actorId: str
   if (await tx.journalTransaction.findFirst({ where: { tenantId, idempotencyKey: journal.idempotencyKey } })) fail('ORIGINAL_SETTLEMENT_RECEIPT_REQUIRED')
   const now = new Date()
   const run = await tx.settlementRun.create({ data: { tenantId, triggerType: 'RESULT_APPROVED', resultVersionId: plan.resultVersionId, inputHash: requestHash, status: 'RUNNING', wagersConsidered: 1, wagersSettled: 0, startedAt: now } })
-  assertHumanSession(session, actorId)
+  guard()
   const posted = await postJournal(tx, tenantId, journal, input.wagerId)
   await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, postedMinor: String(minor(balance.postedMinor) + minor(plan.payoutMinor)), availableMinor: String(minor(balance.availableMinor) + minor(plan.payoutMinor)), pendingMinor: balance.pendingMinor, version: balance.version + 1, asOf: now } })
   const settlement = await tx.settlement.create({ data: { tenantId, wagerId: input.wagerId, resultVersionId: plan.resultVersionId, settlementRunId: run.id, version: 1, outcome: plan.outcome, grossPayoutMinor: plan.payoutMinor, payoutMinor: plan.payoutMinor, taxMinor: '0', inputHash: input.idempotencyKey, journalTransactionId: posted.id } })
@@ -188,8 +215,8 @@ export async function settleFullStraight(tx: any, tenantId: string, actorId: str
   await tx.exposurePosition.update({ where: { id: data.exposure.id }, data: { stakeMinor: String(minor(data.exposure.stakeMinor) - closedStake), liabilityMinor: String(minor(data.exposure.liabilityMinor) - closedLiability), version: { increment: 1 }, asOf: now } })
   // Acceptance already debited the source and CAPTURED its hold. Preserve that fact; no second release.
   await tx.settlementRun.update({ where: { id: run.id }, data: { status: 'COMPLETED', wagersSettled: 1, completedAt: now } })
-  await appendAudit(tx, tenantId, actorId, 'wager.settled_full', 'Wager', input.wagerId, 'REVIEWED_FULL_STRAIGHT_PLAN', { settlementId: settlement.id, requestHash, planHash: plan.planHash, resultVersionId: plan.resultVersionId, payoutMinor: plan.payoutMinor })
+  await appendAudit(tx, tenantId, actorId, 'wager.settled_full', 'Wager', input.wagerId, reason, { settlementId: settlement.id, requestHash, planHash: plan.planHash, resultVersionId: plan.resultVersionId, payoutMinor: plan.payoutMinor })
   await emit(tx, tenantId, 'WAGER', input.wagerId, 'wager.settled.v2', { settlementId: settlement.id, planHash: plan.planHash, payoutMinor: plan.payoutMinor, currency: plan.currency })
-  assertHumanSession(session, actorId)
+  guard()
   return settlement.id
 }
