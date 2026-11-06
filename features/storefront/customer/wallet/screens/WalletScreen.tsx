@@ -199,7 +199,7 @@ export function WalletScreen() {
         {wallet.data.transactions.length === 0 ? <Empty>No deposits or withdrawals</Empty> : <Card className="divide-y divide-sb-line">
           {wallet.data.transactions.map(transaction => <div key={transaction.id} className="flex min-w-0 items-center justify-between gap-3 px-4 py-3.5">
             <div className="min-w-0"><p className="text-sm font-semibold"><Dot tone={toneFor(transaction.status)} />{label(transaction.type)}<span className="ml-2 text-xs font-normal text-sb-mute">{label(transaction.status)}</span></p><p className="mt-0.5 break-all tabular-nums text-xs text-sb-mute">{formatDate(transaction.createdAt)} · {shortId(transaction.id)}{transaction.externalReference ? ` · ${transaction.externalReference}` : ''}</p></div>
-            <p className={`shrink-0 tabular-nums text-base font-semibold  ${transaction.type==='WITHDRAWAL'?'':'text-sb-win'}`}>{transaction.type==='WITHDRAWAL'?'−':'+'}{formatMinor(transaction.amountMinor, transaction.currency, transaction.currency===wallet.data?.currency?exponent:undefined)}</p>
+            <p className={`shrink-0 tabular-nums text-base font-semibold  ${transaction.type==='DEPOSIT'&&transaction.status==='SUCCEEDED'?'text-sb-win':''}`}>{transaction.type==='WITHDRAWAL'||transaction.type==='REFUND'?'−':transaction.type==='DEPOSIT'&&transaction.status==='SUCCEEDED'?'+':''}{formatMinor(transaction.amountMinor, transaction.currency, transaction.currency===wallet.data?.currency?exponent:undefined)}</p>
           </div>)}
         </Card>}
       </Section>
