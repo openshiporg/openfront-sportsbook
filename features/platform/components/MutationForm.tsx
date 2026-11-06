@@ -25,7 +25,11 @@ export type MutationField = {
   required?: boolean;
   options?: { label: string; value: string }[];
   /** `list` sends a comma-separated value as a string array (only meaningful with `jsonPath`). */
-  transform?: "int" | "boolean" | "list";
+  transform?: "int" | "boolean" | "list" | "money";
+  /** For `money`: decimal places of the currency (USD 2). The operator types 12.00; the exact minor-unit string "1200" is sent. */
+  exponent?: number;
+  /** For `money`: allow a leading minus sign. */
+  signed?: boolean;
   /**
    * `variable.key`: instead of its own variable, the value is placed at `key` of a JSON object sent as
    * the String variable `variable` — typed fields for a known document shape. Blank optional values are omitted.
@@ -59,8 +63,26 @@ function initialDraft(fields: MutationField[]): Draft {
       while (rows.length < (field.minRows ?? 1)) rows.push({ ...blank });
       return [field.name, JSON.stringify(rows)];
     }
+    if (field.transform === "money" && field.defaultValue !== undefined && field.defaultValue !== null && field.defaultValue !== "") return [field.name, minorToMoneyInput(field.defaultValue, field.exponent ?? 2)];
     return [field.name, field.defaultValue === undefined || field.defaultValue === null ? "" : String(field.defaultValue)];
   }));
+}
+
+/** Exact decimal money to minor units as a string (no floating point): "12.5" -> "1250" at exponent 2. */
+export function parseMoneyToMinor(value: string, exponent = 2, signed = false): string | null {
+  const trimmed = value.trim().replace(/^\$/, "").replace(/,/g, "");
+  const match = (signed ? /^(-?)(\d+)(?:\.(\d*))?$/ : /^()(\d+)(?:\.(\d*))?$/).exec(trimmed);
+  if (!match || (match[3] ?? "").length > exponent) return null;
+  const minor = BigInt(match[2] + (match[3] ?? "").padEnd(exponent, "0"));
+  return `${match[1] && minor !== 0n ? "-" : ""}${minor}`;
+}
+
+/** Minor units back to the decimal an operator types: "1200" -> "12.00". */
+export function minorToMoneyInput(value: string | number, exponent = 2): string {
+  const raw = String(value).trim();
+  if (!/^-?\d+$/.test(raw)) return raw;
+  const negative = raw.startsWith("-"), digits = (negative ? raw.slice(1) : raw).padStart(exponent + 1, "0");
+  return `${negative ? "-" : ""}${exponent ? `${digits.slice(0, -exponent)}.${digits.slice(-exponent)}` : digits}`;
 }
 
 /** Exact integer parsing: the whole value must be a safe integer (no prefixes, exponents or fractions). */
@@ -89,6 +111,7 @@ function validate(fields: MutationField[], draft: Draft): Record<string, string>
       continue;
     }
     if (field.transform === "int" && parseExactInteger(value) === null) errors[field.name] = "Enter a whole number without decimals or exponents.";
+    if (field.transform === "money" && parseMoneyToMinor(value, field.exponent ?? 2, field.signed) === null) errors[field.name] = `Enter an amount like ${field.signed ? "-" : ""}12.${"0".repeat(field.exponent ?? 2)}.`;
   }
   return errors;
 }
@@ -104,6 +127,7 @@ function toVariables(fields: MutationField[], draft: Draft) {
     if (field.transform === "boolean") document[key] = raw === "true";
     else if (raw.trim() === "") continue;
     else if (field.transform === "int") document[key] = parseExactInteger(raw);
+    else if (field.transform === "money") document[key] = parseMoneyToMinor(raw, field.exponent ?? 2, field.signed);
     else if (field.transform === "list") document[key] = raw.split(",").map((item) => item.trim()).filter(Boolean);
     else if (field.type === "rows") document[key] = (JSON.parse(raw || "[]") as Record<string, string>[]).map((row) => Object.fromEntries((field.columns ?? []).map((column) => [column.name, String(row[column.name] ?? "").trim()])));
     else if (field.type === "checkboxes") document[key] =Object.entries(JSON.parse(raw || "{}") as Record<string, boolean>).filter(([, checked]) => checked).map(([value]) => value);
@@ -118,6 +142,7 @@ function toVariables(fields: MutationField[], draft: Draft) {
       return [field.name, JSON.stringify(rows.map((row) => Object.fromEntries(columns.map((column) => [column.name, String(row[column.name] ?? "").trim()]))))];
     }
     if (field.transform === "int") return [field.name, raw.trim() === "" ? null : parseExactInteger(raw)];
+    if (field.transform === "money" && field.type !== "hidden") return [field.name, raw.trim() === "" ? "" : parseMoneyToMinor(raw, field.exponent ?? 2, field.signed) ?? raw];
     if (field.transform === "boolean") return [field.name, raw === "true"];
     return [field.name, raw];
   }), ...[...documents.entries()].map(([variable, document]) => [variable, JSON.stringify(document)])]);
@@ -343,7 +368,7 @@ export function MutationForm({
               <Track><Pill size="sm" onClick={() => setRows([...rows, Object.fromEntries(columns.map((column) => [column.name, ""]))])}><Plus aria-hidden="true" />Add row</Pill></Track>
             </div>;
           } else {
-            control = <Input id={id} name={field.name} type={field.type === "number" ? "text" : field.type ?? "text"} inputMode={field.type === "number" || field.transform === "int" ? "numeric" : undefined} value={value} onChange={(event) => update(field.name, event.target.value)} placeholder={field.placeholder} aria-invalid={invalid} aria-describedby={describedBy} aria-required={isRequired(field)} autoComplete={field.type === "password" ? "new-password" : undefined} className="mt-1 h-10 text-sm font-normal" />;
+            control = <Input id={id} name={field.name} type={field.type === "number" ? "text" : field.type ?? "text"} inputMode={field.transform === "money" ? "decimal" : field.type === "number" || field.transform === "int" ? "numeric" : undefined} value={value} onChange={(event) => update(field.name, event.target.value)} placeholder={field.placeholder} aria-invalid={invalid} aria-describedby={describedBy} aria-required={isRequired(field)} autoComplete={field.type === "password" ? "new-password" : undefined} className="mt-1 h-10 text-sm font-normal" />;
           }
           return <div key={field.name} className={`text-sm font-medium ${wide ? "md:col-span-2" : ""}`}>
             {field.type === "checkboxes" || field.type === "rows" ? <span id={`${id}-label`}>{field.label}</span> : <label htmlFor={id}>{field.label}</label>}
