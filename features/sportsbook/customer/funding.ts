@@ -86,6 +86,13 @@ export type DispatchOutcome = { status: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN'; exte
 /** Card processors customers can deposit through, in failover order. */
 export const CARD_DEPOSIT_ADAPTERS = ['stripe', 'authorizenet']
 
+/** A card processor is only routable when its server keys are present (test keys only for Stripe). */
+export function cardProcessorConfigured(adapterId: string) {
+  if (adapterId === 'stripe') return String(process.env.STRIPE_SECRET_KEY ?? '').startsWith('sk_test_')
+  if (adapterId === 'authorizenet') return Boolean(process.env.AUTHORIZENET_API_LOGIN_ID && process.env.AUTHORIZENET_TRANSACTION_KEY && (process.env.AUTHORIZENET_CLIENT_KEY || process.env.NEXT_PUBLIC_AUTHORIZENET_CLIENT_KEY))
+  return false
+}
+
 /** Intent states whose provider effect is not yet definitive; reserved funds and limit headroom stay held. */
 const IN_FLIGHT = new Set(['PENDING', 'PROCESSING', 'UNKNOWN'])
 /** Adapter refusals raised before any provider I/O. */
@@ -302,7 +309,9 @@ async function runFundingCommand(
       if (!projection) throw new CustomerError(unavailable, 409)
       if (kind === 'DEPOSIT') await assertDepositLimits(tx, actor, amount, new Date())
       if (kind === 'WITHDRAWAL' && BigInt(projection.availableMinor) < amount) throw new CustomerError('INSUFFICIENT_FUNDS', 422)
-      const provider = await tx.providerConnection.findFirst({ where: { tenantId: actor.tenantId, adapterId: kind === 'DEPOSIT' ? { in: CARD_DEPOSIT_ADAPTERS } : 'manual', status: 'ACTIVE' }, orderBy: [{ failoverPriority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] })
+      const candidates = await tx.providerConnection.findMany({ where: { tenantId: actor.tenantId, adapterId: kind === 'DEPOSIT' ? { in: CARD_DEPOSIT_ADAPTERS.filter(cardProcessorConfigured) } : 'manual', status: 'ACTIVE' }, orderBy: [{ failoverPriority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] })
+      // Same priority: the fleet's processor (Stripe) before Accept.js.
+      const provider = candidates.sort((a: any, b: any) => a.failoverPriority - b.failoverPriority || CARD_DEPOSIT_ADAPTERS.indexOf(a.adapterId) - CARD_DEPOSIT_ADAPTERS.indexOf(b.adapterId))[0]
       if (!provider) throw new CustomerError(unavailable, 409)
       // Accept.js cards arrive tokenized; hosted Checkout collects the card on Stripe's page instead.
       if (kind === 'DEPOSIT' && provider.adapterId === 'authorizenet' && !input.opaqueData) throw new CustomerError('PAYMENT_METHOD_REQUIRED', 400)
