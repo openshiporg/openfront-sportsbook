@@ -12,7 +12,7 @@ export async function PaymentsScreen() {
  const tenantId=operator.tenantId
  const [licences,connections,intents,cage]=await Promise.all([
   prisma.operatorLicence.findMany({where:{tenantId},orderBy:{createdAt:'desc'},take:100}),
-  prisma.providerConnection.findMany({where:{tenantId,adapterId:{in:['stripe','authorizenet','paysafe','aeropay','manual']}},orderBy:{createdAt:'desc'},take:100}),
+  prisma.providerConnection.findMany({where:{tenantId,adapterId:{in:['authorizenet','paysafe','aeropay','manual']}},orderBy:{createdAt:'desc'},take:100}),
   prisma.paymentIntent.findMany({where:{tenantId,type:'WITHDRAWAL',status:{in:['PROCESSING','UNKNOWN','PENDING']}},orderBy:{createdAt:'asc'},take:100}),
  prisma.paymentIntent.findMany({where:{tenantId,type:'DEPOSIT',paymentMethodReference:'cage-cash',status:'PENDING'},orderBy:{createdAt:'asc'},take:100}),
  ])

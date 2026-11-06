@@ -6,7 +6,7 @@ export async function assertOperatorReady(prisma: PrismaClient | any, tenantId: 
   const licences = await prisma.operatorLicence.findMany({ where: { tenantId, status: 'ACTIVE', expiresAt: { gt: now } } })
   const licence = licences.find((item: any) => item.licenceNumber && item.regulator && Array.isArray(item.permittedRegions) && item.permittedRegions.length)
   if (!licence) throw new Error('OPERATOR_NOT_LICENSED')
-  const payments = await prisma.providerConnection.findFirst({ where: { tenantId, status: 'ACTIVE', adapterId: { in: ['stripe', 'authorizenet', 'paysafe', 'aeropay', 'manual', 'sandbox-payments'] } }, select: { id: true } })
+  const payments = await prisma.providerConnection.findFirst({ where: { tenantId, status: 'ACTIVE', adapterId: { in: ['authorizenet', 'paysafe', 'aeropay', 'manual', 'sandbox-payments'] } }, select: { id: true } })
   if (!payments) throw new Error('PAYMENTS_NOT_CONFIGURED')
   // Until this vertical exposes a dedicated operator responsible-gaming settings list,
   // active approved policy records are the authoritative readiness evidence.

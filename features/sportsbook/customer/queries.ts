@@ -150,14 +150,13 @@ async function getCustomerWalletUnderAuthority(prisma: Prisma.TransactionClient,
   }
 }
 
-/** Card entry is offered only when an ACTIVE card processor installation exists and its keys are configured on the server. */
+/** Card entry is offered only when an ACTIVE Authorize.net installation exists and the processor keys are configured on the server. */
 async function cardDepositConfig(prisma: Prisma.TransactionClient, tenantId: string): Promise<WalletResponse['card']> {
-  if (String(process.env.STRIPE_SECRET_KEY ?? '').startsWith('sk_test_') && await prisma.providerConnection.findFirst({ where: { tenantId, adapterId: 'stripe', status: 'ACTIVE' }, select: { id: true } })) return { provider: 'stripe' }
   const apiLoginId = process.env.AUTHORIZENET_API_LOGIN_ID ?? ''
   const clientKey = process.env.AUTHORIZENET_CLIENT_KEY || process.env.NEXT_PUBLIC_AUTHORIZENET_CLIENT_KEY || ''
   if (!apiLoginId || !clientKey || !process.env.AUTHORIZENET_TRANSACTION_KEY) return null
   const installed = await prisma.providerConnection.findFirst({ where: { tenantId, adapterId: 'authorizenet', status: 'ACTIVE' }, select: { id: true } })
-  return installed ? { provider: 'authorizenet', apiLoginId, clientKey, env: process.env.AUTHORIZENET_ENV === 'production' ? 'production' : 'sandbox' } : null
+  return installed ? { apiLoginId, clientKey, env: process.env.AUTHORIZENET_ENV === 'production' ? 'production' : 'sandbox' } : null
 }
 
 const BETS_PAGE_SIZE = 20

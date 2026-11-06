@@ -113,8 +113,6 @@ export type FundingResult = {
   availableMinor?: string
   rejectionCode?: string
   pendingCode?: string
-  /** Hosted card page to finish a deposit on (Stripe Checkout); the same idempotency key confirms it afterwards. */
-  redirectUrl?: string
 }
 
 export type WalletTransaction = {
@@ -137,10 +135,10 @@ export type WalletResponse = {
   fundingMaxMinor: string
   depositsEnabled: boolean
   withdrawalsEnabled: boolean
+  /** Accept.js settings when the operator's card processor is installed and configured; null while card deposits are not open. */
   /** True while the operator offers cash deposits at the retail cage. */
   cage: boolean
-  /** Card processor when one is installed and configured (Stripe hosted Checkout, or Accept.js settings); null while card deposits are not open. */
-  card: { provider: 'stripe' } | { provider: 'authorizenet'; apiLoginId: string; clientKey: string; env: 'sandbox' | 'production' } | null
+  card: { apiLoginId: string; clientKey: string; env: 'sandbox' | 'production' } | null
   availableMinor: string
   postedMinor: string
   pendingMinor: string
