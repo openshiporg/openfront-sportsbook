@@ -66,38 +66,51 @@ export async function ensureOnboardingCatalogEvents(prisma: any, tenantId: strin
       if (await tx.event.findFirst({ where: { tenantId, externalKey }, select: { id: true } })) return false
       const actor = await tx.user.findUnique({ where: { id: actorId }, include: { role: true } })
       if (!actor?.role?.canManageOnboarding || actor.tenantId !== tenantId) throw new Error('Not found')
-      const canOpen = actor.role.canTrade === true
-      const competition = await tx.competition.findFirst({ where: { tenantId, key: seedCompetition.key } })
-      const season = competition ? await tx.season.findFirst({ where: { tenantId, competitionId: competition.id, key: seedCompetition.season.key } }) : null
-      const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: 'sandbox-sports', certificationStatus: 'SANDBOX', status: 'ACTIVE' } })
-      if (!competition || !provider) throw new Error('ONBOARDING_CATALOG_ROOTS_MISSING')
-      const now = new Date()
-      const event = await tx.event.create({ data: { tenantId, competitionId: competition.id, seasonId: season?.id ?? null, externalKey, name: seedEvent.name, startAt: eventStart(seedEvent), status: 'SCHEDULED', version: 1 } })
-      const marketIds: string[] = []
-      for (const seedMarket of seedEvent.markets) {
-        const definition = await tx.marketDefinition.findFirst({ where: { tenantId, key: seedMarket.definition, status: 'ACTIVE' }, orderBy: { version: 'desc' } })
-        if (!definition) throw new Error('MARKET_DEFINITION_NOT_ACTIVE')
-        const line = seedMarket.line ?? ''
-        const market = await tx.market.create({ data: { tenantId, eventId: event.id, definitionId: definition.id, definitionKey: definition.key, parameters: line ? { name: seedMarket.name, line } : { name: seedMarket.name }, line, tradingMode: 'PREMATCH', cashOutEnabled: true, status: 'SUSPENDED', version: 1 } })
-        await tx.tradingStatusChange.create({ data: { tenantId, scopeType: 'MARKET', scopeId: market.id, fromStatus: AWAITING_PRICES, toStatus: 'SUSPENDED', reason: 'Awaiting prices', source: 'CATALOG', actorId, effectiveAt: now } })
-        for (const seedSelection of seedMarket.selections) {
-          const selection = await tx.selection.create({ data: { tenantId, marketId: market.id, key: seedSelection.key, label: seedSelection.label, status: 'OPEN' } })
-          const payload = { source: 'ONBOARDING_SEED', marketId: market.id, selectionId: selection.id, decimalOdds: seedSelection.odds, line, sequence: '1', actorId }
-          const envelope = await tx.rawEnvelope.create({ data: { tenantId, providerConnectionId: provider.id, direction: 'INBOUND', externalId: `onboarding:${randomUUID()}`, schemaVersion: 'sandbox.v1', payload, payloadHash: evidenceHash(payload), receivedAt: now } })
-          await tx.priceSnapshot.create({ data: { tenantId, selectionId: selection.id, providerConnectionId: provider.id, decimalOdds: seedSelection.odds, line, sequence: '1', effectiveAt: now, receivedAt: now, rawEnvelopeId: envelope.id, status: 'OPEN' } })
-        }
-        if (canOpen) {
-          assertMarketFirstOpenAllowed({ eventStatus: event.status, createdAwaitingPrices: true, everOpened: false, unpricedSelections: 0, selections: seedMarket.selections.length })
-          const opened = await tx.market.updateMany({ where: { id: market.id, tenantId, status: 'SUSPENDED', version: 1 }, data: { status: 'OPEN', version: 2 } })
-          if (opened.count !== 1) throw new Error('STALE_MARKET_STATE')
-          await tx.tradingStatusChange.create({ data: { tenantId, scopeType: 'MARKET', scopeId: market.id, fromStatus: 'SUSPENDED', toStatus: 'OPEN', reason: 'Opening prices set during onboarding', source: 'OPERATOR', actorId, effectiveAt: now } })
-        }
-        marketIds.push(market.id)
-      }
-      await appendAudit(tx, tenantId, actorId, 'catalog.event_created', 'Event', event.id, 'SANDBOX_ONBOARDING', { competitionId: competition.id, externalKey, marketIds, opened: canOpen })
+      await writeSeedEvent(tx, { tenantId, actorId, seedCompetition, seedEvent, externalKey, startAt: eventStart(seedEvent), canOpen: actor.role.canTrade === true, source: 'OPERATOR', reason: 'Opening prices set during onboarding', auditReason: 'SANDBOX_ONBOARDING' }, appendAudit)
       return true
     })
     if (made) created++
   }
   return created
 }
+
+type SeedEventWrite = {
+  tenantId: string; actorId: string; seedCompetition: SeedCompetition; seedEvent: SeedEvent; externalKey: string; startAt: Date
+  canOpen: boolean; source: string; reason: string; auditReason: string
+}
+
+/** One fixture with its markets, selections and opening prices, written through the sandbox sports feed records. */
+export async function writeSeedEvent(tx: any, input: SeedEventWrite, appendAudit: AuditWriter) {
+  const { tenantId, actorId, seedCompetition, seedEvent, externalKey, canOpen } = input
+  const competition = await tx.competition.findFirst({ where: { tenantId, key: seedCompetition.key } })
+  const season = competition ? await tx.season.findFirst({ where: { tenantId, competitionId: competition.id, key: seedCompetition.season.key } }) : null
+  const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: 'sandbox-sports', certificationStatus: 'SANDBOX', status: 'ACTIVE' } })
+  if (!competition || !provider) throw new Error('ONBOARDING_CATALOG_ROOTS_MISSING')
+  const now = new Date()
+  const event = await tx.event.create({ data: { tenantId, competitionId: competition.id, seasonId: season?.id ?? null, externalKey, name: seedEvent.name, startAt: input.startAt, status: 'SCHEDULED', version: 1 } })
+  const marketIds: string[] = []
+  for (const seedMarket of seedEvent.markets) {
+    const definition = await tx.marketDefinition.findFirst({ where: { tenantId, key: seedMarket.definition, status: 'ACTIVE' }, orderBy: { version: 'desc' } })
+    if (!definition) throw new Error('MARKET_DEFINITION_NOT_ACTIVE')
+    const line = seedMarket.line ?? ''
+    const market = await tx.market.create({ data: { tenantId, eventId: event.id, definitionId: definition.id, definitionKey: definition.key, parameters: line ? { name: seedMarket.name, line } : { name: seedMarket.name }, line, tradingMode: 'PREMATCH', cashOutEnabled: true, status: 'SUSPENDED', version: 1 } })
+    await tx.tradingStatusChange.create({ data: { tenantId, scopeType: 'MARKET', scopeId: market.id, fromStatus: AWAITING_PRICES, toStatus: 'SUSPENDED', reason: 'Awaiting prices', source: 'CATALOG', actorId, effectiveAt: now } })
+    for (const seedSelection of seedMarket.selections) {
+      const selection = await tx.selection.create({ data: { tenantId, marketId: market.id, key: seedSelection.key, label: seedSelection.label, status: 'OPEN' } })
+      const payload = { source: 'ONBOARDING_SEED', marketId: market.id, selectionId: selection.id, decimalOdds: seedSelection.odds, line, sequence: '1', actorId }
+      const envelope = await tx.rawEnvelope.create({ data: { tenantId, providerConnectionId: provider.id, direction: 'INBOUND', externalId: `onboarding:${randomUUID()}`, schemaVersion: 'sandbox.v1', payload, payloadHash: evidenceHash(payload), receivedAt: now } })
+      await tx.priceSnapshot.create({ data: { tenantId, selectionId: selection.id, providerConnectionId: provider.id, decimalOdds: seedSelection.odds, line, sequence: '1', effectiveAt: now, receivedAt: now, rawEnvelopeId: envelope.id, status: 'OPEN' } })
+    }
+    if (canOpen) {
+      assertMarketFirstOpenAllowed({ eventStatus: event.status, createdAwaitingPrices: true, everOpened: false, unpricedSelections: 0, selections: seedMarket.selections.length })
+      const opened = await tx.market.updateMany({ where: { id: market.id, tenantId, status: 'SUSPENDED', version: 1 }, data: { status: 'OPEN', version: 2 } })
+      if (opened.count !== 1) throw new Error('STALE_MARKET_STATE')
+      await tx.tradingStatusChange.create({ data: { tenantId, scopeType: 'MARKET', scopeId: market.id, fromStatus: 'SUSPENDED', toStatus: 'OPEN', reason: input.reason, source: input.source, actorId, effectiveAt: now } })
+    }
+    marketIds.push(market.id)
+  }
+  await appendAudit(tx, tenantId, actorId, 'catalog.event_created', 'Event', event.id, input.auditReason, { competitionId: competition.id, externalKey, marketIds, opened: canOpen })
+  return event
+}
+
+export type { SeedCompetition, SeedEvent }
