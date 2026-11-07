@@ -154,7 +154,7 @@ export const sportsbookCheckoutResolvers = {
       let outcome: { status: string; externalRef: string; method?: string } = { status: 'UNKNOWN', externalRef: '' }
       try { outcome = await refundPaymentProvider(p.provider, p.reference, p.amountMinor, refundKey) } catch { /* stays UNKNOWN: nothing is released until the processor confirms */ }
       if (outcome.status !== 'SUCCEEDED') {
-        await context.prisma.paymentIntent.update({ where: { id: p.intentId }, data: { status: outcome.status === 'FAILED' ? 'FAILED' : 'UNKNOWN' } })
+        await context.prisma.paymentIntent.updateMany({ where: { id: p.intentId, tenantId, status: { in: ['PROCESSING', 'PENDING', 'UNKNOWN'] } }, data: { status: outcome.status === 'FAILED' ? 'FAILED' : 'UNKNOWN' } })
         throw new Error('REFUND_NOT_CONFIRMED')
       }
 

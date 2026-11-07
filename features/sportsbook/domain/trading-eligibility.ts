@@ -60,3 +60,34 @@ export function maxPriceAgeMs(live: boolean) {
 export function isLivePricing(eventStatus: unknown, tradingMode?: unknown) {
   return eventStatus === 'LIVE' || tradingMode === 'LIVE'
 }
+
+/** Reviewed lifecycle maps. A same-state write is always allowed (idempotent retry); anything else must be listed. */
+const EVENT_TRANSITIONS: Record<string, string[]> = {
+  SCHEDULED: ['LIVE', 'SUSPENDED', 'ENDED', 'CANCELLED'],
+  LIVE: ['SUSPENDED', 'ENDED', 'CANCELLED'],
+  SUSPENDED: ['ENDED', 'CANCELLED'],
+  ENDED: [],
+  CANCELLED: [],
+}
+const MARKET_TRANSITIONS: Record<string, string[]> = {
+  OPEN: ['SUSPENDED', 'CLOSED', 'GRADED'],
+  SUSPENDED: ['OPEN', 'CLOSED', 'GRADED'],
+  CLOSED: ['GRADED'],
+  GRADED: [],
+}
+const SUPPORT_CASE_TRANSITIONS: Record<string, string[]> = {
+  OPEN: ['TRIAGED', 'WAITING_CUSTOMER', 'WAITING_OPERATOR', 'RESOLVED', 'CLOSED'],
+  TRIAGED: ['WAITING_CUSTOMER', 'WAITING_OPERATOR', 'RESOLVED', 'CLOSED'],
+  WAITING_CUSTOMER: ['TRIAGED', 'WAITING_OPERATOR', 'RESOLVED', 'CLOSED'],
+  WAITING_OPERATOR: ['TRIAGED', 'WAITING_CUSTOMER', 'RESOLVED', 'CLOSED'],
+  RESOLVED: ['TRIAGED', 'WAITING_OPERATOR', 'CLOSED'],
+  CLOSED: [],
+}
+
+function assertTransition(map: Record<string, string[]>, kind: string, from: unknown, to: unknown) {
+  if (from === to) return
+  if (!map[String(from)]?.includes(String(to))) throw new Error(`${kind}_TRANSITION_NOT_ALLOWED:${String(from)}->${String(to)}`)
+}
+export const assertEventTransition = (from: unknown, to: unknown) => assertTransition(EVENT_TRANSITIONS, 'EVENT', from, to)
+export const assertMarketTransition = (from: unknown, to: unknown) => assertTransition(MARKET_TRANSITIONS, 'MARKET', from, to)
+export const assertSupportCaseTransition = (from: unknown, to: unknown) => assertTransition(SUPPORT_CASE_TRANSITIONS, 'SUPPORT_CASE', from, to)
