@@ -165,6 +165,7 @@ const refusalCopy: Record<string, string> = {
   DUAL_CONTROL_REQUIRED: "Needs approval by a different operator.",
   MFA_REQUIRED: "Verify MFA on Operator security first.",
   AUTHENTICATION_REQUIRED: "Sign in again to continue.",
+  NOT_FOUND: "That record no longer exists or isn't in your workspace. Reload and try again.",
 };
 
 /** Resolver refusal codes (UPPER_SNAKE) read as a sentence; other messages pass through unchanged. */
@@ -265,11 +266,11 @@ export function MutationForm({
       } catch {
         throw new AmbiguousOutcome();
       }
-      let payload: { data?: unknown; errors?: { message?: string }[] };
+      let payload: { data?: unknown; errors?: { message?: string; extensions?: { detail?: string } }[] };
       try { payload = await response.json(); } catch { throw new AmbiguousOutcome(); }
       if (response.status >= 500 && !payload.errors) throw new AmbiguousOutcome();
       if (!response.ok || payload.errors?.length) {
-        const message = refusalText(payload.errors?.[0]?.message) || `The request was rejected (${response.status}).`;
+        const message = payload.errors?.[0]?.extensions?.detail || refusalText(payload.errors?.[0]?.message) || `The request was rejected (${response.status}).`;
         const variables = submittedDraft ? Object.keys(submittedDraft) : [];
         const matched = variables.filter((name) => message.toLowerCase().includes(name.toLowerCase()));
         setFieldErrors(matched.length === 1 ? { [matched[0]]: message } : {});

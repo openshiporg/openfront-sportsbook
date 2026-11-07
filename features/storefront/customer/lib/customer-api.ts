@@ -219,7 +219,8 @@ const customerCopy: Record<string, string> = {
 export function customerMessage(error: unknown, fallback = 'Something went wrong. Try again.') {
   if (!(error instanceof CustomerApiError)) return fallback
   const code = String(error.payload.rejectionCode ?? error.code)
-  return customerCopy[code] ?? fallback
+  // Database-rule refusals carry their own customer-safe sentence (constraint-errors.ts).
+  return customerCopy[code] ?? (typeof error.payload.detail === 'string' && error.payload.detail ? error.payload.detail : fallback)
 }
 
 /** Wager part keys (`STRAIGHT:0`, `ROUND_ROBIN:3`) in customer words: "Straight", "Round robin #4". */
