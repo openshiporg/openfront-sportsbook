@@ -15,7 +15,7 @@ export async function register() {
     import('./features/keystone/prisma'),
     import('./features/sportsbook/workers/sandbox-fixture-feed'),
   ])
-  const prisma = new PrismaClient()
+  const prisma = new PrismaClient({ pool: 'feed' })
   let running = false
   const pass = async () => {
     if (running) return

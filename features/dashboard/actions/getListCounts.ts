@@ -5,7 +5,7 @@
 
 'use server'
 
-import { keystoneClient } from '../lib/keystoneClient'
+import { keystonePartialQuery } from '../lib/keystoneClient'
 
 export async function getListCounts(
   lists: Array<{
@@ -31,19 +31,14 @@ export async function getListCounts(
     })
 
     const query = `query GetListCounts { ${countQueries.join('\n')} }`
-    
-    const response = await keystoneClient(
-      query,
-      {},
-      {
-        next: {
-          revalidate: 60, // Cache for 1 minute since counts change frequently
-          tags: ['list-counts'],
-        },
-      }
-    )
 
-    return response
+    // Each count is independent: a list this role cannot read, or a transient failure on one list, leaves that
+    // card without a count and keeps every other count.
+    const response = await keystonePartialQuery<Record<string, number | null>>(query)
+    if (!response.success) return response
+    const data: Record<string, number> = {}
+    for (const [key, value] of Object.entries(response.data)) if (typeof value === 'number') data[key] = value
+    return { success: true as const, data }
   } catch (error: unknown) {
     console.error("Dashboard operation failed (details redacted).")
     const errorMessage =

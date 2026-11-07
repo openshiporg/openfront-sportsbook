@@ -8,6 +8,7 @@ import { extendGraphqlSchema } from "./mutations";
 import { extendSportsbookPrismaSchema } from "./prisma-contract";
 import { tenantScopedPrisma } from './tenant-scope';
 import { bootstrapOperatorIdentity } from './identity-bootstrap';
+import { pooledDatabaseUrl } from './database-url';
 
 const databaseURL=process.env.DATABASE_URL
 if(!databaseURL)throw new Error('DATABASE_URL is required')
@@ -87,7 +88,7 @@ export default withAuth(
   config({
     db: {
       provider: "postgresql",
-      url: databaseURL,
+      url: pooledDatabaseUrl(databaseURL, 'web')!,
       extendPrismaSchema: extendSportsbookPrismaSchema,
       extendPrismaClient: (client) => tenantScopedPrisma(client),
     },
