@@ -18,6 +18,42 @@ export function enterTenantScope(tenantId: string): void {
   tenantStorage.enterWith(tenantId)
 }
 
+/**
+ * Keystone 6.5's own Prisma extension catches every query error, logs it and *returns* it as a GraphQLError
+ * (code KS_PRISMA_ERROR) instead of throwing. Inside a transaction that means a failed update or a unique
+ * conflict does not stop the writer: later statements run (and a P2025 "not found" leaves the transaction
+ * committable), conflicts never reach the serializable retry, and the resolver ends in "Unexpected error.".
+ * Every result therefore passes through here and the original Prisma error is thrown again.
+ */
+export function rethrowKeystonePrismaError<T>(value: T): T {
+  const extensions = (value as any)?.extensions
+  if (!(value instanceof Error) || extensions?.code !== 'KS_PRISMA_ERROR') return value
+  const prisma = extensions.prisma ?? {}
+  const message = typeof extensions.debug?.message === 'string' ? extensions.debug.message : value.message.replace(/^Prisma error:?\s*/, '')
+  throw Object.assign(new Error(message), prisma, { name: prisma.name ?? 'PrismaClientError', code: prisma.code, meta: prisma.meta })
+}
+const rethrowing = (work: Promise<any> | any) => (work && typeof work.then === 'function' ? work.then(rethrowKeystonePrismaError) : rethrowKeystonePrismaError(work))
+
+/** A transaction client whose model and raw operations throw instead of returning Keystone's error value. */
+function throwingClient(tx: any): any {
+  return new Proxy(tx, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver)
+      if (typeof property === 'string' && rawOperations.has(property) && typeof value === 'function') return (...args: any[]) => rethrowing(value.apply(target, args))
+      if (typeof property === 'string' && value && typeof value === 'object' && [...modelOperations].some((operation) => typeof value[operation] === 'function')) {
+        return new Proxy(value, {
+          get(delegate, operation, delegateReceiver) {
+            const method = Reflect.get(delegate, operation, delegateReceiver)
+            if (typeof operation !== 'string' || !modelOperations.has(operation) || typeof method !== 'function') return method
+            return (...args: any[]) => rethrowing(method.apply(delegate, args))
+          },
+        })
+      }
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  })
+}
+
 async function setLocalTenant(tx: any, tenantId: string | null) {
   await tx.$queryRaw`SELECT set_config('app.tenant_id', ${tenantId ?? ''}, true)`
 }
@@ -40,14 +76,16 @@ export function tenantScopedPrisma<Client extends object>(client: Client): Clien
       if (property === '$transaction') {
         return (work: any, options?: any) => {
           const tenantId = tenantStorage.getStore()
-          if (tenantId === undefined) return target.$transaction.call(target, work, options)
+          const settle = (results: any[]) => results.map(rethrowKeystonePrismaError)
           if (Array.isArray(work)) {
+            if (tenantId === undefined) return target.$transaction.call(target, work, options).then(settle)
             const setTenant = target.$queryRaw`SELECT set_config('app.tenant_id', ${tenantId ?? ''}, true)`
-            return target.$transaction.call(target, [setTenant, ...work], options).then((results: any[]) => results.slice(1))
+            return target.$transaction.call(target, [setTenant, ...work], options).then((results: any[]) => settle(results.slice(1)))
           }
+          if (tenantId === undefined) return target.$transaction.call(target, (tx: any) => work(throwingClient(tx)), options)
           return target.$transaction.call(target, async (tx: any) => {
             await setLocalTenant(tx, tenantId)
-            return work(tx)
+            return work(throwingClient(tx))
           }, options)
         }
       }
@@ -55,8 +93,8 @@ export function tenantScopedPrisma<Client extends object>(client: Client): Clien
       if (typeof property === 'string' && rawOperations.has(property)) {
         return (...args: any[]) => {
           const tenantId = tenantStorage.getStore()
-          if (tenantId === undefined) return target[property](...args)
-          return withLocalTenant(tenantId, (tx) => tx[property](...args))
+          if (tenantId === undefined) return rethrowing(target[property](...args))
+          return withLocalTenant(tenantId, (tx) => rethrowing(tx[property](...args)))
         }
       }
 
@@ -68,8 +106,8 @@ export function tenantScopedPrisma<Client extends object>(client: Client): Clien
             if (typeof operation !== 'string' || !modelOperations.has(operation) || typeof method !== 'function') return method
             return (...args: any[]) => {
               const tenantId = tenantStorage.getStore()
-              if (tenantId === undefined) return method.apply(delegate, args)
-              return withLocalTenant(tenantId, (tx) => tx[property][operation](...args))
+              if (tenantId === undefined) return rethrowing(method.apply(delegate, args))
+              return withLocalTenant(tenantId, (tx) => rethrowing(tx[property][operation](...args)))
             }
           },
         })
