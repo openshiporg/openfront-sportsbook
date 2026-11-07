@@ -14,7 +14,7 @@ import { GEO_TOKENIZED_MARKER, retentionCandidates } from '../../sportsbook/doma
 import { decryptTotpSecret, encryptTotpSecret, generateTotpSecret, verifyTotp } from '../../sportsbook/domain/totp'
 import { hasOperatorMfaAssurance, startOperatorMfaSession } from '../session-assurance'
 import { projectCashOutState, remainingStakeByPart } from '../../sportsbook/domain/cashout-economics'
-import { assertEventAllowsNewMarket, assertEventTradingTransition, assertEventTransition, assertMarketTransition, assertSupportCaseTransition } from '../../sportsbook/domain/trading-eligibility'
+import { assertEventAllowsNewMarket, assertEventTradingTransition, assertEventTransition, assertSupportCaseTransition } from '../../sportsbook/domain/trading-eligibility'
 import { getFullStraightPlan, settleFullStraight } from '../../sportsbook/settlement/full-straight'
 import { approvalReview, assertCurrentActor, consumeApproval } from './approval-control'
 import { resolveOperatorInstant, tenantTimeZone } from '../../sportsbook/domain/zoned-time'

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,9 @@ export function ListFilters({ searchKey = "q", searchLabel, searchPlaceholder, f
   const searchParams = useSearchParams();
   const current = searchParams?.get(searchKey) ?? "";
   const [text, setText] = useState(current);
-  useEffect(() => setText(current), [current]);
+  // Back/forward or a shared link changes the URL value: adopt it during render (React's "adjust state on prop change").
+  const [shown, setShown] = useState(current);
+  if (shown !== current) { setShown(current); setText(current); }
 
   const navigate = (updates: Record<string, string | null>) => {
     const next = new URLSearchParams(searchParams?.toString() ?? "");

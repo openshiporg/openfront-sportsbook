@@ -34,13 +34,13 @@ export function useCustomerResource<T>(path: string | null) {
   const [version, setVersion] = useState(0)
   const reload = useCallback(() => { setLoading(true); setError(null); setVersion(value => value + 1) }, [])
   const [loadedPath, setLoadedPath] = useState<string | null>(path)
+  // A different resource (filters, cursor, account) never shows the previous resource's rows as current: reset
+  // during render when the path changes, so the effect below only fetches.
+  if (loadedPath !== path) { setLoadedPath(path); setData(null); setError(null); setLoading(path !== null) }
 
   useEffect(() => {
-    if (path === null) { setData(null); setError(null); setLoading(false); setLoadedPath(path); return }
+    if (path === null) return
     const controller = new AbortController()
-    setLoading(true)
-    // A different resource (filters, cursor, account) never shows the previous resource's rows as current.
-    if (loadedPath !== path) { setData(null); setError(null); setLoadedPath(path) }
     customerApi<T>(path, { signal: controller.signal })
       .then(result => {
         // Only the newest request may publish; a late response for an older path/version is dropped.
