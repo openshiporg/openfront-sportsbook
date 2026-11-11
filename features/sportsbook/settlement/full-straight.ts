@@ -1,5 +1,5 @@
 import type { PrismaClient } from '../../keystone/prisma'
-import { appendAudit, emit, lockWagerForSettlement, postJournal, serializable } from '../../keystone/mutations/sportsbook'
+import { appendAudit, lockWagerForSettlement, postJournal, serializable } from '../../keystone/mutations/sportsbook'
 import { evidenceHash } from '../domain/engine'
 import { parseExactDecimal, settleCombinationPart } from '../domain/combination'
 import { settlementJournal } from '../domain/ledger'
@@ -216,7 +216,7 @@ async function executeFullStraight(tx: any, tenantId: string, actorId: string, i
   // Acceptance already debited the source and CAPTURED its hold. Preserve that fact; no second release.
   await tx.settlementRun.update({ where: { id: run.id }, data: { status: 'COMPLETED', wagersSettled: 1, completedAt: now } })
   await appendAudit(tx, tenantId, actorId, 'wager.settled_full', 'Wager', input.wagerId, reason, { settlementId: settlement.id, requestHash, planHash: plan.planHash, resultVersionId: plan.resultVersionId, payoutMinor: plan.payoutMinor })
-  await emit(tx, tenantId, 'WAGER', input.wagerId, 'wager.settled.v2', { settlementId: settlement.id, planHash: plan.planHash, payoutMinor: plan.payoutMinor, currency: plan.currency })
+  
   guard()
   return settlement.id
 }

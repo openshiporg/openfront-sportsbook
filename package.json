@@ -12,8 +12,6 @@
     "migrate": "prisma migrate deploy",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test --test-concurrency=1 features/sportsbook/**/*.test.ts features/keystone/lib/internal-origin.test.ts features/keystone/lib/constraint-errors.test.ts features/keystone/lib/keystone-prisma-error.test.ts",
-    "preworker": "npm run validate:env",
-    "worker": "tsx features/sportsbook/workers/main.ts",
     "validate:env": "tsx features/sportsbook/operations/validate-env.ts",
     "verify:audit": "tsx features/sportsbook/operations/verify-audit.ts",
     "verify:migrations": "tsx features/sportsbook/operations/verify-migration-contract.ts",

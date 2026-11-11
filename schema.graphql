@@ -768,80 +768,6 @@ input RegionRelateToOneForCreateInput {
   connect: RegionWhereUniqueInput
 }
 
-type DeadLetter {
-  id: ID!
-  tenant: Tenant
-  sourceType: String
-  sourceId: String
-  reason: String
-  attempts: Int
-  payloadReference: String
-  resolvedAt: DateTime
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
-input DeadLetterWhereUniqueInput {
-  id: ID
-}
-
-input DeadLetterWhereInput {
-  AND: [DeadLetterWhereInput!]
-  OR: [DeadLetterWhereInput!]
-  NOT: [DeadLetterWhereInput!]
-  id: IDFilter
-  tenant: TenantWhereInput
-  sourceType: StringFilter
-  sourceId: StringFilter
-  reason: StringFilter
-  attempts: IntNullableFilter
-  payloadReference: StringFilter
-  resolvedAt: DateTimeNullableFilter
-  createdAt: DateTimeFilter
-  updatedAt: DateTimeFilter
-}
-
-input DeadLetterOrderByInput {
-  id: OrderDirection
-  sourceType: OrderDirection
-  sourceId: OrderDirection
-  reason: OrderDirection
-  attempts: OrderDirection
-  payloadReference: OrderDirection
-  resolvedAt: OrderDirection
-  createdAt: OrderDirection
-  updatedAt: OrderDirection
-}
-
-input DeadLetterUpdateInput {
-  tenant: TenantRelateToOneForUpdateInput
-  sourceType: String
-  sourceId: String
-  reason: String
-  attempts: Int
-  payloadReference: String
-  resolvedAt: DateTime
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
-input DeadLetterUpdateArgs {
-  where: DeadLetterWhereUniqueInput!
-  data: DeadLetterUpdateInput!
-}
-
-input DeadLetterCreateInput {
-  tenant: TenantRelateToOneForCreateInput
-  sourceType: String
-  sourceId: String
-  reason: String
-  attempts: Int
-  payloadReference: String
-  resolvedAt: DateTime
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
 type Event {
   id: ID!
   tenant: Tenant
@@ -1896,117 +1822,6 @@ input OperatorLicenceCreateInput {
   expiresAt: DateTime
   permittedRegions: JSON
   status: OperatorLicenceStatusType
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
-type OutboxMessage {
-  id: ID!
-  tenant: Tenant
-  aggregateType: String
-  aggregateId: String
-  eventType: String
-  payload: JSON
-  status: OutboxMessageStatusType
-  attempts: Int
-  maxAttempts: Int
-  availableAt: DateTime
-  leaseUntil: DateTime
-  leaseOwner: String
-  lastError: String
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
-enum OutboxMessageStatusType {
-  PENDING
-  PROCESSING
-  COMPLETED
-  DEAD
-}
-
-input OutboxMessageWhereUniqueInput {
-  id: ID
-}
-
-input OutboxMessageWhereInput {
-  AND: [OutboxMessageWhereInput!]
-  OR: [OutboxMessageWhereInput!]
-  NOT: [OutboxMessageWhereInput!]
-  id: IDFilter
-  tenant: TenantWhereInput
-  aggregateType: StringFilter
-  aggregateId: StringFilter
-  eventType: StringFilter
-  status: OutboxMessageStatusTypeNullableFilter
-  attempts: IntNullableFilter
-  maxAttempts: IntNullableFilter
-  availableAt: DateTimeNullableFilter
-  leaseUntil: DateTimeNullableFilter
-  leaseOwner: StringFilter
-  lastError: StringFilter
-  createdAt: DateTimeFilter
-  updatedAt: DateTimeFilter
-}
-
-input OutboxMessageStatusTypeNullableFilter {
-  equals: OutboxMessageStatusType
-  in: [OutboxMessageStatusType!]
-  notIn: [OutboxMessageStatusType!]
-  not: OutboxMessageStatusTypeNullableFilter
-}
-
-input OutboxMessageOrderByInput {
-  id: OrderDirection
-  aggregateType: OrderDirection
-  aggregateId: OrderDirection
-  eventType: OrderDirection
-  status: OrderDirection
-  attempts: OrderDirection
-  maxAttempts: OrderDirection
-  availableAt: OrderDirection
-  leaseUntil: OrderDirection
-  leaseOwner: OrderDirection
-  lastError: OrderDirection
-  createdAt: OrderDirection
-  updatedAt: OrderDirection
-}
-
-input OutboxMessageUpdateInput {
-  tenant: TenantRelateToOneForUpdateInput
-  aggregateType: String
-  aggregateId: String
-  eventType: String
-  payload: JSON
-  status: OutboxMessageStatusType
-  attempts: Int
-  maxAttempts: Int
-  availableAt: DateTime
-  leaseUntil: DateTime
-  leaseOwner: String
-  lastError: String
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
-input OutboxMessageUpdateArgs {
-  where: OutboxMessageWhereUniqueInput!
-  data: OutboxMessageUpdateInput!
-}
-
-input OutboxMessageCreateInput {
-  tenant: TenantRelateToOneForCreateInput
-  aggregateType: String
-  aggregateId: String
-  eventType: String
-  payload: JSON
-  status: OutboxMessageStatusType
-  attempts: Int
-  maxAttempts: Int
-  availableAt: DateTime
-  leaseUntil: DateTime
-  leaseOwner: String
-  lastError: String
   createdAt: DateTime
   updatedAt: DateTime
 }
@@ -11742,140 +11557,6 @@ input SafeguardingAccountRelateToOneForCreateInput {
   connect: SafeguardingAccountWhereUniqueInput
 }
 
-type ScheduledJob {
-  id: ID!
-  tenant: Tenant
-  type: ScheduledJobTypeType
-  scopeType: String
-  scopeId: String
-  payload: JSON
-  status: ScheduledJobStatusType
-  dueAt: DateTime
-  leaseUntil: DateTime
-  leaseOwner: String
-  attempts: Int
-  maxAttempts: Int
-  idempotencyKey: String
-  lastError: String
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
-enum ScheduledJobTypeType {
-  RECONCILIATION
-  REPORT
-  NOTIFICATION
-  RETENTION
-  EXPIRY
-  PROVIDER_HEALTH
-  FEED_RECOVERY
-}
-
-enum ScheduledJobStatusType {
-  SCHEDULED
-  PROCESSING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-input ScheduledJobWhereUniqueInput {
-  id: ID
-}
-
-input ScheduledJobWhereInput {
-  AND: [ScheduledJobWhereInput!]
-  OR: [ScheduledJobWhereInput!]
-  NOT: [ScheduledJobWhereInput!]
-  id: IDFilter
-  tenant: TenantWhereInput
-  type: ScheduledJobTypeTypeNullableFilter
-  scopeType: StringFilter
-  scopeId: StringFilter
-  status: ScheduledJobStatusTypeNullableFilter
-  dueAt: DateTimeFilter
-  leaseUntil: DateTimeNullableFilter
-  leaseOwner: StringFilter
-  attempts: IntNullableFilter
-  maxAttempts: IntNullableFilter
-  idempotencyKey: StringFilter
-  lastError: StringFilter
-  createdAt: DateTimeFilter
-  updatedAt: DateTimeFilter
-}
-
-input ScheduledJobTypeTypeNullableFilter {
-  equals: ScheduledJobTypeType
-  in: [ScheduledJobTypeType!]
-  notIn: [ScheduledJobTypeType!]
-  not: ScheduledJobTypeTypeNullableFilter
-}
-
-input ScheduledJobStatusTypeNullableFilter {
-  equals: ScheduledJobStatusType
-  in: [ScheduledJobStatusType!]
-  notIn: [ScheduledJobStatusType!]
-  not: ScheduledJobStatusTypeNullableFilter
-}
-
-input ScheduledJobOrderByInput {
-  id: OrderDirection
-  type: OrderDirection
-  scopeType: OrderDirection
-  scopeId: OrderDirection
-  status: OrderDirection
-  dueAt: OrderDirection
-  leaseUntil: OrderDirection
-  leaseOwner: OrderDirection
-  attempts: OrderDirection
-  maxAttempts: OrderDirection
-  idempotencyKey: OrderDirection
-  lastError: OrderDirection
-  createdAt: OrderDirection
-  updatedAt: OrderDirection
-}
-
-input ScheduledJobUpdateInput {
-  tenant: TenantRelateToOneForUpdateInput
-  type: ScheduledJobTypeType
-  scopeType: String
-  scopeId: String
-  payload: JSON
-  status: ScheduledJobStatusType
-  dueAt: DateTime
-  leaseUntil: DateTime
-  leaseOwner: String
-  attempts: Int
-  maxAttempts: Int
-  idempotencyKey: String
-  lastError: String
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
-input ScheduledJobUpdateArgs {
-  where: ScheduledJobWhereUniqueInput!
-  data: ScheduledJobUpdateInput!
-}
-
-input ScheduledJobCreateInput {
-  tenant: TenantRelateToOneForCreateInput
-  type: ScheduledJobTypeType
-  scopeType: String
-  scopeId: String
-  payload: JSON
-  status: ScheduledJobStatusType
-  dueAt: DateTime
-  leaseUntil: DateTime
-  leaseOwner: String
-  attempts: Int
-  maxAttempts: Int
-  idempotencyKey: String
-  lastError: String
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
 type ScreeningHit {
   id: ID!
   tenant: Tenant
@@ -13346,7 +13027,6 @@ type WebhookDelivery {
   id: ID!
   tenant: Tenant
   endpoint: WebhookEndpoint
-  outboxMessage: OutboxMessage
   deliveryId: String
   eventType: String
   eventVersion: String
@@ -13381,7 +13061,6 @@ input WebhookDeliveryWhereInput {
   id: IDFilter
   tenant: TenantWhereInput
   endpoint: WebhookEndpointWhereInput
-  outboxMessage: OutboxMessageWhereInput
   deliveryId: StringFilter
   eventType: StringFilter
   eventVersion: StringFilter
@@ -13424,7 +13103,6 @@ input WebhookDeliveryOrderByInput {
 input WebhookDeliveryUpdateInput {
   tenant: TenantRelateToOneForUpdateInput
   endpoint: WebhookEndpointRelateToOneForUpdateInput
-  outboxMessage: OutboxMessageRelateToOneForUpdateInput
   deliveryId: String
   eventType: String
   eventVersion: String
@@ -13446,12 +13124,6 @@ input WebhookEndpointRelateToOneForUpdateInput {
   disconnect: Boolean
 }
 
-input OutboxMessageRelateToOneForUpdateInput {
-  create: OutboxMessageCreateInput
-  connect: OutboxMessageWhereUniqueInput
-  disconnect: Boolean
-}
-
 input WebhookDeliveryUpdateArgs {
   where: WebhookDeliveryWhereUniqueInput!
   data: WebhookDeliveryUpdateInput!
@@ -13460,7 +13132,6 @@ input WebhookDeliveryUpdateArgs {
 input WebhookDeliveryCreateInput {
   tenant: TenantRelateToOneForCreateInput
   endpoint: WebhookEndpointRelateToOneForCreateInput
-  outboxMessage: OutboxMessageRelateToOneForCreateInput
   deliveryId: String
   eventType: String
   eventVersion: String
@@ -13479,11 +13150,6 @@ input WebhookDeliveryCreateInput {
 input WebhookEndpointRelateToOneForCreateInput {
   create: WebhookEndpointCreateInput
   connect: WebhookEndpointWhereUniqueInput
-}
-
-input OutboxMessageRelateToOneForCreateInput {
-  create: OutboxMessageCreateInput
-  connect: OutboxMessageWhereUniqueInput
 }
 
 type WebhookEndpoint {
@@ -13623,12 +13289,6 @@ type Mutation {
   updateCompetitions(data: [CompetitionUpdateArgs!]!): [Competition]
   deleteCompetition(where: CompetitionWhereUniqueInput!): Competition
   deleteCompetitions(where: [CompetitionWhereUniqueInput!]!): [Competition]
-  createDeadLetter(data: DeadLetterCreateInput!): DeadLetter
-  createDeadLetters(data: [DeadLetterCreateInput!]!): [DeadLetter]
-  updateDeadLetter(where: DeadLetterWhereUniqueInput!, data: DeadLetterUpdateInput!): DeadLetter
-  updateDeadLetters(data: [DeadLetterUpdateArgs!]!): [DeadLetter]
-  deleteDeadLetter(where: DeadLetterWhereUniqueInput!): DeadLetter
-  deleteDeadLetters(where: [DeadLetterWhereUniqueInput!]!): [DeadLetter]
   createEvent(data: EventCreateInput!): Event
   createEvents(data: [EventCreateInput!]!): [Event]
   updateEvent(where: EventWhereUniqueInput!, data: EventUpdateInput!): Event
@@ -13689,12 +13349,6 @@ type Mutation {
   updateOperatorLicences(data: [OperatorLicenceUpdateArgs!]!): [OperatorLicence]
   deleteOperatorLicence(where: OperatorLicenceWhereUniqueInput!): OperatorLicence
   deleteOperatorLicences(where: [OperatorLicenceWhereUniqueInput!]!): [OperatorLicence]
-  createOutboxMessage(data: OutboxMessageCreateInput!): OutboxMessage
-  createOutboxMessages(data: [OutboxMessageCreateInput!]!): [OutboxMessage]
-  updateOutboxMessage(where: OutboxMessageWhereUniqueInput!, data: OutboxMessageUpdateInput!): OutboxMessage
-  updateOutboxMessages(data: [OutboxMessageUpdateArgs!]!): [OutboxMessage]
-  deleteOutboxMessage(where: OutboxMessageWhereUniqueInput!): OutboxMessage
-  deleteOutboxMessages(where: [OutboxMessageWhereUniqueInput!]!): [OutboxMessage]
   createPlayer(data: PlayerCreateInput!): Player
   createPlayers(data: [PlayerCreateInput!]!): [Player]
   updatePlayer(where: PlayerWhereUniqueInput!, data: PlayerUpdateInput!): Player
@@ -14277,12 +13931,6 @@ type Mutation {
   updateSafeguardingReconciliations(data: [SafeguardingReconciliationUpdateArgs!]!): [SafeguardingReconciliation]
   deleteSafeguardingReconciliation(where: SafeguardingReconciliationWhereUniqueInput!): SafeguardingReconciliation
   deleteSafeguardingReconciliations(where: [SafeguardingReconciliationWhereUniqueInput!]!): [SafeguardingReconciliation]
-  createScheduledJob(data: ScheduledJobCreateInput!): ScheduledJob
-  createScheduledJobs(data: [ScheduledJobCreateInput!]!): [ScheduledJob]
-  updateScheduledJob(where: ScheduledJobWhereUniqueInput!, data: ScheduledJobUpdateInput!): ScheduledJob
-  updateScheduledJobs(data: [ScheduledJobUpdateArgs!]!): [ScheduledJob]
-  deleteScheduledJob(where: ScheduledJobWhereUniqueInput!): ScheduledJob
-  deleteScheduledJobs(where: [ScheduledJobWhereUniqueInput!]!): [ScheduledJob]
   createScreeningHit(data: ScreeningHitCreateInput!): ScreeningHit
   createScreeningHits(data: [ScreeningHitCreateInput!]!): [ScreeningHit]
   updateScreeningHit(where: ScreeningHitWhereUniqueInput!, data: ScreeningHitUpdateInput!): ScreeningHit
@@ -14402,8 +14050,6 @@ type Mutation {
   requestResettlementApproval(settlementId: ID!, resultVersionId: ID!, outcome: String!, factorNumerator: String, factorDenominator: String, reason: String!): ID!
   resettleWager(settlementId: ID!, resultVersionId: ID!, outcome: String!, factorNumerator: String, factorDenominator: String, idempotencyKey: String!, approvalId: ID!): ID!
   runReconciliation(type: String!, windowFrom: String!, windowTo: String!): ID!
-  enqueueRecovery(aggregateType: String!, aggregateId: ID!, eventType: String!): ID!
-  replayQueueItem(sourceType: String!, sourceId: ID!, reason: String!): ID!
   openOperationalIncident(severity: String!, title: String!, evidence: String!): ID!
   setIncidentStatus(incidentId: ID!, status: String!, reason: String!): Boolean!
   generateComplianceReport(type: String!, periodStart: String!, periodEnd: String!): ID!
@@ -14425,6 +14071,7 @@ type Mutation {
   beginOperatorMfaEnrollment: OperatorMfaEnrollment!
   completeOperatorMfaEnrollment(code: String!): OperatorMfaCompletion!
   verifyOperatorMfaSession(code: String!): String!
+  regenerateOperatorMfaRecoveryCodes(code: String!): [String!]!
   sendUserPasswordResetLink(email: String!): Boolean!
   redeemUserPasswordResetToken(email: String!, token: String!, password: String!): OperatorPasswordResetResult!
   setEventTradingState(eventId: ID!, status: String!, livePhase: String, clockSeconds: Int, reason: String!): Boolean!
@@ -14464,7 +14111,6 @@ type Mutation {
   applyPromotionActivation(promotionId: ID!, approvalId: ID!): Boolean!
   requestWebhookEndpoint(name: String!, url: String!, eventTypes: String!, secretReference: String!, reason: String!): ID!
   applyWebhookEndpoint(name: String!, url: String!, eventTypes: String!, secretReference: String!, approvalId: ID!): ID!
-  testWebhookEndpoint(endpointId: ID!): ID!
   runAdapterCertification(connectionId: ID!): ID!
   setProviderOperationalState(connectionId: ID!, status: String!, reason: String!): Boolean!
   settleCombinationWager(wagerId: ID!, idempotencyKey: String!, planHash: String, expectedActorId: ID, expectedTenantId: ID): ID!
@@ -14485,12 +14131,15 @@ type Mutation {
   assessSettlementTax(settlementId: ID!, taxRuleId: ID!, idempotencyKey: String!): ID!
   requestLedgerAdjustment(accountId: ID!, amountMinor: String!, direction: String!, reasonCode: String!, evidence: String!): ID!
   applyLedgerAdjustment(adjustmentId: ID!, approvalId: ID!, idempotencyKey: String!): ID!
-  scheduleOperationalJob(type: String!, scopeType: String!, scopeId: String!, dueAt: String!, payload: String!, idempotencyKey: String!): ID!
   runRetentionDryRun(policyId: ID!, windowFrom: String!, windowTo: String!): ID!
   requestRetentionExecution(executionId: ID!, reason: String!): ID!
   applyRetentionExecution(executionId: ID!, approvalId: ID!): Boolean!
   requestDataExport(type: String!, classification: String!, scope: String!, expiresAt: String!): ID!
   applyApprovedDataExport(exportId: ID!, approvalId: ID!): Boolean!
+  voidWager(wagerId: ID!, reason: String!): ID!
+  refundDeposit(paymentId: ID!, reason: String!): ID!
+  confirmCageDeposit(reference: String!): ID!
+  rejectCageDeposit(reference: String!, reason: String!): ID!
 }
 
 union UserAuthenticationWithPasswordResult = UserAuthenticationWithPasswordSuccess | UserAuthenticationWithPasswordFailure
@@ -14523,9 +14172,6 @@ type Query {
   competition(where: CompetitionWhereUniqueInput!): Competition
   competitions(where: CompetitionWhereInput! = {}, orderBy: [CompetitionOrderByInput!]! = [], take: Int! = 100, skip: Int! = 0, cursor: CompetitionWhereUniqueInput): [Competition!]
   competitionsCount(where: CompetitionWhereInput! = {}): Int
-  deadLetter(where: DeadLetterWhereUniqueInput!): DeadLetter
-  deadLetters(where: DeadLetterWhereInput! = {}, orderBy: [DeadLetterOrderByInput!]! = [], take: Int! = 100, skip: Int! = 0, cursor: DeadLetterWhereUniqueInput): [DeadLetter!]
-  deadLettersCount(where: DeadLetterWhereInput! = {}): Int
   event(where: EventWhereUniqueInput!): Event
   events(where: EventWhereInput! = {}, orderBy: [EventOrderByInput!]! = [], take: Int! = 100, skip: Int! = 0, cursor: EventWhereUniqueInput): [Event!]
   eventsCount(where: EventWhereInput! = {}): Int
@@ -14556,9 +14202,6 @@ type Query {
   operatorLicence(where: OperatorLicenceWhereUniqueInput!): OperatorLicence
   operatorLicences(where: OperatorLicenceWhereInput! = {}, orderBy: [OperatorLicenceOrderByInput!]! = [], take: Int! = 100, skip: Int! = 0, cursor: OperatorLicenceWhereUniqueInput): [OperatorLicence!]
   operatorLicencesCount(where: OperatorLicenceWhereInput! = {}): Int
-  outboxMessage(where: OutboxMessageWhereUniqueInput!): OutboxMessage
-  outboxMessages(where: OutboxMessageWhereInput! = {}, orderBy: [OutboxMessageOrderByInput!]! = [], take: Int! = 100, skip: Int! = 0, cursor: OutboxMessageWhereUniqueInput): [OutboxMessage!]
-  outboxMessagesCount(where: OutboxMessageWhereInput! = {}): Int
   player(where: PlayerWhereUniqueInput!): Player
   players(where: PlayerWhereInput! = {}, orderBy: [PlayerOrderByInput!]! = [], take: Int! = 100, skip: Int! = 0, cursor: PlayerWhereUniqueInput): [Player!]
   playersCount(where: PlayerWhereInput! = {}): Int
@@ -14850,9 +14493,6 @@ type Query {
   safeguardingReconciliation(where: SafeguardingReconciliationWhereUniqueInput!): SafeguardingReconciliation
   safeguardingReconciliations(where: SafeguardingReconciliationWhereInput! = {}, orderBy: [SafeguardingReconciliationOrderByInput!]! = [], take: Int! = 100, skip: Int! = 0, cursor: SafeguardingReconciliationWhereUniqueInput): [SafeguardingReconciliation!]
   safeguardingReconciliationsCount(where: SafeguardingReconciliationWhereInput! = {}): Int
-  scheduledJob(where: ScheduledJobWhereUniqueInput!): ScheduledJob
-  scheduledJobs(where: ScheduledJobWhereInput! = {}, orderBy: [ScheduledJobOrderByInput!]! = [], take: Int! = 100, skip: Int! = 0, cursor: ScheduledJobWhereUniqueInput): [ScheduledJob!]
-  scheduledJobsCount(where: ScheduledJobWhereInput! = {}): Int
   screeningHit(where: ScreeningHitWhereUniqueInput!): ScreeningHit
   screeningHits(where: ScreeningHitWhereInput! = {}, orderBy: [ScreeningHitOrderByInput!]! = [], take: Int! = 100, skip: Int! = 0, cursor: ScreeningHitWhereUniqueInput): [ScreeningHit!]
   screeningHitsCount(where: ScreeningHitWhereInput! = {}): Int

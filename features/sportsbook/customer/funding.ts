@@ -187,8 +187,8 @@ export type UnknownPaymentReconciliation = { state: 'SUCCEEDED' | 'FAILED' | 'AL
  * provider key (no new dispatch, no replacement key), and converges the intent with the same settle/release logic
  * as the customer finalize step. A provider that still cannot answer, a changed installation/config, or an
  * observation whose amount/currency differs from the intent leaves the intent UNKNOWN with funds held and throws,
- * so the outbox item retries with backoff and dead-letters after its bounded attempts for operator review.
- * `fence` re-asserts the worker's live lease inside the committing transaction.
+ * so the operator can re-run the check from the Payments screen.
+ * `fence` runs inside the committing transaction before any effect.
  */
 export async function reconcileUnknownPayment(
   prisma: any,
@@ -227,7 +227,6 @@ export async function reconcileUnknownPayment(
     const now = new Date()
     const { status, intent: settled } = await applyPaymentOutcome(tx, current, outcome, now)
     if (status === 'UNKNOWN') throw new Error('PAYMENT_STILL_UNKNOWN')
-    await tx.outboxMessage.create({ data: { tenantId, aggregateType: 'PAYMENT', aggregateId: current.id, eventType: status === 'SUCCEEDED' ? 'payment.completed.v1' : 'payment.failed.v1', payload: { type: current.type, amountMinor: current.amountMinor, currency: current.currency, providerConnectionId: current.providerConnectionId, reasonCode: outcome.reasonCode }, status: 'PENDING', attempts: 0, maxAttempts: 10, availableAt: now } })
     await audit(tx, status === 'SUCCEEDED' ? 'payment.reconciled_completed' : 'payment.reconciled_failed', current.id, { type: current.type, amountMinor: current.amountMinor, currency: current.currency, providerConnectionId: current.providerConnectionId, externalReference: outcome.externalRef, reasonCode: outcome.reasonCode })
     // Complete the originating customer command (if still in progress) with the converged receipt.
     const commandId = String(current.idempotencyKey ?? '').match(/^customer(?:-withdrawal)?:(.+)$/)?.[1]
@@ -355,7 +354,6 @@ async function runFundingCommand(
     }
     const now = new Date()
     const { status, intent } = await applyPaymentOutcome(tx, current, outcome, now)
-    await tx.outboxMessage.create({ data: { tenantId: actor.tenantId, aggregateType: 'PAYMENT', aggregateId: current.id, eventType: status === 'SUCCEEDED' ? 'payment.completed.v1' : status === 'FAILED' ? 'payment.failed.v1' : 'payment.unknown.v1', payload: { type: current.type, amountMinor: current.amountMinor, currency: current.currency, providerConnectionId: current.providerConnectionId, reasonCode: outcome.reasonCode }, status: 'PENDING', attempts: 0, maxAttempts: 10, availableAt: now } })
     await appendCustomerAudit(tx, { tenantId: actor.tenantId, playerId: actor.playerId, action: current.type === 'DEPOSIT' ? 'customer.wallet_funded' : 'customer.withdrawal_requested', targetType: 'PaymentIntent', targetId: current.id, reason: status === 'SUCCEEDED' ? 'SANDBOX_CONFIRMED' : status === 'FAILED' ? 'SANDBOX_PROVIDER_FAILED' : 'PROVIDER_OUTCOME_UNKNOWN', payload: { amountMinor: current.amountMinor, currency: current.currency, holdId: current.holdId, externalReference: outcome.externalRef, reasonCode: outcome.reasonCode } })
     const result = fundingResultFor(intent, duplicate, await availableFor(tx, actor, current.currency), currency.exponent)
     if (status === 'UNKNOWN') await recordCustomerCommandProgress(tx, commandId, result)

@@ -1,7 +1,7 @@
 import { evidenceHash } from '../domain/engine'
 import { providerInstallationRevision } from '../adapters/installation-revision'
 
-type InboxJob={id:string;tenantId:string;type:string;rawEnvelopeId:string}
+export type InboxJob={id:string;tenantId:string;type:string;rawEnvelopeId:string}
 type InboxAuditAppender=(tx:any,tenantId:string,action:string,targetType:string,targetId:string,payload:unknown)=>Promise<unknown>
 const payloadObject=(value:unknown)=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{}
 const sequenceNumber=(value:string)=>/^\d{1,30}$/.test(value)?BigInt(value):null
@@ -15,7 +15,7 @@ export async function processCanonicalInbox(prisma:any,job:InboxJob,hooks:InboxE
  return prisma.$transaction(async(tx:any)=>{await hooks.beforeEffects?.(tx);const result=await normalizeCanonicalInTx(tx,job);await hooks.afterEffects?.(tx,result);return result})
 }
 
-async function normalizeCanonicalInTx(tx:any,job:InboxJob):Promise<InboxResult>{
+export async function normalizeCanonicalInTx(tx:any,job:InboxJob):Promise<InboxResult>{
  {
   const envelope=await tx.rawEnvelope.findFirst({where:{id:job.rawEnvelopeId,tenantId:job.tenantId},include:{providerConnection:true}});if(!envelope?.providerConnection)throw new Error('MISSING_ENVELOPE')
   // Current admission at effect time: same tenant, not disabled/suspended. FOR SHARE fences a concurrent state change until this effect commits.
@@ -39,7 +39,7 @@ async function normalizeCanonicalInTx(tx:any,job:InboxJob):Promise<InboxResult>{
    return{action:'sports.price_normalized',targetType:'Selection',targetId:selectionId,details:{sequence,decimalOdds}}
   }
   if(kind==='results'&&type==='results.final.v1'){
-   const eventId=typeof payload.eventId==='string'?payload.eventId:'';if(!eventId||!strictInstant(event.occurredAt))throw new Error('INVALID_CANONICAL_RESULT');await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`result:${job.tenantId}:${eventId}`}))`;const eventRow=await tx.event.findFirst({where:{id:eventId,tenantId:job.tenantId}});if(!eventRow)throw new Error('RESULT_EVENT_NOT_FOUND');const latest=await tx.resultVersion.findFirst({where:{tenantId:job.tenantId,eventId},orderBy:{version:'desc'}}),payloadHash=evidenceHash(payload),existing=await tx.resultVersion.findFirst({where:{tenantId:job.tenantId,eventId,payloadHash}});if(existing)return{action:'result.duplicate_preserved',targetType:'ResultVersion',targetId:existing.id,details:{payloadHash}};const result=await tx.resultVersion.create({data:{tenantId:job.tenantId,eventId,providerConnectionId:envelope.providerConnection.id,version:Number(latest?.version??0)+1,status:'PENDING',payload,payloadHash}});await tx.outboxMessage.create({data:{tenantId:job.tenantId,aggregateType:'RESULT_VERSION',aggregateId:result.id,eventType:'result.received.v1',payload:{eventId,payloadHash,rawEnvelopeId:envelope.id},status:'PENDING',attempts:0,maxAttempts:10,availableAt:new Date()}});return{action:'result.received',targetType:'ResultVersion',targetId:result.id,details:{eventId,payloadHash}}
+   const eventId=typeof payload.eventId==='string'?payload.eventId:'';if(!eventId||!strictInstant(event.occurredAt))throw new Error('INVALID_CANONICAL_RESULT');await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`result:${job.tenantId}:${eventId}`}))`;const eventRow=await tx.event.findFirst({where:{id:eventId,tenantId:job.tenantId}});if(!eventRow)throw new Error('RESULT_EVENT_NOT_FOUND');const latest=await tx.resultVersion.findFirst({where:{tenantId:job.tenantId,eventId},orderBy:{version:'desc'}}),payloadHash=evidenceHash(payload),existing=await tx.resultVersion.findFirst({where:{tenantId:job.tenantId,eventId,payloadHash}});if(existing)return{action:'result.duplicate_preserved',targetType:'ResultVersion',targetId:existing.id,details:{payloadHash}};const result=await tx.resultVersion.create({data:{tenantId:job.tenantId,eventId,providerConnectionId:envelope.providerConnection.id,version:Number(latest?.version??0)+1,status:'PENDING',payload,payloadHash}});return{action:'result.received',targetType:'ResultVersion',targetId:result.id,details:{eventId,payloadHash}}
   }
   if(kind==='integrity'&&type==='integrity.alert.v1'){
    const opened=await tx.integrityCase.findFirst({where:{tenantId:job.tenantId,providerConnectionId:envelope.providerConnection.id,restrictedEvidence:{path:['rawEnvelopeId'],equals:envelope.id}}});if(opened)return{action:'integrity.case_preserved',targetType:'IntegrityCase',targetId:opened.id,details:{severity:opened.severity}}

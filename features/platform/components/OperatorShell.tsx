@@ -32,8 +32,6 @@ const screenRoutes = {
   Integrations: "/platform/integrations",
   Inbox: "/platform/integrations/inbox",
   Webhooks: "/platform/integrations/webhooks",
-  DLQ: "/platform/integrations/dlq",
-  Recovery: "/platform/recovery",
   Incidents: "/platform/incidents",
   Reports: "/platform/reports",
   Configuration: "/platform/configuration",

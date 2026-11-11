@@ -22,9 +22,6 @@ const modelAttributes: Record<string, readonly string[]> = {
     '@@unique([tenantId, idempotencyKey], map: "JournalTransaction_tenant_idempotency_key")',
     '@@unique([tenantId, reversalOfId], map: "JournalTransaction_tenant_reversal_uq")',
   ],
-  OutboxMessage: [
-    '@@index([status, availableAt, leaseUntil], map: "OutboxMessage_claim_idx")',
-  ],
   PaymentIntent: [
     '@@unique([tenantId, idempotencyKey], map: "PaymentIntent_tenant_idempotency_key")',
   ],
@@ -127,9 +124,6 @@ const modelAttributes: Record<string, readonly string[]> = {
   ScreeningHit: [
     '@@unique([tenantId, providerConnectionId, screeningType, matchToken], map: "ScreeningHit_provider_match_uq")',
   ],
-  ScheduledJob: [    '@@unique([tenantId, idempotencyKey], map: "ScheduledJob_idempotency_uq")',
-    '@@index([status, dueAt, leaseUntil], map: "ScheduledJob_claim_idx")',
-  ],
   AffiliateAttribution: [
     '@@unique([tenantId, playerId, campaignReference], map: "AffiliateAttribution_campaign_uq")',
   ],
@@ -156,7 +150,7 @@ const fullTenantModels = [
   'FeatureFlag','FeedHealthSnapshot','HouseRuleVersion','IntegrityCase','JurisdictionPolicyVersion','LegalEntity',
   'LedgerAdjustmentRequest','MarketDefinition','Notification','OperatorChannel','PamSubjectMapping','PlayerStatement',
   'Promotion','PromotionRedemption','PromotionRuleVersion','ProviderHealthSample','Region','ReportArtifact',
-  'RetentionExecution','RetentionPolicyVersion','SafeguardingAccount','SafeguardingReconciliation','ScheduledJob',
+  'RetentionExecution','RetentionPolicyVersion','SafeguardingAccount','SafeguardingReconciliation',
   'Season','SettlementLine','SettlementRun','SupportCase','SupportCaseEvent','TaxRuleVersion','TenantCurrency',
   'TraderOverride','TradingReplayRun','Venue','WagerPart','WagerExposureAllocation','ScreeningHit','WebhookEndpoint','WebhookDelivery','IntegrationDeliveryAttempt',
 ] as const

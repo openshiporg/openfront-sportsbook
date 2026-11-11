@@ -16,7 +16,6 @@ export const protectedIndexes = [
   ['InboxMessage_tenant_message_key', 'InboxMessage', true, ['tenant', 'messagekey']],
   ['JournalTransaction_tenant_idempotency_key', 'JournalTransaction', true, ['tenant', 'idempotencykey']],
   ['JournalTransaction_tenant_reversal_uq', 'JournalTransaction', true, ['tenant', 'reversalof']],
-  ['OutboxMessage_claim_idx', 'OutboxMessage', false, ['status', 'availableat', 'leaseuntil']],
   ['PaymentIntent_tenant_idempotency_key', 'PaymentIntent', true, ['tenant', 'idempotencykey']],
   ['PriceSnapshot_current_idx', 'PriceSnapshot', false, ['selection', 'receivedat desc']],
   ['PriceSnapshot_selection_sequence_uq', 'PriceSnapshot', true, ['tenant', 'selection', 'sequence']],
@@ -52,8 +51,6 @@ export const protectedIndexes = [
   ['PromotionRedemption_player_key_uq', 'PromotionRedemption', true, ['tenant', 'player', 'promotion', 'idempotencykey']],
   ['CustomerFavorite_target_uq', 'CustomerFavorite', true, ['tenant', 'player', 'targettype', 'targetid']],
   ['CustomerQuoteLegTerms_quote_index_uq', 'CustomerQuoteLegTerms', true, ['quotekey', 'legindex']],
-  ['ScheduledJob_idempotency_uq', 'ScheduledJob', true, ['tenant', 'idempotencykey']],
-  ['ScheduledJob_claim_idx', 'ScheduledJob', false, ['status', 'dueat', 'leaseuntil']],
   ['AffiliateAttribution_campaign_uq', 'AffiliateAttribution', true, ['tenant', 'player', 'campaignreference']],
   ['PamSubjectMapping_subject_uq', 'PamSubjectMapping', true, ['tenant', 'providerconnection', 'externalsubjectdigest']],
   ['WebhookEndpoint_url_uq', 'WebhookEndpoint', true, ['tenant', 'url']],
@@ -64,7 +61,6 @@ export const protectedIndexes = [
   ['TenantCurrency_one_default_uq', 'TenantCurrency', true, ['tenant', 'where', 'defaultforbrand = true', 'status = active']],
   ['WagerExposureAllocation_wager_market_uq', 'WagerExposureAllocation', true, ['tenant', 'wager', 'market']],
   ['ScreeningHit_provider_match_uq', 'ScreeningHit', true, ['tenant', 'providerconnection', 'screeningtype', 'matchtoken']],
-  ['WorkerHeartbeat_workerId_key', 'WorkerHeartbeat', true, ['workerid']],
 ] as const
 
 export const protectedChecks = [
@@ -79,7 +75,6 @@ export const protectedChecks = [
   ['InboxMessage_launch_check', 'InboxMessage', ['tenant is not null', 'rawenvelope is not null', 'length(messagekey) > 0', 'length(type) > 0', 'attempts >= 0']],
   ['JournalEntry_launch_check', 'JournalEntry', ['tenant is not null', 'transaction is not null', 'account is not null', 'amountminor', 'length(currency) = 3']],
   ['JournalTransaction_launch_check', 'JournalTransaction', ['tenant is not null', 'length(idempotencykey) >= 8', 'length(correlationid) > 0', 'effectiveat is not null']],
-  ['OutboxMessage_launch_check', 'OutboxMessage', ['tenant is not null', 'length(aggregatetype) > 0', 'length(aggregateid) > 0', 'length(eventtype) > 0', 'attempts >= 0', 'maxattempts > 0']],
   ['PaymentIntent_launch_check', 'PaymentIntent', ['tenant is not null', 'player is not null', 'providerconnection is not null', 'amountminor', 'length(currency) = 3', 'length(idempotencykey) >= 8']],
   ['PriceSnapshot_launch_check', 'PriceSnapshot', ['tenant is not null', 'selection is not null', 'providerconnection is not null', 'decimalodds', 'length(sequence) > 0', 'effectiveat is not null', 'receivedat is not null']],
   ['Quote_launch_check', 'Quote', ['tenant is not null', 'player is not null', 'selection is not null', 'pricesnapshot is not null', 'stakeminor', 'decimalodds', 'length(currency) = 3', 'length(termshash) >= 32', 'expiresat is not null']],
@@ -102,13 +97,11 @@ export const protectedChecks = [
   ['SafeguardingReconciliation_amount_check', 'SafeguardingReconciliation', ['safeguardedassetminor', 'playerliabilityminor', 'differenceminor']],
   ['LedgerAdjustmentRequest_amount_check', 'LedgerAdjustmentRequest', ['amountminor', 'length(currency) = 3']],
   ['TaxRuleVersion_rate_check', 'TaxRuleVersion', ['ratenumerator', 'ratedenominator', 'version > 0']],
-  ['ScheduledJob_attempt_check', 'ScheduledJob', ['attempts >= 0', 'maxattempts > 0', 'length(idempotencykey) >= 8']],
   ['WebhookEndpoint_security_check', 'WebhookEndpoint', ['https://', 'length(name) > 0', 'length(secretreference) > 0', 'failurecount >= 0']],
   ['WebhookDelivery_evidence_check', 'WebhookDelivery', ['length(deliveryid) >= 8', 'length(eventtype) > 0', 'length(eventversion) > 0', 'length(payloadhash) = 64', 'attempts >= 0']],
   ['IntegrationDeliveryAttempt_number_check', 'IntegrationDeliveryAttempt', ['attempt > 0', 'latencyms >= 0']],
   ['WagerExposureAllocation_economic_check', 'WagerExposureAllocation', ['stakeminor', 'liabilityminor', 'remainingstakeminor', 'remainingliabilityminor', 'version > 0']],
   ['ScreeningHit_evidence_check', 'ScreeningHit', ['length(matchtoken) = 64', 'length(evidencereference) > 0', 'screenedat is not null', 'resolvedat is not null']],
-  ['WorkerHeartbeat_state_check', 'WorkerHeartbeat', ['heartbeatat >= startedat', 'length(workerid) >= 8', 'length(buildversion) > 0', 'stoppedat is not null']],
   ['User_operator_mfa_check', 'User', ['operatormfafailedattempts >= 0', 'totp:v1:', 'operatormfaenabled = false', 'operatormfaenrolledat is not null']],
 ] as const
 

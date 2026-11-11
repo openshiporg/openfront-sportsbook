@@ -70,7 +70,7 @@ Manage sports, competitions, events, markets, selections, prices, quotes, betsli
 Operate trading and exposure workspaces, record results and grading, settle and resettle wagers, and manage journal entries, holds, reconciliation, and recovery.
 
 ### Safer Play & Provider Operations
-Manage identity and location evidence, player limits, self-exclusion, approvals, incidents, support, provider inbox/outbox, retries, and dead letters. Production use requires licences, approved providers, legal review, and jurisdiction-specific controls.
+Manage identity and location evidence, player limits, self-exclusion, approvals, incidents, support, provider inbox, retries, and dead letters. Production use requires licences, approved providers, legal review, and jurisdiction-specific controls.
 
 ## Architecture
 
@@ -99,7 +99,7 @@ The [model registry](features/keystone/models/index.ts) and [Prisma schema](sche
 - Tenants, brands, jurisdictions, operators, players, and roles.
 - Sports, competitions, events, markets, selections, prices, quotes, and wagers.
 - Wallet ledger accounts, journals, holds, payments, settlements, and reconciliation.
-- Player limits, self-exclusions, approvals, provider connections, inbox/outbox, audit events, and recovery records.
+- Player limits, self-exclusions, approvals, provider connections, inbox, audit events.
 
 ## Getting Started
 
@@ -160,7 +160,6 @@ The [model registry](features/keystone/models/index.ts) and [Prisma schema](sche
 - `npm run typecheck` - Run the configured TypeScript check.
 - `npm run test` - Run the repository's configured test suite.
 - `npm run validate:env` - Validate the sportsbook runtime configuration.
-- `npm run worker` - Run the application's background worker.
 
 Use a disposable development database for migration generation. Review the script before running it against any existing data.
 
@@ -215,7 +214,7 @@ npm start
 The included [Railway configuration](railway.toml) defines this app's build and startup lifecycle. Provision services and secrets separately.
 
 ### Scaling Considerations
-Run `npm run worker` under a supervisor and retain shared database, provider delivery, ledger, and tenant-scope controls. Production validation also requires the operational security and observability configuration described in the source.
+Retain shared database, provider delivery, ledger, and tenant-scope controls. Production validation also requires the operational security and observability configuration described in the source.
 
 ## Contributing
 

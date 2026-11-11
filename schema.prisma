@@ -155,22 +155,6 @@ model Competition {
   @@index([regionId])
 }
 
-model DeadLetter {
-  id               String    @id @default(cuid())
-  tenant           Tenant?   @relation("DeadLetter_tenant", fields: [tenantId], references: [id])
-  tenantId         String?   @map("tenant")
-  sourceType       String    @default("")
-  sourceId         String    @default("")
-  reason           String    @default("")
-  attempts         Int?
-  payloadReference String    @default("")
-  resolvedAt       DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @default(now()) @updatedAt
-
-  @@index([tenantId])
-}
-
 model Event {
   id                             String                         @id @default(cuid())
   tenant                         Tenant?                        @relation("Event_tenant", fields: [tenantId], references: [id])
@@ -395,29 +379,6 @@ model OperatorLicence {
 
   @@index([tenantId])
   @@index([jurisdictionId])
-}
-
-model OutboxMessage {
-  id                                 String                   @id @default(cuid())
-  tenant                             Tenant?                  @relation("OutboxMessage_tenant", fields: [tenantId], references: [id])
-  tenantId                           String?                  @map("tenant")
-  aggregateType                      String                   @default("")
-  aggregateId                        String                   @default("")
-  eventType                          String                   @default("")
-  payload                            Json?
-  status                             OutboxMessageStatusType? @default(PENDING)
-  attempts                           Int?                     @default(0)
-  maxAttempts                        Int?                     @default(10)
-  availableAt                        DateTime?
-  leaseUntil                         DateTime?
-  leaseOwner                         String                   @default("")
-  lastError                          String                   @default("")
-  createdAt                          DateTime                 @default(now())
-  updatedAt                          DateTime                 @default(now()) @updatedAt
-  from_WebhookDelivery_outboxMessage WebhookDelivery[]        @relation("WebhookDelivery_outboxMessage")
-
-  @@index([tenantId])
-  @@index([status, availableAt, leaseUntil], map: "OutboxMessage_claim_idx")
 }
 
 model Player {
@@ -759,7 +720,6 @@ model Tenant {
   from_AuditEvent_tenant                 AuditEvent[]                 @relation("AuditEvent_tenant")
   from_Brand_tenant                      Brand[]                      @relation("Brand_tenant")
   from_Competition_tenant                Competition[]                @relation("Competition_tenant")
-  from_DeadLetter_tenant                 DeadLetter[]                 @relation("DeadLetter_tenant")
   from_Event_tenant                      Event[]                      @relation("Event_tenant")
   from_Hold_tenant                       Hold[]                       @relation("Hold_tenant")
   from_InboxMessage_tenant               InboxMessage[]               @relation("InboxMessage_tenant")
@@ -769,7 +729,6 @@ model Tenant {
   from_Market_tenant                     Market[]                     @relation("Market_tenant")
   from_OperatorJurisdiction_tenant       OperatorJurisdiction[]       @relation("OperatorJurisdiction_tenant")
   from_OperatorLicence_tenant            OperatorLicence[]            @relation("OperatorLicence_tenant")
-  from_OutboxMessage_tenant              OutboxMessage[]              @relation("OutboxMessage_tenant")
   from_Player_tenant                     Player[]                     @relation("Player_tenant")
   from_PlayerLimit_tenant                PlayerLimit[]                @relation("PlayerLimit_tenant")
   from_PriceSnapshot_tenant              PriceSnapshot[]              @relation("PriceSnapshot_tenant")
@@ -873,7 +832,6 @@ model Tenant {
   from_RetentionPolicyVersion_tenant     RetentionPolicyVersion[]     @relation("RetentionPolicyVersion_tenant")
   from_SafeguardingAccount_tenant        SafeguardingAccount[]        @relation("SafeguardingAccount_tenant")
   from_SafeguardingReconciliation_tenant SafeguardingReconciliation[] @relation("SafeguardingReconciliation_tenant")
-  from_ScheduledJob_tenant               ScheduledJob[]               @relation("ScheduledJob_tenant")
   from_ScreeningHit_tenant               ScreeningHit[]               @relation("ScreeningHit_tenant")
   from_Season_tenant                     Season[]                     @relation("Season_tenant")
   from_SettlementLine_tenant             SettlementLine[]             @relation("SettlementLine_tenant")
@@ -2918,30 +2876,6 @@ model SafeguardingReconciliation {
   @@index([reconciliationRunId])
 }
 
-model ScheduledJob {
-  id             String                  @id @default(cuid())
-  tenant         Tenant                  @relation("ScheduledJob_tenant", fields: [tenantId], references: [id])
-  tenantId       String                  @map("tenant")
-  type           ScheduledJobTypeType?   @default(RECONCILIATION)
-  scopeType      String                  @default("")
-  scopeId        String                  @default("")
-  payload        Json?
-  status         ScheduledJobStatusType? @default(SCHEDULED)
-  dueAt          DateTime
-  leaseUntil     DateTime?
-  leaseOwner     String                  @default("")
-  attempts       Int?                    @default(0)
-  maxAttempts    Int?                    @default(10)
-  idempotencyKey String                  @default("")
-  lastError      String                  @default("")
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @default(now()) @updatedAt
-
-  @@unique([tenantId, idempotencyKey], map: "ScheduledJob_idempotency_uq")
-  @@index([tenantId])
-  @@index([status, dueAt, leaseUntil], map: "ScheduledJob_claim_idx")
-}
-
 model ScreeningHit {
   id                   String                         @id @default(cuid())
   tenant               Tenant                         @relation("ScreeningHit_tenant", fields: [tenantId], references: [id])
@@ -3249,8 +3183,6 @@ model WebhookDelivery {
   tenantId                                 String                       @map("tenant")
   endpoint                                 WebhookEndpoint              @relation("WebhookDelivery_endpoint", fields: [endpointId], references: [id])
   endpointId                               String                       @map("endpoint")
-  outboxMessage                            OutboxMessage?               @relation("WebhookDelivery_outboxMessage", fields: [outboxMessageId], references: [id])
-  outboxMessageId                          String?                      @map("outboxMessage")
   deliveryId                               String                       @default("")
   eventType                                String                       @default("")
   eventVersion                             String                       @default("")
@@ -3269,7 +3201,6 @@ model WebhookDelivery {
   @@unique([tenantId, deliveryId], map: "WebhookDelivery_delivery_uq")
   @@index([tenantId])
   @@index([endpointId])
-  @@index([outboxMessageId])
   @@index([status, availableAt], map: "WebhookDelivery_claim_idx")
 }
 
@@ -3293,18 +3224,6 @@ model WebhookEndpoint {
   @@unique([tenantId, url], map: "WebhookEndpoint_url_uq")
   @@index([tenantId])
   @@index([approvalRequestId])
-}
-
-model WorkerHeartbeat {
-  id           String                     @id @default(cuid())
-  workerId     String                     @unique @default("")
-  status       WorkerHeartbeatStatusType? @default(STARTING)
-  startedAt    DateTime
-  heartbeatAt  DateTime
-  stoppedAt    DateTime?
-  buildVersion String                     @default("")
-  createdAt    DateTime                   @default(now())
-  updatedAt    DateTime                   @default(now()) @updatedAt
 }
 
 enum BrandStatusType {
@@ -3397,13 +3316,6 @@ enum OperatorJurisdictionStatusType {
 enum OperatorLicenceStatusType {
   ACTIVE
   SUSPENDED
-}
-
-enum OutboxMessageStatusType {
-  PENDING
-  PROCESSING
-  COMPLETED
-  DEAD
 }
 
 enum PlayerStatusType {
@@ -4196,24 +4108,6 @@ enum SafeguardingReconciliationStatusType {
   RESOLVED
 }
 
-enum ScheduledJobTypeType {
-  RECONCILIATION
-  REPORT
-  NOTIFICATION
-  RETENTION
-  EXPIRY
-  PROVIDER_HEALTH
-  FEED_RECOVERY
-}
-
-enum ScheduledJobStatusType {
-  SCHEDULED
-  PROCESSING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
 enum ScreeningHitScreeningTypeType {
   SANCTIONS
   PEP
@@ -4386,13 +4280,6 @@ enum WebhookEndpointStatusType {
   ACTIVE
   DEGRADED
   DISABLED
-}
-
-enum WorkerHeartbeatStatusType {
-  STARTING
-  READY
-  STOPPING
-  STOPPED
 }
 
 // RETAINED UPGRADE DATA ONLY. These tables are not Keystone lists and are not

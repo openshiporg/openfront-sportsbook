@@ -6,7 +6,7 @@ import { nextProjection, postedChange } from '../../sportsbook/domain/balance'
 import { refundPaymentProvider } from '../utils/paymentProviderAdapter'
 import { assertCurrentActor } from './approval-control'
 import { applyPaymentOutcome } from '../../sportsbook/customer/funding'
-import { appendAudit, emit, lockWagerForSettlement, postJournal, requireTenant, serializable } from './sportsbook'
+import { appendAudit, lockWagerForSettlement, postJournal, requireTenant, serializable } from './sportsbook'
 
 const graphql = String.raw
 
@@ -77,7 +77,7 @@ export const sportsbookCheckoutResolvers = {
         await tx.wagerPart.updateMany({ where: { tenantId, wagerId: wager.id }, data: { status: 'VOID' } })
         await tx.wager.update({ where: { id: wager.id }, data: { status: 'VOID' } })
         await tx.wagerStatusEvent.create({ data: { tenantId, wagerId: wager.id, fromStatus: String(wager.status), toStatus: 'VOID', reasonCode: 'OPERATOR_VOID', actorId, effectiveAt: now } })
-        await emit(tx, tenantId, 'WAGER', wager.id, 'wager.voided.v1', { stakeMinor: wager.stakeMinor, currency: wager.currency, reason })
+        
         await appendAudit(tx, tenantId, actorId, 'wager.voided', 'Wager', wager.id, reason, { stakeMinor: wager.stakeMinor, currency: wager.currency, refundedToWallet: true })
         return wager.id
       })
@@ -97,7 +97,7 @@ export const sportsbookCheckoutResolvers = {
         if (intent.status === 'SUCCEEDED') return intent.id
         if (intent.status !== 'PENDING') throw new Error('DEPOSIT_NOT_PENDING')
         const result = await applyPaymentOutcome(tx, intent, { status: 'SUCCEEDED', externalRef: reference, reasonCode: 'CAGE_CASH_RECEIVED' }, new Date())
-        await emit(tx, tenantId, 'PAYMENT', intent.id, 'payment.completed.v1', { type: 'DEPOSIT', amountMinor: intent.amountMinor, currency: intent.currency, reasonCode: 'CAGE_CASH_RECEIVED' })
+        
         await appendAudit(tx, tenantId, actorId, 'cage_deposit.confirmed', 'PaymentIntent', intent.id, 'CASH_RECEIVED', { reference, amountMinor: intent.amountMinor, currency: intent.currency, status: result.status })
         return intent.id
       })
@@ -176,7 +176,7 @@ export const sportsbookCheckoutResolvers = {
         await tx.paymentIntent.update({ where: { id: p.intentId }, data: { status: 'SUCCEEDED', completedAt: now, providerSessionReference: outcome.externalRef } })
         await tx.paymentAttempt.create({ data: { tenantId, paymentIntentId: p.intentId, attempt: 1, externalReference: outcome.externalRef, status: 'SUCCEEDED', reasonCode: outcome.method === 'void' ? 'PROCESSOR_VOID' : 'PROCESSOR_REFUND' } })
         await tx.paymentIntent.update({ where: { id: p.depositId }, data: { status: 'CANCELLED' } })
-        await emit(tx, tenantId, 'PAYMENT', p.intentId, 'payment.refunded.v1', { depositId: p.depositId, amountMinor: p.amountMinor, currency: p.currency })
+        
         await appendAudit(tx, tenantId, p.actorId, 'deposit.refunded', 'PaymentIntent', p.depositId, reason, { refundIntentId: p.intentId, amountMinor: p.amountMinor, currency: p.currency, externalReference: outcome.externalRef })
         return p.intentId
       })

@@ -1,20 +1,16 @@
 import { notFound } from "next/navigation";
-import { MutationForm } from "../components/MutationForm";
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { DetailGrid, MetricGrid, RecordList, StatusBadge, statusDotTone } from "../components/WorkflowUI";
 import { Mono } from "../components/kit";
 import { dateTime, shortId } from "../lib/format";
 import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
-import { outboxEventUnavailableReason } from "../../sportsbook/workers/replay-contract";
 
-const recoverMutation = `mutation Recover($aggregateType:String!,$aggregateId:ID!,$eventType:String!){enqueueRecovery(aggregateType:$aggregateType,aggregateId:$aggregateId,eventType:$eventType)}`;
 
 export async function IntegrationDetailScreen({ connectionId }: { connectionId: string }) {
   const operator = await getOperatorContext("canManageIntegrations");
   if (!operator) return <OperatorShell active="Integrations" detail eyebrow="Provider detail" title="Integration evidence"><TenantRequired /></OperatorShell>;
   const connection = await prisma.providerConnection.findFirst({ where: { id: connectionId, tenantId: operator.tenantId } });
   if (!connection) notFound();
-  const recoveryUnavailable = outboxEventUnavailableReason("recovery.requested") ? "No recovery handler implemented." : null;
   const [envelopes, mappings, results, prices] = await Promise.all([
     prisma.rawEnvelope.findMany({ where: { tenantId: operator.tenantId, providerConnectionId: connection.id }, orderBy: { receivedAt: "desc" }, take: 100, include: { from_InboxMessage_rawEnvelope: true } }),
     prisma.providerEntityMapping.findMany({ where: { tenantId: operator.tenantId, providerConnectionId: connection.id }, orderBy: { createdAt: "desc" }, take: 100 }),
@@ -56,6 +52,5 @@ export async function IntegrationDetailScreen({ connectionId }: { connectionId: 
       { label: "Headers", value: <code className="break-all tabular-nums text-xs">x-openfront-tenant-id · x-openfront-connection-id</code> },
       { label: "Signature covers", value: "Timestamp, tenant, connection, raw body" },
     ]} />
-    <MutationForm title="Connection recovery unavailable" mutation={recoverMutation} fields={[{ name: "aggregateType", label: "Aggregate type", type: "hidden", defaultValue: "PROVIDER_CONNECTION" }, { name: "aggregateId", label: "Connection", type: "hidden", defaultValue: connection.id }, { name: "eventType", label: "Recovery event", type: "hidden", defaultValue: "recovery.requested" }]} submitLabel="Unavailable" successMessage="No recovery was queued." disabledReason={recoveryUnavailable ?? (operator.capabilities.canManageIntegrations ? undefined : "Integration management required.")} />
   </OperatorShell>;
 }

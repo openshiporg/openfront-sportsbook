@@ -45,8 +45,6 @@ export const platformNavItems: PlatformNavItem[] = [
   { title: 'Integrations', href: '/platform/integrations', color: 'orange', description: 'Provider connections, inbound messages and webhooks.', icon: Plug, group: 'standalone' },
   { title: 'Integration inbox', href: '/platform/integrations/inbox', color: 'orange', description: 'Messages received from providers.', icon: Plug, group: 'standalone' },
   { title: 'Webhook evidence', href: '/platform/integrations/webhooks', color: 'orange', description: 'Inbound and outbound webhook deliveries.', icon: Plug, group: 'standalone' },
-  { title: 'Dead-letter queue', href: '/platform/integrations/dlq', color: 'orange', description: 'Review failed jobs and retry them.', icon: Plug, group: 'standalone' },
-  { title: 'Worker recovery', href: '/platform/recovery', color: 'slate', description: 'Monitor background jobs and retry stuck work.', icon: Plug, group: 'standalone' },
   { title: 'Incidents', href: '/platform/incidents', color: 'red', description: 'Open, mitigate and resolve incidents.', icon: Radio, group: 'standalone' },
   { title: 'Reports', href: '/platform/reports', color: 'indigo', description: 'Request regulatory reports and exports.', icon: ReceiptText, group: 'standalone' },
   { title: 'Configuration', href: '/platform/configuration', color: 'slate', description: 'Channels, currencies, languages, feature flags and effective policy values.', icon: Settings, group: 'standalone', exact: true },

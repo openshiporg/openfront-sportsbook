@@ -37,15 +37,9 @@ async function tenantAuditFrontier(tenantId: string, now: Date) {
 export async function GET(request: Request) {
   try {
     const now = new Date()
-    const [migration, staleOutbox, staleInbox, staleScheduled, degradedProviders, oldestOutbox, oldestInbox, oldestScheduled, role, rlsTables, rlsCoverage, tenants, exposureMismatch, activeWorkers, staleWorkers, privilegedWithoutMfa] = await Promise.all([
+    const [migration, degradedProviders, role, rlsTables, rlsCoverage, tenants, exposureMismatch, privilegedWithoutMfa] = await Promise.all([
       keystoneContext.prisma.$queryRaw<Array<{ migration_name: string; finished: boolean; rolled_back: boolean }>>`SELECT migration_name, finished_at IS NOT NULL AS finished, rolled_back_at IS NOT NULL AS rolled_back FROM "_prisma_migrations" ORDER BY started_at ASC`,
-      keystoneContext.prisma.outboxMessage.count({ where: { status: 'PROCESSING', leaseUntil: { lt: now } } }),
-      keystoneContext.prisma.inboxMessage.count({ where: { status: 'PROCESSING', leaseUntil: { lt: now } } }),
-      keystoneContext.prisma.scheduledJob.count({ where: { status: 'PROCESSING', leaseUntil: { lt: now } } }),
       keystoneContext.prisma.providerConnection.count({ where: { status: 'DEGRADED' } }),
-      keystoneContext.prisma.outboxMessage.findFirst({ where: { status: 'PENDING' }, orderBy: { availableAt: 'asc' }, select: { availableAt: true } }),
-      keystoneContext.prisma.inboxMessage.findFirst({ where: { status: 'PENDING' }, orderBy: { availableAt: 'asc' }, select: { availableAt: true } }),
-      keystoneContext.prisma.scheduledJob.findFirst({ where: { status: 'SCHEDULED', dueAt: { lte: now } }, orderBy: { dueAt: 'asc' }, select: { dueAt: true } }),
       keystoneContext.prisma.$queryRaw<Array<{ bypass: boolean; superuser: boolean }>>`SELECT rolbypassrls AS bypass, rolsuper AS superuser FROM pg_roles WHERE rolname = current_user`,
       keystoneContext.prisma.$queryRaw<Array<{ count: bigint }>>`SELECT count(*)::bigint AS count FROM pg_class table_meta JOIN pg_namespace namespace ON namespace.oid=table_meta.relnamespace WHERE namespace.nspname='public' AND table_meta.relrowsecurity`,
       keystoneContext.prisma.$queryRaw<Array<{ unprotected: bigint; owned_without_force: bigint }>>`SELECT
@@ -56,13 +50,8 @@ export async function GET(request: Request) {
           WHERE ns.nspname = 'public' AND tbl.relkind = 'r' AND tbl.relrowsecurity AND NOT tbl.relforcerowsecurity AND pg_get_userbyid(tbl.relowner) = current_user) AS owned_without_force`,
       keystoneContext.prisma.tenant.findMany({ select: { id: true } }),
       keystoneContext.prisma.$queryRaw<Array<{count:bigint}>>`SELECT count(*)::bigint AS count FROM "ExposurePosition" p WHERE p."scopeType"='MARKET' AND (p."stakeMinor"::numeric,p."liabilityMinor"::numeric)<>(SELECT coalesce(sum(a."remainingStakeMinor"::numeric) FILTER (WHERE a.status<>'CLOSED'),0),coalesce(sum(a."remainingLiabilityMinor"::numeric) FILTER (WHERE a.status<>'CLOSED'),0) FROM "WagerExposureAllocation" a WHERE a.tenant=p.tenant AND a.market=p."scopeId")`,
-      keystoneContext.prisma.workerHeartbeat.count({where:{status:'READY',heartbeatAt:{gte:new Date(now.getTime()-10_000)}}}),
-      keystoneContext.prisma.workerHeartbeat.count({where:{status:'READY',heartbeatAt:{lt:new Date(now.getTime()-10_000)}}}),
       keystoneContext.prisma.user.count({where:{tenantId:{not:null},operatorMfaEnabled:false,role:{is:{OR:[{canManageSportsbook:true},{canTrade:true},{canManageRisk:true},{canManageCompliance:true},{canManageFinance:true},{canManageIntegrations:true},{canApproveSensitiveActions:true},{canManageRoles:true}]}}}}),
     ])
-    const ages = [oldestOutbox?.availableAt, oldestInbox?.availableAt, oldestScheduled?.dueAt].filter(Boolean).map(value => Math.max(0, now.getTime() - value!.getTime()))
-    const oldestPendingAgeMs = Math.max(0, ...ages)
-    const staleWorkerLeases = staleOutbox + staleInbox + staleScheduled
     const externalAnchoringConfigured = Boolean(process.env.AUDIT_ANCHOR_DIR && (process.env.AUDIT_ANCHOR_SECRET?.length ?? 0) >= 32)
     const productionMoneyMode = process.env.NODE_ENV === 'production' && process.env.SPORTSBOOK_DEPLOYMENT_MODE !== 'sandbox'
     // Migrations: no failed/in-progress rows, and every migration shipped with this build is applied.
@@ -80,11 +69,11 @@ export async function GET(request: Request) {
     const unanchoredTenants = frontiers.filter(frontier => !frontier.anchored).length
     const anchorLagMs = frontiers.reduce((max, frontier) => Math.max(max, Number.isFinite(frontier.lagMs) ? frontier.lagMs : max), 0)
     const auditReady = externalAnchoringConfigured ? unanchoredTenants === 0 : !productionMoneyMode
-    const exposureProjectionMismatches=Number(exposureMismatch[0]?.count??0),ready = migrationReady && staleWorkerLeases === 0 && degradedProviders === 0 && oldestPendingAgeMs < 300_000 && rlsRuntimeApproved && auditReady && exposureProjectionMismatches===0 && activeWorkers>0 && privilegedWithoutMfa===0
+    const exposureProjectionMismatches=Number(exposureMismatch[0]?.count??0),ready = migrationReady && degradedProviders === 0 && rlsRuntimeApproved && auditReady && exposureProjectionMismatches===0 && privilegedWithoutMfa===0
     const status = ready ? 'ready' : 'degraded'
     if (!detailAllowed(request)) return Response.json({ status }, { status: ready ? 200 : 503, headers: { 'cache-control': 'no-store' } })
     const latestMigration = [...applied].sort().at(-1) ?? null
-    return Response.json({ status, database: 'ok', migration: latestMigration, failedMigrations, pendingMigrations, staleWorkerLeases, degradedProviders, oldestPendingAgeMs, rowSecurityPolicyTables: Number(rlsTables[0]?.count ?? 0), unprotectedTenantTables, ownedTablesWithoutForce, rlsRuntimeApproved, externalAnchoringConfigured, unanchoredTenants, auditAnchorLagMs: anchorLagMs, auditReady, exposureProjectionMismatches, activeWorkers, staleWorkers, privilegedWithoutMfa }, { status: ready ? 200 : 503, headers: { 'cache-control': 'no-store' } })
+    return Response.json({ status, database: 'ok', migration: latestMigration, failedMigrations, pendingMigrations, degradedProviders, rowSecurityPolicyTables: Number(rlsTables[0]?.count ?? 0), unprotectedTenantTables, ownedTablesWithoutForce, rlsRuntimeApproved, externalAnchoringConfigured, unanchoredTenants, auditAnchorLagMs: anchorLagMs, auditReady, exposureProjectionMismatches, privilegedWithoutMfa }, { status: ready ? 200 : 503, headers: { 'cache-control': 'no-store' } })
   } catch {
     return Response.json({ status: 'not_ready', database: 'unavailable' }, { status: 503, headers: { 'cache-control': 'no-store' } })
   }

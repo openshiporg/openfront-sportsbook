@@ -2,7 +2,7 @@
 
 import { getOperatorContext, platformPrisma as prisma } from '../../lib/operator'
 import { appendAudit } from '@/features/keystone/mutations/sportsbook'
-import { applyPaymentOutcome } from '@/features/sportsbook/customer/funding'
+import { applyPaymentOutcome, reconcileUnknownPayment } from '@/features/sportsbook/customer/funding'
 
 export async function saveOperatorLicence(input: { id?: string; licenceNumber: string; regulator: string; expiresAt: string; permittedRegions: string; status: string }) {
   const operator = await getOperatorContext('canManageCompliance')
@@ -38,4 +38,12 @@ export async function settleOperatorWithdrawal(intentId: string, decision: 'SUCC
     await appendAudit(tx, operator.tenantId, operator.userId, decision === 'SUCCEEDED' ? 'withdrawal.marked_paid' : 'withdrawal.rejected', 'PaymentIntent', intent.id, decision === 'SUCCEEDED' ? 'BANK_TRANSFER' : 'OPERATOR_REJECTED', { bankReference: decision === 'SUCCEEDED' ? bankReference.trim() : null, status: result.status })
     return { changed: true, status: result.status }
   })
+}
+
+/** Staff button: re-ask the pinned payment provider about an in-flight deposit/withdrawal and converge it. */
+export async function recheckUnknownPayment(intentId: string) {
+  const operator = await getOperatorContext('canManageFinance')
+  if (!operator) throw new Error('FORBIDDEN')
+  return reconcileUnknownPayment(prisma, operator.tenantId, intentId, async () => undefined, async (tx: any, action: string, id: string, payload: Record<string, unknown>) =>
+    appendAudit(tx, operator.tenantId, operator.userId, action, 'PaymentIntent', id, 'OPERATOR_RECHECK', payload))
 }

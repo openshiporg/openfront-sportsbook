@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { assertEventTransition, assertMarketTransition, assertSupportCaseTransition } from './trading-eligibility'
-import { sweepExpiredStates } from '../workers/expiry-sweep'
+import { sweepExpiredStates } from './expiry-sweep'
 
 test('terminal event, market and case states cannot be left', () => {
   assert.throws(() => assertEventTransition('CANCELLED', 'LIVE'), /EVENT_TRANSITION_NOT_ALLOWED/)

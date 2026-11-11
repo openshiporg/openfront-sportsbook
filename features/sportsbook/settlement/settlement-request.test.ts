@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { handleSettlementRequested } from './settlement-request'
-import { automaticSettlementKey } from '../settlement/full-straight'
+import { automaticSettlementKey } from './full-straight'
 
 const prismaWith = (result: unknown) => ({ resultVersion: { findFirst: async () => result } })
 

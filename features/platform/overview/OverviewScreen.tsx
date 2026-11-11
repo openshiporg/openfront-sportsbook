@@ -17,22 +17,20 @@ export async function OverviewScreen() {
   // General operators see aggregate counts only; risk, finance and integration breakdowns and player-linked
   // wagers follow the same domain capabilities as their source records.
   const can = operator.capabilities;
-  const [wagers, openMarkets, exposure, pendingResults, reconExceptions, deadLetters, incidents, recent] = await Promise.all([
+  const [wagers, openMarkets, exposure, pendingResults, reconExceptions, incidents, recent] = await Promise.all([
     prisma.wager.count({ where: { tenantId } }),
     prisma.market.count({ where: { tenantId, status: "OPEN" } }),
     can.canManageRisk ? prisma.exposurePosition.findMany({ where: { tenantId }, select: { liabilityMinor: true, currency: true } }) : null,
     prisma.resultVersion.count({ where: { tenantId, status: "PENDING" } }),
     can.canManageFinance ? prisma.reconciliationItem.count({ where: { tenantId, status: "OPEN" } }) : null,
-    can.canManageIntegrations ? prisma.deadLetter.count({ where: { tenantId, resolvedAt: null } }) : null,
     prisma.incident.count({ where: { tenantId, status: { not: "RESOLVED" } } }),
     can.canManageRisk ? prisma.wager.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" }, take: 5, include: { player: { select: { subject: true } } } }) : null,
   ]);
   const liability = exposure ? sumByCurrency(exposure, (item: any) => item.liabilityMinor, (item: any) => item.currency) : null;
-  const attention = pendingResults + (reconExceptions ?? 0) + (deadLetters ?? 0) + incidents;
+  const attention = pendingResults + (reconExceptions ?? 0) + incidents;
   const queues: Queue[] = [
     { label: "Results pending", count: pendingResults, href: "/dashboard/platform/results", tone: pendingResults ? "wait" : "ok" },
     { label: "Open incidents", count: incidents, tone: incidents ? "alert" : "ok" },
-    ...(deadLetters === null ? [] : [{ label: "Dead letters", count: deadLetters, href: "/dashboard/platform/recovery", tone: (deadLetters ? "alert" : "ok") as Tone }]),
     ...(reconExceptions === null ? [] : [{ label: "Recon exceptions", count: reconExceptions, tone: (reconExceptions ? "wait" : "ok") as Tone }]),
     { label: "Open markets", count: openMarkets, href: "/dashboard/platform/trading", tone: "info" },
   ];

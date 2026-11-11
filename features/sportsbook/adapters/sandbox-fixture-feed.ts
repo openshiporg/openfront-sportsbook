@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { sweepExpiredStates } from '../domain/expiry-sweep'
 
 import { evidenceHash } from '../domain/engine'
 import { onboardingCatalog, writeSeedEvent } from '../../keystone/mutations/onboarding-catalog'
@@ -84,4 +85,34 @@ export async function runSandboxFixtureFeed(prisma: any, now = new Date()) {
     }
   }
   return results
+}
+
+const ADVANCE_EVERY_MS = 10 * 60_000
+let lastAdvance = 0
+let advancing: Promise<void> | null = null
+
+/**
+ * Clock-driven sandbox state, advanced by the request that reads the board (no timer, no worker): the fixture feed
+ * keeps the slate stocked and lapsed slips/overrides/approvals/exclusions get their stored status. Every step is an
+ * idempotent compare-and-set, so concurrent requests or replicas cannot double-apply it. At most one pass per interval per process.
+ */
+export function advanceSandboxClock(prisma: any, now = new Date()): Promise<void> {
+  if (advancing) return advancing
+  if (now.getTime() - lastAdvance < ADVANCE_EVERY_MS) return Promise.resolve()
+  lastAdvance = now.getTime()
+  advancing = (async () => {
+    try {
+      await runSandboxFixtureFeed(prisma, now)
+      const tenants: { id: string }[] = await prisma.tenant.findMany({ where: { status: 'ACTIVE' }, select: { id: true }, orderBy: { id: 'asc' }, take: 500 })
+      for (const { id: tenantId } of tenants) {
+        await runWithTenantScope(tenantId, () => prisma.$transaction((tx: any) => sweepExpiredStates(tx, tenantId, now)))
+      }
+    } catch (error) {
+      lastAdvance = 0
+      console.error('sandbox clock advance failed', error instanceof Error ? error.message : error)
+    } finally {
+      advancing = null
+    }
+  })()
+  return advancing
 }

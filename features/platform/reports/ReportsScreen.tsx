@@ -5,9 +5,10 @@ import { Mono, type Tone } from '../components/kit'
 import { dateTime, displayTimeZone, shortId } from '../lib/format'
 import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
 import { retentionUnsupportedReason } from '../../sportsbook/domain/retention'
-import { outboxEventUnavailableReason } from '../../sportsbook/workers/replay-contract'
+import { assertArtifactDeliveryHasHandler } from '../../sportsbook/domain/artifact-delivery-contract'
 
-const exportUnavailable = outboxEventUnavailableReason('export.requested.v1') ? 'Export generation not implemented.' : undefined
+let exportUnavailable: string | undefined
+try { assertArtifactDeliveryHasHandler('export.requested.v1') } catch { exportUnavailable = 'Export generation not implemented.' }
 
 const reportMutation = `mutation Report($type:String!,$periodStart:String!,$periodEnd:String!){generateComplianceReport(type:$type,periodStart:$periodStart,periodEnd:$periodEnd)}`
 
@@ -21,7 +22,7 @@ export async function ReportsScreen() {
   const tenantId = operator.tenantId
   const [reports, queued, artifacts, exports, retentionPolicies, retentionRuns, retentionApprovals] = await Promise.all([
     prisma.complianceReport.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 100 }),
-    prisma.outboxMessage.count({ where: { tenantId, eventType: 'report.generate', status: { in: ['PENDING', 'PROCESSING'] } } }),
+    Promise.resolve(0),
     prisma.reportArtifact.findMany({ where: { tenantId }, orderBy: { generatedAt: 'desc' }, take: 100 }),
     prisma.dataExport.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 100 }),
     prisma.retentionPolicyVersion.findMany({ where: { tenantId, status: 'ACTIVE' }, orderBy: { version: 'desc' }, take: 100 }),

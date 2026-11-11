@@ -1,5 +1,5 @@
 import { gradeSelectionFromApprovedResult, serializable } from '../../keystone/mutations/sportsbook'
-import { AUTOMATIC_SETTLEMENT_ACTOR, settleFullStraightAutomatically } from '../settlement/full-straight'
+import { AUTOMATIC_SETTLEMENT_ACTOR, settleFullStraightAutomatically } from './full-straight'
 
 type Fence = (tx: any) => Promise<void>
 export type SettlementRequestOutcome = { resultVersionId: string; graded: number; settled: string[]; skipped: { id: string; reason: string }[] }
