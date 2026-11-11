@@ -4,7 +4,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { Mono, PillLink, Track } from "../components/kit";
 import { DetailGrid, RecordList, StatusBadge, statusDotTone, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, jsonText, money, shortId } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 import { projectCashOutState } from "@/features/sportsbook/domain/cashout-economics";
 
 const voidMutation = `mutation VoidWager($wagerId:ID!,$reason:String!){voidWager(wagerId:$wagerId,reason:$reason)}`;
@@ -12,6 +12,7 @@ const investigateMutation = `mutation Investigate($wagerId:ID!,$category:String!
 
 export async function WagerDetailScreen({ wagerId }: { wagerId: string }) {
   const operator = await getOperatorContext("canManageRisk");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Wagers" detail title="Wager"><TenantRequired /></OperatorShell>;
   const wager = await prisma.wager.findFirst({ where: { id: wagerId, tenantId: operator.tenantId }, include: { player: true, quote: true, from_WagerLeg_wager: { include: { from_LegGrade_wagerLeg: true } }, from_AcceptanceDecision_wager: { take: 50 }, from_Settlement_wager: { orderBy: { version: "desc" }, take: 50 }, from_Dispute_wager: { orderBy: { createdAt: "desc" }, take: 50 }, from_CashOutAcceptance_wager: { orderBy: { acceptedAt: "asc" }, take: 100 }, from_WagerPart_wager: { orderBy: { partIndex: "asc" } } } });
   if (!wager) notFound();

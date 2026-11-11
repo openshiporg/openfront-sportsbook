@@ -3,11 +3,12 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { DetailGrid, MetricGrid, RecordList, StatusBadge, statusDotTone } from "../components/WorkflowUI";
 import { Mono } from "../components/kit";
 import { dateTime, shortId } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 
 
 export async function IntegrationDetailScreen({ connectionId }: { connectionId: string }) {
   const operator = await getOperatorContext("canManageIntegrations");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Integrations" detail eyebrow="Provider detail" title="Integration evidence"><TenantRequired /></OperatorShell>;
   const connection = await prisma.providerConnection.findFirst({ where: { id: connectionId, tenantId: operator.tenantId } });
   if (!connection) notFound();

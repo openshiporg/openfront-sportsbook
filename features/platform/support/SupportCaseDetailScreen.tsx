@@ -5,7 +5,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { Mono, PillLink, StatusDot, Track } from "../components/kit";
 import { DetailGrid, StatusBadge, statusDotTone, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, shortId } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 
 const updateMutation = `mutation($caseId:ID!,$status:String!,$customerMessage:String!,$reason:String!){setSupportCaseStatus(caseId:$caseId,status:$status,customerMessage:$customerMessage,reason:$reason)}`;
 const PAGE = 100;
@@ -28,6 +28,7 @@ function detailSummary(details: unknown) {
  */
 export async function SupportCaseDetailScreen({ caseId, page = 1 }: { caseId: string; page?: number }) {
   const operator = await getOperatorContext("canManageCompliance");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Support" detail title="Support case"><TenantRequired /></OperatorShell>;
   const tenantId = operator.tenantId;
   const item = await prisma.supportCase.findFirst({ where: { id: caseId, tenantId }, include: { player: true, dispute: true } });

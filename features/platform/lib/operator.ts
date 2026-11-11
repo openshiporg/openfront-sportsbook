@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { keystoneClient } from "@/features/dashboard/lib/keystoneClient";
 import { keystoneContext } from "@/features/keystone/context";
 import { enterTenantScope } from "@/features/keystone/tenant-scope";
@@ -142,4 +143,9 @@ async function loadDisplayContext(tenantId: string) {
     platformPrisma.currencyDefinition.findMany({ select: { code: true, exponent: true } }),
   ]);
   setDisplayContext({ locale: locale?.locale, timeZone: tenant?.defaultTimezone || locale?.timezone, currencies });
+}
+
+/** A signed-in, MFA-assured operator whose role lacks the page's capability gets a 404, not a 200 gate page. */
+export async function notFoundWhenForbidden() {
+  if ((await getOperatorAccessState()).kind === "forbidden") notFound();
 }

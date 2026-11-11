@@ -5,7 +5,7 @@ import { MutationForm } from '../components/MutationForm'
 import { Mono, PillLink, Track } from '../components/kit'
 import { DetailGrid, MetricGrid, RecordList, StatusBadge, statusDotTone, WorkflowNote } from '../components/WorkflowUI'
 import { dateTime, jsonText, money, shortId } from '../lib/format'
-import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from '../lib/operator'
 import { hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from '../lib/paging'
 
 // Same mutation strings as the list page; here the promotion is fixed instead of chosen.
@@ -48,6 +48,7 @@ export async function PromotionDetailScreen({ promotionId, searchParams }: { pro
     redemptionPage = pageFrom({ page: params.rpage }),
     awardPage = pageFrom({ page: params.apage })
   const operator = await getOperatorContext('canManageSportsbook')
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Promotions" detail title="Promotion"><TenantRequired /></OperatorShell>
   const tenantId = operator.tenantId
   const promotion = await prisma.promotion.findFirst({ where: { tenantId, id: promotionId }, include: { approvalRequest: true, brand: true, jurisdiction: true } })

@@ -5,7 +5,7 @@
  */
 
 type SidebarList = { path: string; isHidden?: boolean | null }
-type SidebarUser = { role?: { canAccessDashboard?: boolean | null } | null } | null | undefined
+type SidebarUser = { role?: ({ canAccessDashboard?: boolean | null } & Record<string, boolean | null | undefined>) | null } | null | undefined
 
 /** Only an explicit false hides navigation; an unknown user is left to the middleware. */
 export function canUseDashboardNav(user: SidebarUser) {
@@ -21,7 +21,7 @@ export function visibleSidebarLists<T extends SidebarList>(lists: T[], user: Sid
  * A platform page whose first segment is a list path follows that list's visibility;
  * pages that are not tied to one list stay visible to dashboard users.
  */
-export function visiblePlatformItems<T extends { href: string }>(
+export function visiblePlatformItems<T extends { href: string; capabilities?: string[] }>(
   items: T[],
   lists: SidebarList[],
   user: SidebarUser
@@ -30,6 +30,8 @@ export function visiblePlatformItems<T extends { href: string }>(
   const hiddenPaths = new Set(lists.filter((list) => list.isHidden).map((list) => list.path))
   return items.filter((item) => {
     const slug = item.href.split('/platform/')[1]?.split(/[/?#]/)[0]
-    return !slug || !hiddenPaths.has(slug)
+    if (slug && hiddenPaths.has(slug)) return false
+    // Hidden only when the role explicitly lacks every capability the page checks.
+    return !item.capabilities?.length || !item.capabilities.every((key) => user?.role?.[key] === false)
   })
 }

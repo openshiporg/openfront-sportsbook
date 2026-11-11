@@ -5,13 +5,14 @@ import { Mono } from "../components/kit";
 import { DetailGrid, RecordList, StatusBadge, statusDotTone, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, money, shortId } from "../lib/format";
 import { betReference, playerDisplay } from "../../sportsbook/domain/references";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 
 const requestMutation = `mutation RequestResettle($settlementId:ID!,$resultVersionId:ID!,$outcome:String!,$factorNumerator:String!,$factorDenominator:String!,$reason:String!){requestResettlementApproval(settlementId:$settlementId,resultVersionId:$resultVersionId,outcome:$outcome,factorNumerator:$factorNumerator,factorDenominator:$factorDenominator,reason:$reason)}`;
 const applyMutation = `mutation Resettle($settlementId:ID!,$resultVersionId:ID!,$outcome:String!,$factorNumerator:String!,$factorDenominator:String!,$idempotencyKey:String!,$approvalId:ID!){resettleWager(settlementId:$settlementId,resultVersionId:$resultVersionId,outcome:$outcome,factorNumerator:$factorNumerator,factorDenominator:$factorDenominator,idempotencyKey:$idempotencyKey,approvalId:$approvalId)}`;
 
 export async function SettlementDetailScreen({ wagerId }: { wagerId: string }) {
   const operator = await getOperatorContext("canManageRisk");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Settlement" detail title="Settlement"><TenantRequired /></OperatorShell>;
   const wager = await prisma.wager.findFirst({ where: { id: wagerId, tenantId: operator.tenantId }, include: { player: { include: { from_CustomerCredential_player: { select: { emailMasked: true }, orderBy: { createdAt: "asc" }, take: 1 } } }, from_WagerLeg_wager: true, from_WagerPart_wager: true, from_Settlement_wager: { orderBy: { version: "desc" }, take: 50, include: { resultVersion: true, from_SettlementLine_settlement: true, journalTransaction: { include: { from_JournalEntry_transaction: { take: 100, include: { account: true } } } } } } } });
   if (!wager) notFound();

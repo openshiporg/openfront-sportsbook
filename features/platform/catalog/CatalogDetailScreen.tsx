@@ -4,7 +4,7 @@ import { MutationForm } from "../components/MutationForm";
 import { Mono, Pill, Track } from "../components/kit";
 import { DetailGrid, RecordList, StatusBadge, statusDotTone } from "../components/WorkflowUI";
 import { dateTime } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 import { searchFrom } from "../lib/graphql";
 import type { PlatformSearchParams } from "../lib/paging";
 
@@ -16,6 +16,7 @@ export async function CatalogDetailScreen({ eventId, searchParams }: { eventId: 
   const competitorSearch = searchFrom(params, "competitor");
   const providerSearch = searchFrom(params, "provider");
   const operator = await getOperatorContext("canTrade");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Catalog" detail title="Event"><TenantRequired /></OperatorShell>;
   const event = await prisma.event.findFirst({ where: { id: eventId, tenantId: operator.tenantId }, include: { competition: { include: { sport: true } }, season: { select: { name: true, key: true, status: true } }, stage: { select: { name: true, key: true, status: true } }, venue: { select: { name: true, key: true, countryCode: true } }, from_Market_event: { orderBy: { createdAt: "asc" }, take: 100, include: { from_Selection_market: { include: { from_PriceSnapshot_selection: { orderBy: { receivedAt: "desc" }, take: 1 } } } } }, from_ResultVersion_event: { orderBy: { version: "desc" }, take: 20 }, _count: { select: { from_Market_event: true, from_ResultVersion_event: true, from_EventScheduleChange_event: true } } } });
   if (!event) notFound();

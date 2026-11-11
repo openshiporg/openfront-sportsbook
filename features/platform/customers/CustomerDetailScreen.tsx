@@ -4,7 +4,7 @@ import { Mono, PillLink, StatusDot, Track } from "../components/kit";
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { DetailGrid, RecordList, StatusBadge, statusDotTone, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, money, shortId, windowState } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 
 const openVerification = `mutation OpenVerification($playerId:ID!,$type:String!,$evidenceReference:String!){openVerificationCase(playerId:$playerId,type:$type,evidenceReference:$evidenceReference)}`;
 const decideVerification = `mutation DecideVerification($caseId:ID!,$decision:String!,$reason:String!){decideVerificationCase(caseId:$caseId,decision:$decision,reason:$reason)}`;
@@ -12,6 +12,7 @@ const amlMutation = `mutation AML($playerId:ID!,$status:String!,$riskBand:String
 
 export async function CustomerDetailScreen({ playerId }: { playerId: string }) {
   const operator = await getOperatorContext("canManageCompliance");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Customers" detail title="Customer"><TenantRequired /></OperatorShell>;
   const player = await prisma.player.findFirst({ where: { id: playerId, tenantId: operator.tenantId }, include: { brand: true, from_VerificationCase_player: { orderBy: { createdAt: "desc" }, take: 100 }, from_AMLCase_player: { orderBy: { createdAt: "desc" }, take: 50 }, from_GeoSession_player: { orderBy: { createdAt: "desc" }, take: 20, include: { from_GeoCheck_geoSession: { orderBy: { checkedAt: "desc" }, take: 1 } } }, from_AccountRestriction_player: { orderBy: { createdAt: "desc" }, take: 50 }, _count: { select: { from_Wager_player: true, from_PaymentIntent_player: true } } } });
   if (!player) notFound();

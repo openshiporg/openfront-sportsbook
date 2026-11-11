@@ -4,13 +4,14 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { Mono } from "../components/kit";
 import { DetailGrid, RecordList, StatusBadge, statusDotTone, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 
 const pricesMutation = `mutation SetPrices($marketId:ID!,$prices:String!,$line:String){setMarketPrices(marketId:$marketId,prices:$prices,line:$line)}`;
 const stateMutation = `mutation MarketState($marketId:ID!,$status:String!,$reason:String!,$expectedVersion:Int!,$expectedStatus:String!){setMarketStatus(marketId:$marketId,status:$status,reason:$reason,expectedVersion:$expectedVersion,expectedStatus:$expectedStatus)}`;
 
 export async function TradingDetailScreen({ marketId }: { marketId: string }) {
   const operator = await getOperatorContext("canTrade");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Trading" detail title="Market"><TenantRequired /></OperatorShell>;
   const market = await prisma.market.findFirst({ where: { id: marketId, tenantId: operator.tenantId }, include: { event: true, from_Selection_market: { include: { from_PriceSnapshot_selection: { orderBy: { receivedAt: "desc" }, take: 10 } } } } });
   if (!market) notFound();
