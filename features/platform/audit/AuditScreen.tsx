@@ -2,7 +2,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { ReadFailed } from "../components/ReadFailed";
 import { WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, shortId } from "../lib/format";
-import { getOperatorContext } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden } from "../lib/operator";
 import { pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { getAuditAnchors, getAuditEvents } from "./actions";
 import { AuditPageClient } from "./screens/AuditPageClient";
@@ -11,6 +11,7 @@ import { AuditPageClient } from "./screens/AuditPageClient";
 export async function AuditScreen({ searchParams }: { searchParams?: PlatformSearchParams } = {}) {
   const page = pageFrom((await searchParams) ?? {});
   const operator = await getOperatorContext("canReadAudit");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Audit" eyebrow="Audit evidence" title="Audit trail"><TenantRequired /></OperatorShell>;
   if (!operator.capabilities.canReadAudit) return <OperatorShell active="Audit" eyebrow="Audit evidence" title="Audit trail" tenantName={operator.tenantName}><WorkflowNote title="Audit access denied" tone="warning">No audit-read capability.</WorkflowNote></OperatorShell>;
   const [result, anchorResult] = await Promise.all([getAuditEvents({ page, pageSize: PLATFORM_PAGE_SIZE }), getAuditAnchors({ take: 20 })]);

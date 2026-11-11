@@ -3,12 +3,13 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { Mono } from "../components/kit";
 import { MetricGrid, RecordList, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, money, moneyTotals, shortId } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 
 const limitMutation = `mutation RiskLimit($profileId:ID!,$scopeType:String!,$scopeId:String!,$maxStakeMinor:String!,$maxPayoutMinor:String!,$maxLiabilityMinor:String!,$currency:String!){createRiskLimit(profileId:$profileId,scopeType:$scopeType,scopeId:$scopeId,maxStakeMinor:$maxStakeMinor,maxPayoutMinor:$maxPayoutMinor,maxLiabilityMinor:$maxLiabilityMinor,currency:$currency)}`;
 
 export async function RiskScreen() {
   const operator = await getOperatorContext("canManageRisk");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Risk" title="Risk"><TenantRequired /></OperatorShell>;
   // liabilityMinor is stored as exact integer text, so rank, total and count in SQL numerically
   // (never lexicographically) before the 100-row worklist limit, with a stable id tie-break.

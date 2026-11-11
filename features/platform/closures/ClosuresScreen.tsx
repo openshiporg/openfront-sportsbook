@@ -2,7 +2,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { Mono, PillLink, Track } from "../components/kit";
 import { MetricGrid, RecordList, StatusBadge } from "../components/WorkflowUI";
 import { dateTime, shortId } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 import { allowedParam, hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 
 const basePath = "/dashboard/platform/closures";
@@ -34,6 +34,7 @@ export async function ClosuresScreen({ searchParams }: { searchParams?: Platform
   const page = pageFrom(params);
   const track: ClosureTrack = allowedParam(params, "status", tracks) ?? "open";
   const operator = await getOperatorContext("canManageCompliance");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Closures" title="Account closures"><TenantRequired /></OperatorShell>;
   const tenantId = operator.tenantId;
   const now = new Date();

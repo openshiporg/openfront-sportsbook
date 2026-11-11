@@ -4,7 +4,7 @@ import { betReference } from "../../sportsbook/domain/references";
 import { Mono, PillLink, Track } from "../components/kit";
 import { MetricGrid, RecordList, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, money, shortId } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 import { domainQuery } from "../lib/domain-query";
 import type { FullStraightPlan } from "@/features/sportsbook/settlement/full-straight";
 import { STRAIGHT_PLAN_QUERY } from "./settlement-intent";
@@ -24,6 +24,7 @@ const blockerCopy: Record<string, string> = {
 export async function SettlementsScreen({ searchParams }: { searchParams?: PlatformSearchParams } = {}) {
   const page = pageFrom((await searchParams) ?? {});
   const operator = await getOperatorContext("canManageRisk");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Settlement" title="Settlement"><TenantRequired /></OperatorShell>;
   const [candidates, settlements, settlementTotal, approvalRows, cashOuts, runRows] = await Promise.all([
     prisma.wager.findMany({ where: { tenantId: operator.tenantId, status: { in: ["ACCEPTED", "OPEN", "PARTIALLY_CASHED_OUT", "GRADED"] }, from_Settlement_wager: { none: {} } }, orderBy: { acceptedAt: "asc" }, take: 20 }),

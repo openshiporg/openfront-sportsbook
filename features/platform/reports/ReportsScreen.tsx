@@ -3,7 +3,7 @@ import { OperatorShell, TenantRequired } from '../components/OperatorShell'
 import { MetricGrid, RecordList, StatusBadge, statusDotTone } from '../components/WorkflowUI'
 import { Mono, type Tone } from '../components/kit'
 import { dateTime, displayTimeZone, shortId } from '../lib/format'
-import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from '../lib/operator'
 import { retentionUnsupportedReason } from '../../sportsbook/domain/retention'
 import { assertArtifactDeliveryHasHandler } from '../../sportsbook/domain/artifact-delivery-contract'
 
@@ -17,6 +17,7 @@ export async function ReportsScreen() {
   // action keeps its own server-checked capability.
   const context = await getOperatorContext()
   const operator = context && (context.capabilities.canManageCompliance || context.capabilities.canReadAudit) ? context : null
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Reports" eyebrow="Regulatory evidence" title="Reports"><TenantRequired /></OperatorShell>
   const complianceOnly = operator.capabilities.canManageCompliance ? undefined : 'Your role lacks compliance capability.'
   const tenantId = operator.tenantId

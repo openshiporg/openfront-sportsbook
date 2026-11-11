@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { OnboardingForm } from "./OnboardingForm";
 import { ExternalGateNotice, OperatorShell } from "../components/OperatorShell";
 import { PillLink, StatusDot, Track } from "../components/kit";
@@ -9,6 +10,7 @@ export async function OnboardingScreen() {
   const auth = await getOperatorSession();
   if (!auth.success) throw new Error(auth.error);
   const item = auth.data?.authenticatedItem;
+  if(item && !item.role?.canManageOnboarding)notFound()
   if(!item?.role?.canManageOnboarding)return <OperatorShell active="Onboarding" eyebrow="Operator launch" title="Onboarding unavailable" tone="off"><WorkflowNote title="No onboarding capability" tone="warning" /></OperatorShell>
   if(!auth.data?.operatorSessionAssured)return <OperatorShell active="Onboarding" eyebrow="Operator launch" title="MFA verification required" tone="wait"><WorkflowNote title="Enroll or verify MFA to continue" tone="warning"><Track><PillLink size="sm" href="/dashboard/platform/security">Operator security</PillLink></Track></WorkflowNote></OperatorShell>
   const tenantId = item?.tenant?.id;

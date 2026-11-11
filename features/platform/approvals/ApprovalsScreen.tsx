@@ -1,6 +1,6 @@
 import { OperatorShell, TenantRequired } from '../components/OperatorShell'
 import { dateTime, jsonText, shortId } from '../lib/format'
-import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from '../lib/operator'
 import { allowedParam, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from '../lib/paging'
 import { ApprovalsPageClient } from './screens/ApprovalsPageClient'
 
@@ -37,6 +37,7 @@ export async function ApprovalsScreen({ searchParams }: { searchParams?: Platfor
   const pendingPage = pageFrom({ page: params.ppage })
   const status = allowedParam(params, 'status', approvalStatuses)
   const operator = await getOperatorContext('canApproveSensitiveActions')
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Approvals" eyebrow="Independent control" title="Approval inbox"><TenantRequired /></OperatorShell>
   const inbox = await getApprovalInbox(operator.tenantId, pendingPage, historyPage, status)
   const actorName = (id: string) => inbox.actors.find((actor: any) => actor.id === id)?.name ?? shortId(id)

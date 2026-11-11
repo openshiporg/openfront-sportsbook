@@ -2,7 +2,7 @@ import { ExternalGateNotice, OperatorShell, TenantRequired } from '../components
 import { ReadFailed } from '../components/ReadFailed'
 import { dateTime, shortId } from '../lib/format'
 import { searchFrom } from '../lib/graphql'
-import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from '../lib/operator'
 import { allowedParam, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from '../lib/paging'
 import { getSupportQueue } from './actions'
 import { SupportPageClient } from './screens/SupportPageClient'
@@ -42,6 +42,7 @@ export async function SupportScreen({ searchParams }: { searchParams?: PlatformS
   const disputeStatus = allowedParam(params, 'dstatus', disputeStatuses)
   const search = searchFrom(params)
   const operator = await getOperatorContext('canManageCompliance')
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Support" title="Support & disputes"><TenantRequired /></OperatorShell>
   const [queue, register] = await Promise.all([getSupportQueue({ page: casePage, pageSize: PLATFORM_PAGE_SIZE, search, status: caseStatus }), getDisputeRegister(operator.tenantId, disputePage, disputeStatus)])
   const disputeOption = (item: any) => ({ label: `${shortId(item.id)} · ${item.category}`, value: item.id })

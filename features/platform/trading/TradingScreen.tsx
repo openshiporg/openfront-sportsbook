@@ -2,7 +2,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { ReadFailed } from "../components/ReadFailed";
 import { dateTime } from "../lib/format";
 import { searchFrom } from "../lib/graphql";
-import { getOperatorContext } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden } from "../lib/operator";
 import { allowedParam, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { getTradingBook } from "./actions";
 import { TradingPageClient } from "./screens/TradingPageClient";
@@ -17,6 +17,7 @@ export async function TradingScreen({ searchParams }: { searchParams?: PlatformS
   const search = searchFrom(params);
   const status = allowedParam(params, "status", marketStatuses);
   const operator = await getOperatorContext("canTrade");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Trading" title="Trading"><TenantRequired /></OperatorShell>;
   const formNow = new Date();
   const result = await getTradingBook({ page, pageSize: PLATFORM_PAGE_SIZE, search, status, now: formNow.toISOString() });

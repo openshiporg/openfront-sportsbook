@@ -3,7 +3,7 @@ import { OperatorShell, TenantRequired } from '../components/OperatorShell'
 import { DetailGrid, MetricGrid, RecordList, StatusBadge, statusDotTone } from '../components/WorkflowUI'
 import { Mono, StatusDot, type Tone } from '../components/kit'
 import { dateTime, shortId } from '../lib/format'
-import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from '../lib/operator'
 
 // Display order only: failed/dead first, then retrying, neutral, delivered.
 const toneRank: Record<Tone, number> = { alert: 0, live: 1, wait: 1, off: 2, info: 2, ok: 3 }
@@ -30,6 +30,7 @@ function AttemptHistory({ attempts }: { attempts: any[] }) {
 
 export async function WebhooksScreen() {
   const operator = await getOperatorContext('canManageIntegrations')
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Webhooks" eyebrow="Transport evidence" title="Webhooks"><TenantRequired /></OperatorShell>
   const tenantId = operator.tenantId,
     [envelopes, endpoints, deliveries, approvals] = await Promise.all([

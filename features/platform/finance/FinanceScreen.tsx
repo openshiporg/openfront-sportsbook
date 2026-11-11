@@ -4,7 +4,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { ReadFailed } from "../components/ReadFailed";
 import { WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, displayTimeZone, money, moneyTotals, shortId } from "../lib/format";
-import { getOperatorContext } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden } from "../lib/operator";
 import { playerLabels, playerLabelText } from "../lib/players";
 import { pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { getFinanceOverview } from "./actions";
@@ -23,6 +23,7 @@ export async function FinanceScreen({ searchParams }: { searchParams?: PlatformS
   const params = (await searchParams) ?? {};
   const paging = (key: string) => ({ page: pageFrom({ page: params[key] }), pageSize: PLATFORM_PAGE_SIZE });
   const operator = await getOperatorContext("canManageFinance");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Finance" title="Finance"><TenantRequired /></OperatorShell>;
   const journals = paging("jpage"), payments = paging("ppage"), runs = paging("rpage");
   const result = await getFinanceOverview({ journals, payments, runs });

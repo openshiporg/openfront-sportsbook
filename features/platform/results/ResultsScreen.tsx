@@ -5,7 +5,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { Mono, Pill, PillLink, StatusDot, Track } from "../components/kit";
 import { MetricGrid, RecordList, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, shortId } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 import { hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 
 const EVENT_PICKER_SIZE = 24;
@@ -25,6 +25,7 @@ export async function ResultsScreen({ eventId, searchParams }: { eventId?: strin
   // action keeps its own server-checked capability.
   const context = await getOperatorContext();
   const operator = context && (context.capabilities.canTrade || context.capabilities.canManageRisk) ? context : null;
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Results" title="Results"><TenantRequired /></OperatorShell>;
   // Eligible events are searched and paged (not the first 100), and every pending result is loaded on
   // its own so old pending work stays reachable however many versions are newer.

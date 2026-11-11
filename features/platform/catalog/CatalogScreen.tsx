@@ -2,7 +2,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { ReadFailed } from "../components/ReadFailed";
 import { dateTime, displayTimeZone, shortId } from "../lib/format";
 import { searchFrom } from "../lib/graphql";
-import { getOperatorContext } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden } from "../lib/operator";
 import { allowedParam, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { getCatalog } from "./actions";
 import { CatalogPageClient } from "./screens/CatalogPageClient";
@@ -17,6 +17,7 @@ export async function CatalogScreen({ searchParams }: { searchParams?: PlatformS
   const status = allowedParam(params, "status", eventStatuses);
   const competitionSearch = searchFrom(params, "competition");
   const operator = await getOperatorContext("canTrade");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Catalog" title="Catalog"><TenantRequired /></OperatorShell>;
   const result = await getCatalog({ page, pageSize: PLATFORM_PAGE_SIZE, search, status, competitionSearch });
   return <OperatorShell active="Catalog" title="Catalog" tone={result.success ? (result.data.pendingMappings ? "wait" : "ok") : "alert"} meta={result.success ? `${result.data.allEvents} events · ${result.data.markets} markets · ${result.data.pendingMappings} mappings pending` : undefined} tenantName={operator.tenantName}>

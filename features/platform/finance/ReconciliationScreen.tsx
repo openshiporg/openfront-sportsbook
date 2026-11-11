@@ -7,7 +7,7 @@ import { dateTime, money, moneyTotals, shortId } from '../lib/format'
 import { playerLabels, playerLabelText } from '../lib/players'
 import { betReference } from '../../sportsbook/domain/references'
 import { searchFrom } from '../lib/graphql'
-import { getOperatorContext } from '../lib/operator'
+import { getOperatorContext, notFoundWhenForbidden } from '../lib/operator'
 import { allowedParam, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from '../lib/paging'
 import { getReconciliationWorkspace } from './actions'
 import { openDifferenceTotals } from '../lib/aggregates'
@@ -23,6 +23,7 @@ function defaultControlWindow(now = new Date()) {
 export async function ReconciliationScreen({ searchParams }: { searchParams?: PlatformSearchParams } = {}) {
   const params = (await searchParams) ?? {}
   const operator = await getOperatorContext('canManageFinance')
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Reconciliation" title="Reconciliation & safeguarding"><TenantRequired/></OperatorShell>
   const items = { page: pageFrom(params), pageSize: PLATFORM_PAGE_SIZE }, controls = { page: pageFrom({ page: params.cpage }), pageSize: 25 }, adjustments = { page: pageFrom({ page: params.apage }), pageSize: 25 }
   const search = searchFrom(params), status = allowedParam(params, 'status', itemStatuses)

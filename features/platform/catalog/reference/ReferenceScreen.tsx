@@ -6,7 +6,7 @@ import { Mono, Pill, PillLink, Track } from "../../components/kit";
 import { RecordList, StatusBadge, type RecordRow } from "../../components/WorkflowUI";
 import { dateTime, displayTimeZone, shortId } from "../../lib/format";
 import { searchFrom } from "../../lib/graphql";
-import { getOperatorContext, platformPrisma as prisma } from "../../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../../lib/operator";
 import { allowedParam, hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../../lib/paging";
 
 const basePath = "/dashboard/platform/catalog/reference";
@@ -38,6 +38,7 @@ export async function ReferenceScreen({ searchParams }: { searchParams?: Platfor
   const actId = searchFrom(params, "act");
   const parentSearch = searchFrom(params, "parent");
   const operator = await getOperatorContext("canTrade");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="CatalogReference" title="Reference data"><TenantRequired /></OperatorShell>;
   const tenantId = operator.tenantId;
   const where = { tenantId, ...searchWhere(search) };

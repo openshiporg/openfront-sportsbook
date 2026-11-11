@@ -2,7 +2,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { MetricGrid, RecordList, StatusBadge, statusDotTone } from "../components/WorkflowUI";
 import { Mono, PillLink, Track, type Tone } from "../components/kit";
 import { dateTime, shortId } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 
 // Display order only: failing first, then waiting, neutral, healthy.
 const toneRank: Record<Tone, number> = { alert: 0, live: 1, wait: 1, off: 2, info: 2, ok: 3 };
@@ -12,6 +12,7 @@ function attentionFirst<T>(rows: T[], status: (row: T) => string | null | undefi
 
 export async function IntegrationsScreen() {
   const operator = await getOperatorContext("canManageIntegrations");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Integrations" eyebrow="Provider operations" title="Integrations and inbox"><TenantRequired /></OperatorShell>;
   const [connections, inbox, raw] = await Promise.all([
     prisma.providerConnection.findMany({ where: { tenantId: operator.tenantId }, orderBy: { adapterId: "asc" } }),

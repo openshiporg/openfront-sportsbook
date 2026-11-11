@@ -3,13 +3,14 @@ import { OperatorShell, TenantRequired } from '../components/OperatorShell'
 import { Mono, StatusDot } from '../components/kit'
 import { MetricGrid, RecordList, StatusBadge, WorkflowNote } from '../components/WorkflowUI'
 import { dateTime, shortId } from '../lib/format'
-import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from '../lib/operator'
 import { resolveCanonicalSelectionFact } from '@/features/sportsbook/domain/result-facts'
 
 const gradeMutation = `mutation GradeSelection($marketId:ID!,$selectionId:ID!,$resultVersionId:ID!,$reason:String!){gradeMarketSelection(marketId:$marketId,selectionId:$selectionId,resultVersionId:$resultVersionId,reason:$reason)}`
 
 export async function GradingScreen() {
   const operator = await getOperatorContext('canManageRisk')
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Grading" title="Grading"><TenantRequired /></OperatorShell>
 
   const [markets, grades] = await Promise.all([

@@ -3,7 +3,7 @@ import { MutationForm } from '../components/MutationForm'
 import { Mono, PillLink, Track } from '../components/kit'
 import { MetricGrid, RecordList, StatusBadge, type RecordRow } from '../components/WorkflowUI'
 import { dateTime, money, moneyTotals, shortId, sumByCurrency } from '../lib/format'
-import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from '../lib/operator'
 import Link from 'next/link'
 import { hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from '../lib/paging'
 
@@ -42,6 +42,7 @@ export async function PromotionsScreen({ searchParams }: { searchParams?: Platfo
     campaignParam = typeof params.campaign === 'string' ? params.campaign : undefined,
     budgetPage = pageFrom({ page: params.bpage })
   const operator = await getOperatorContext('canManageSportsbook')
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Promotions" title="Promotions"><TenantRequired /></OperatorShell>
   const tenantId = operator.tenantId,
     [promotions, budgets, awards, redemptions] = await Promise.all([

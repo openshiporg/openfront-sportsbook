@@ -3,7 +3,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { Mono, PillLink, StatusDot, Track } from "../components/kit";
 import { MetricGrid, RecordList, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, shortId } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 import { capabilitySummary, definableRoleCapabilities } from "./capabilities";
 import { hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 
@@ -27,6 +27,7 @@ export async function RolesScreen({ searchParams }: { searchParams?: PlatformSea
   // People and role administration only: the operator directory and grants are not shown to approvers, traders or auditors.
   const context = await getOperatorContext();
   const operator = context && (context.capabilities.canManageRoles || context.capabilities.canManagePeople) ? context : null;
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Roles" eyebrow="Access control" title="Roles and dual control"><TenantRequired /></OperatorShell>;
   // History lists are paged; actionable approvals (pending, or approved and still usable) are loaded by
   // state so an older request can still be decided or applied however much newer history exists.

@@ -2,7 +2,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { ReadFailed } from "../components/ReadFailed";
 import { dateTime, shortId } from "../lib/format";
 import { searchFrom } from "../lib/graphql";
-import { getOperatorContext } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden } from "../lib/operator";
 import { allowedParam, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { getCustomers } from "./actions";
 import { CustomersPageClient } from "./screens/CustomersPageClient";
@@ -16,6 +16,7 @@ export async function CustomersScreen({ searchParams }: { searchParams?: Platfor
   const search = searchFrom(params);
   const kycStatus = allowedParam(params, "kyc", kycStatuses);
   const operator = await getOperatorContext("canManageCompliance");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Customers" title="Customers"><TenantRequired /></OperatorShell>;
   const result = await getCustomers({ page, pageSize: PLATFORM_PAGE_SIZE, search, kycStatus });
   const meta = result.success ? `${result.data.total} ${search || kycStatus ? "matching" : "players"} · ${result.data.pendingKyc} KYC pending · ${result.data.openAml} AML open · ${result.data.restricted} restricted` : undefined;

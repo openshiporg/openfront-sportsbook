@@ -2,7 +2,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { ReadFailed } from "../components/ReadFailed";
 import { dateTime, money, moneyTotals, shortId, sumByCurrency } from "../lib/format";
 import { searchFrom } from "../lib/graphql";
-import { getOperatorContext } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden } from "../lib/operator";
 import { allowedParam, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { getWagers } from "./actions";
 import { WagersPageClient } from "./screens/WagersPageClient";
@@ -16,6 +16,7 @@ export async function WagersScreen({ searchParams }: { searchParams?: PlatformSe
   const status = allowedParam(params, "status", wagerStatuses);
   const search = searchFrom(params);
   const operator = await getOperatorContext("canManageRisk");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Wagers" title="Wagers"><TenantRequired /></OperatorShell>;
   const result = await getWagers({ page, pageSize: PLATFORM_PAGE_SIZE, search, status });
   if (!result.success) return <OperatorShell active="Wagers" title="Wagers" tone="alert" tenantName={operator.tenantName}><ReadFailed subject="wagers" /></OperatorShell>;

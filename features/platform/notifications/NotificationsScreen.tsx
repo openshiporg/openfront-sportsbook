@@ -3,7 +3,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { Mono, PillLink, Track } from "../components/kit";
 import { MetricGrid, RecordList, StatusBadge } from "../components/WorkflowUI";
 import { dateTime } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 import { allowedParam, hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 
 const basePath = "/dashboard/platform/notifications";
@@ -31,6 +31,7 @@ export async function NotificationsScreen({ searchParams }: { searchParams?: Pla
   const channel = allowedParam(params, "channel", channels);
   const status: StatusTrack = allowedParam(params, "status", statuses) ?? "failed";
   const operator = await getOperatorContext("canManageSportsbook");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Notifications" title="Notifications"><TenantRequired /></OperatorShell>;
   const tenantId = operator.tenantId;
   const now = new Date();

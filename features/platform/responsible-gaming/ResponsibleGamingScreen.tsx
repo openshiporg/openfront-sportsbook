@@ -3,7 +3,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { Mono, Pill, Track } from "../components/kit";
 import { MetricGrid, RecordList, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, money, shortId, windowState } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 import type { PlatformSearchParams } from "../lib/paging";
 
 const limitMutation = `mutation RGLimit($playerId:ID!,$type:String!,$period:String!,$amountMinor:String!,$currency:String!){setResponsibleGamingLimit(playerId:$playerId,type:$type,period:$period,amountMinor:$amountMinor,currency:$currency)}`;
@@ -13,6 +13,7 @@ export async function ResponsibleGamingScreen({ searchParams }: { searchParams?:
   const rawSearch = (await searchParams)?.player;
   const playerSearch = (Array.isArray(rawSearch) ? rawSearch[0] : rawSearch ?? "").trim().slice(0, 100);
   const operator = await getOperatorContext("canManageCompliance");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="RG" title="Responsible gaming"><TenantRequired /></OperatorShell>;
   const now = new Date();
   // Player picker: a bounded, searchable candidate list. Search matches the full player ID or part of the subject,

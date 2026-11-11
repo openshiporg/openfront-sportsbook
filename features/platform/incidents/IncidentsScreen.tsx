@@ -2,7 +2,7 @@ import { MutationForm } from "../components/MutationForm";
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { MetricGrid, RecordList, StatusBadge, WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, shortId } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 import { Mono, PillLink, StatusDot, Track, pillClass } from "../components/kit";
 import { allowedParam, hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 
@@ -17,6 +17,7 @@ export async function IncidentsScreen({ searchParams }: { searchParams?: Platfor
   const page = pageFrom(params);
   const status = allowedParam(params, "status", incidentStatuses);
   const operator = await getOperatorContext("canManageIntegrations");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Incidents" eyebrow="Operational response" title="Incidents"><TenantRequired /></OperatorShell>;
   // The register is paged; active incidents are loaded on their own (oldest first) so none falls out of a recent window.
   const where = { tenantId: operator.tenantId, ...(status ? { status } : {}) };

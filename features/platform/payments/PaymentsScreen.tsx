@@ -1,6 +1,6 @@
 import { OperatorShell, TenantRequired } from '../components/OperatorShell'
 import { RecordList, StatusBadge } from '../components/WorkflowUI'
-import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from '../lib/operator'
 import { displayTimeZone, money } from '../lib/format'
 import { formatInZone } from '@/features/dashboard/lib/storeTime'
 import { PaymentsControls } from './components/PaymentsControls'
@@ -8,6 +8,7 @@ import { MutationForm } from '../components/MutationForm'
 
 export async function PaymentsScreen() {
  const operator=await getOperatorContext('canManageCompliance')
+ if (!operator) await notFoundWhenForbidden();
  if(!operator)return <OperatorShell active="Payments" eyebrow="Regulatory & finance" title="Licences & payments"><TenantRequired/></OperatorShell>
  const tenantId=operator.tenantId
  const [licences,connections,intents,cage]=await Promise.all([

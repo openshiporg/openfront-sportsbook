@@ -4,7 +4,7 @@ import { StatusDot } from "../components/kit";
 import { MetricGrid, RecordList, StatusBadge } from "../components/WorkflowUI";
 import { dateTime, jsonText, money, shortId } from "../lib/format";
 import { resolveTenantCurrency } from "@/features/sportsbook/customer/currency";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 import { loadConfigValues } from "../configuration/effectiveConfig";
 import { getStoreSettings } from "../store-settings/actions";
 import { StoreSettingsPageClient } from "../store-settings/screens/StoreSettingsPageClient";
@@ -15,6 +15,7 @@ const proposal = (action: string) => { const [, key = "Unknown", encoded = ""] =
 
 export async function SettingsScreen() {
   const operator = await getOperatorContext("canManageSportsbook");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Settings" eyebrow="Operator configuration" title="Settings"><TenantRequired /></OperatorShell>;
   const [settings, jurisdictions, approvals, definitions] = await Promise.all([
     loadConfigValues(prisma, operator.tenantId),

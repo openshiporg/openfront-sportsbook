@@ -4,7 +4,7 @@ import { ReadFailed } from "../../components/ReadFailed";
 import { Mono, PillLink, StatusDot, Track } from "../../components/kit";
 import { EmptyState, MetricGrid, RecordList, StatusBadge, statusDotTone } from "../../components/WorkflowUI";
 import { dateTime, money, moneyTotals, shortId } from "../../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../../lib/operator";
 import { allowedParam, hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../../lib/paging";
 
 const basePath = "/dashboard/platform/finance/tax";
@@ -30,6 +30,7 @@ const ruleOption = (rule: Rule) => ({ label: `${rule.key} v${rule.version} · ${
 export async function TaxScreen({ searchParams }: { searchParams?: PlatformSearchParams } = {}) {
   const params = (await searchParams) ?? {};
   const operator = await getOperatorContext("canManageFinance");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Tax" title="Tax"><TenantRequired /></OperatorShell>;
   const tenantId = operator.tenantId;
   const status = allowedParam(params, "status", statusValues);

@@ -4,7 +4,7 @@ import { ExternalGateNotice, OperatorShell, TenantRequired } from "../components
 import { Mono, StatusDot, type Tone } from "../components/kit";
 import { MetricGrid, RecordList } from "../components/WorkflowUI";
 import { dateTime, money, moneyTotals, shortId, sumByCurrency } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 
 const stateText = (value: string | null | undefined) => (value || "unknown").replaceAll("_", " ").toLowerCase();
 
@@ -12,6 +12,7 @@ type Queue = { label: string; count: number; href?: string; tone: Tone };
 
 export async function OverviewScreen() {
   const operator = await getOperatorContext("canManageSportsbook");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Overview" title="Control room"><TenantRequired /></OperatorShell>;
   const tenantId = operator.tenantId;
   // General operators see aggregate counts only; risk, finance and integration breakdowns and player-linked

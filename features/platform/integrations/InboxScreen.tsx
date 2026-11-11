@@ -1,7 +1,7 @@
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { MetricGrid, RecordList, StatusBadge } from "../components/WorkflowUI";
 import { dateTime, shortId } from "../lib/format";
-import { getOperatorContext, platformPrisma as prisma } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 import { Mono, PillLink, Track } from "../components/kit";
 import { allowedParam, hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 const inboxStatuses = ["PENDING", "PROCESSING", "COMPLETED", "DEAD"] as const;
@@ -11,6 +11,7 @@ export async function InboxScreen({ searchParams }: { searchParams?: PlatformSea
   const page = pageFrom(params);
   const status = allowedParam(params, "status", inboxStatuses);
   const operator = await getOperatorContext("canManageIntegrations");
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Inbox" eyebrow="Inbound operations" title="Integration inbox"><TenantRequired /></OperatorShell>;
   // Lease state is projected against the server as-of time: an expired PROCESSING lease is stale (reclaimable), not current processing.
   const asOf = new Date(), leaseLive = (item: any) => item.status === "PROCESSING" && item.leaseUntil && new Date(item.leaseUntil) > asOf;

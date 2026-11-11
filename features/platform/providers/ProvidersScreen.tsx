@@ -3,13 +3,14 @@ import { MutationForm } from '../components/MutationForm'
 import { MetricGrid, RecordList, StatusBadge, statusDotTone } from '../components/WorkflowUI'
 import { Mono, type Tone } from '../components/kit'
 import { dateTime, shortId } from '../lib/format'
-import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from '../lib/operator'
 
 // Display order only: failing feeds first, then waiting, unmeasured, healthy.
 const toneRank: Record<Tone, number> = { alert: 0, live: 1, wait: 1, off: 2, info: 2, ok: 3 }
 
 export async function ProvidersScreen() {
   const operator = await getOperatorContext('canManageIntegrations')
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Providers" eyebrow="Capability control" title="Providers & certification"><TenantRequired /></OperatorShell>
   const tenantId = operator.tenantId,
     [connections, health, runs, replays] = await Promise.all([

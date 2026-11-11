@@ -3,7 +3,7 @@ import { MutationForm } from '../components/MutationForm'
 import { Mono } from '../components/kit'
 import { MetricGrid, RecordList, StatusBadge } from '../components/WorkflowUI'
 import { dateTime, shortId } from '../lib/format'
-import { getOperatorContext, platformPrisma as prisma } from '../lib/operator'
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from '../lib/operator'
 
 const OPEN_SCREENING = ['POTENTIAL', 'REVIEW', 'CONFIRMED']
 const CLOSED_INTEGRITY = ['CLEARED', 'CLOSED']
@@ -11,6 +11,7 @@ const CLOSED_PRIVACY = ['COMPLETED', 'DENIED']
 
 export async function ComplianceScreen() {
   const operator = await getOperatorContext('canManageCompliance')
+  if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Compliance" title="Compliance & integrity"><TenantRequired /></OperatorShell>
   const tenantId = operator.tenantId,
     [players, verification, aml, screening, geo, affordability, integrity, privacy, restrictions] = await Promise.all([
