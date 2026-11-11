@@ -3,6 +3,9 @@ var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -17,26 +20,7 @@ var __copyProps = (to, from, except, desc) => {
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// keystone.ts
-var keystone_exports = {};
-__export(keystone_exports, {
-  default: () => keystone_default2
-});
-module.exports = __toCommonJS(keystone_exports);
-
-// features/keystone/index.ts
-var import_auth4 = require("@keystone-6/auth");
-var import_core7 = require("@keystone-6/core");
-var import_config = require("dotenv/config");
-
-// features/keystone/models/User.ts
-var import_core = require("@keystone-6/core");
-var import_access = require("@keystone-6/core/access");
-var import_fields2 = require("@keystone-6/core/fields");
-
 // features/keystone/session-assurance.ts
-var import_node_crypto = require("node:crypto");
-var OPERATOR_MFA_ASSURANCE_TTL_MS = 12 * 60 * 60 * 1e3;
 function hasOperatorMfaAssurance(session, now = Date.now()) {
   const claim = session?.operatorMfaAssurance;
   if (!claim || !Number.isSafeInteger(claim.issuedAt) || !Number.isSafeInteger(claim.expiresAt)) return false;
@@ -60,8 +44,3316 @@ async function startOperatorMfaSession(context, itemId, now = Date.now()) {
   if (typeof token !== "string" || token.length === 0) throw new Error("SESSION_ISSUANCE_FAILED");
   return token;
 }
+var import_node_crypto, OPERATOR_MFA_ASSURANCE_TTL_MS;
+var init_session_assurance = __esm({
+  "features/keystone/session-assurance.ts"() {
+    "use strict";
+    import_node_crypto = require("node:crypto");
+    OPERATOR_MFA_ASSURANCE_TTL_MS = 12 * 60 * 60 * 1e3;
+  }
+});
+
+// features/platform/store-settings/lib/store-logo.ts
+function normalizeStoreLogoColor(value) {
+  const numeric = Number.parseFloat(String(value ?? DEFAULT_STORE_LOGO_COLOR));
+  if (!Number.isFinite(numeric)) return DEFAULT_STORE_LOGO_COLOR;
+  return String((numeric % 360 + 360) % 360);
+}
+var DEFAULT_STORE_LOGO_ICON, DEFAULT_STORE_LOGO_COLOR;
+var init_store_logo = __esm({
+  "features/platform/store-settings/lib/store-logo.ts"() {
+    "use strict";
+    DEFAULT_STORE_LOGO_ICON = '<svg fill="none" height="100%" viewBox="0 0 36 48" width="100%" xmlns="http://www.w3.org/2000/svg"><g fill="#155eef"><path d="m0 7.5h28.8c2.5202 0 3.7804 0 4.743.49047.8467.43143 1.5351 1.11984 1.9665 1.96657.4905.96256.4905 2.22276.4905 4.74296v1.8h-28.8c-2.52024 0-3.78035 0-4.74296-.4905-.84673-.4314-1.535139-1.1198-1.966569-1.9665-.490471-.9626-.490471-2.2228-.490471-4.743z"/><path d="m0 28.5h28.8c2.5202 0 3.7804 0 4.743-.4905.8467-.4314 1.5351-1.1198 1.9665-1.9665.4905-.9626.4905-2.2228.4905-4.743v-1.8h-28.8c-2.52024 0-3.78035 0-4.74296.4905-.84673.4314-1.535139 1.1198-1.966569 1.9665-.490471.9626-.490471 2.2228-.490471 4.743z"/><path d="m14 31.5h14.8c2.5202 0 3.7804 0 4.743.4905.8467.4314 1.5351 1.1198 1.9665 1.9665.4905.9626.4905 2.2228.4905 4.743v1.8h-14.8c-2.5202 0-3.7804 0-4.743-.4905-.8467-.4314-1.5351-1.1198-1.9665-1.9665-.4905-.9626-.4905-2.2228-.4905-4.743z"/></g></svg>';
+    DEFAULT_STORE_LOGO_COLOR = "0";
+  }
+});
+
+// features/sportsbook/domain/engine.ts
+function potentialReturn(stake, decimalOdds) {
+  if (!/^\d+(\.\d+)?$/.test(decimalOdds)) throw new Error("INVALID_ODDS");
+  const [whole, fraction = ""] = decimalOdds.split(".");
+  const scale = 10n ** BigInt(fraction.length);
+  const numerator = BigInt(whole) * scale + BigInt(fraction || "0");
+  if (numerator < scale) throw new Error("ODDS_BELOW_ONE");
+  return stake * numerator / scale;
+}
+function evaluateAcceptance(quote, facts) {
+  const checks = [
+    ["tenant", facts.tenantActive, "TENANT_INACTIVE"],
+    ["player", facts.playerActive, "PLAYER_INACTIVE"],
+    ["kyc", facts.kycApproved, "KYC_REQUIRED"],
+    ["geo", facts.geoApproved, "GEO_REQUIRED"],
+    ["selfExclusion", !facts.selfExcluded, "SELF_EXCLUDED"],
+    ["responsibleGamingLimit", facts.periodLimit === void 0 || facts.wageredInPeriod + quote.stake <= facts.periodLimit, "LIMIT_EXCEEDED"],
+    ["quoteExpiry", facts.now.getTime() < quote.expiresAt.getTime(), "QUOTE_EXPIRED"],
+    ["market", facts.marketOpen, "MARKET_CLOSED"],
+    ["priceFreshness", facts.now.getTime() - facts.priceReceivedAt.getTime() <= facts.maxPriceAgeMs, "STALE_PRICE"],
+    ["funds", facts.available >= quote.stake, "INSUFFICIENT_FUNDS"]
+  ];
+  const returns = potentialReturn(quote.stake, quote.decimalOdds);
+  const liability = returns - quote.stake;
+  checks.push(["liability", facts.currentLiability + liability <= facts.maxLiability, "LIABILITY_EXCEEDED"]);
+  const gates = checks.map(([gate, passed, code]) => ({ gate, passed, ...passed ? {} : { code } }));
+  const rejectionCode = gates.find((g) => !g.passed)?.code;
+  return { accepted: !rejectionCode, gates, rejectionCode, potentialReturn: returns, liability, termsHash: evidenceHash(quote) };
+}
+function settlementAmount(stake, decimalOdds, grade) {
+  switch (grade.outcome) {
+    case "LOSS":
+      return 0n;
+    case "PUSH":
+    case "VOID":
+      return stake;
+    case "WIN":
+      return potentialReturn(stake, decimalOdds);
+    case "DEAD_HEAT": {
+      const n = grade.factorNumerator ?? 1n;
+      const d = grade.factorDenominator ?? 2n;
+      if (n < 0n || d <= 0n || n > d) throw new Error("INVALID_DEAD_HEAT_FACTOR");
+      return stake + (potentialReturn(stake, decimalOdds) - stake) * n / d;
+    }
+  }
+}
+var import_node_crypto2, canonical, evidenceHash;
+var init_engine = __esm({
+  "features/sportsbook/domain/engine.ts"() {
+    "use strict";
+    import_node_crypto2 = require("node:crypto");
+    canonical = (value) => {
+      if (typeof value === "bigint") return `"${value}"`;
+      if (value instanceof Date) return JSON.stringify(value.toISOString());
+      if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+      if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
+      return JSON.stringify(value);
+    };
+    evidenceHash = (value) => (0, import_node_crypto2.createHash)("sha256").update(canonical(value)).digest("hex");
+  }
+});
+
+// features/sportsbook/domain/ledger.ts
+function validateJournal(journal) {
+  if (!journal.idempotencyKey || journal.entries.length < 2) throw new Error("INVALID_JOURNAL");
+  const currencies = new Set(journal.entries.map((e) => e.currency));
+  if (currencies.size !== 1) throw new Error("CROSS_CURRENCY_JOURNAL");
+  if (journal.entries.some((e) => e.amount <= 0n)) throw new Error("NON_POSITIVE_ENTRY");
+  const debit = journal.entries.filter((e) => e.side === "DEBIT").reduce((n, e) => n + e.amount, 0n);
+  const credit = journal.entries.filter((e) => e.side === "CREDIT").reduce((n, e) => n + e.amount, 0n);
+  if (debit !== credit) throw new Error("UNBALANCED_JOURNAL");
+}
+function settlementJournal(input) {
+  const { stake, payout, currency } = input;
+  const entries = [{ accountId: input.pendingAccountId, currency, side: "DEBIT", amount: stake }];
+  if (payout === 0n) entries.push({ accountId: input.revenueAccountId, currency, side: "CREDIT", amount: stake });
+  else {
+    if (payout > stake) entries.push({ accountId: input.winningsExpenseAccountId, currency, side: "DEBIT", amount: payout - stake });
+    if (payout < stake) entries.push({ accountId: input.revenueAccountId, currency, side: "CREDIT", amount: stake - payout });
+    entries.push({ accountId: input.cashAccountId, currency, side: "CREDIT", amount: payout });
+  }
+  const journal = { idempotencyKey: input.idempotencyKey, type: "WAGER_SETTLEMENT", entries };
+  validateJournal(journal);
+  return journal;
+}
+function reverseJournal(original, idempotencyKey) {
+  const reversal = { idempotencyKey, type: `REVERSAL_${original.type}`, reversalOf: original.idempotencyKey, entries: original.entries.map((e) => ({ ...e, side: e.side === "DEBIT" ? "CREDIT" : "DEBIT" })) };
+  validateJournal(reversal);
+  return reversal;
+}
+var init_ledger = __esm({
+  "features/sportsbook/domain/ledger.ts"() {
+    "use strict";
+  }
+});
+
+// features/sportsbook/domain/combination.ts
+function gcd(a, b) {
+  while (b) [a, b] = [b, a % b];
+  return a < 0n ? -a : a;
+}
+function rational(numerator, denominator) {
+  if (denominator <= 0n) throw new Error("INVALID_DENOMINATOR");
+  const divisor = gcd(numerator, denominator);
+  return { numerator: numerator / divisor, denominator: denominator / divisor };
+}
+function multiply(a, b) {
+  return rational(a.numerator * b.numerator, a.denominator * b.denominator);
+}
+function add(a, b) {
+  return rational(a.numerator * b.denominator + b.numerator * a.denominator, a.denominator * b.denominator);
+}
+function subtract(a, b) {
+  return add(a, rational(-b.numerator, b.denominator));
+}
+function parseExactDecimal(value) {
+  if (!/^\d+(\.\d{1,9})?$/.test(value)) throw new Error("INVALID_ODDS");
+  const [whole, fraction = ""] = value.split(".");
+  const denominator = 10n ** BigInt(fraction.length);
+  const result = rational(BigInt(whole) * denominator + BigInt(fraction || "0"), denominator);
+  if (result.numerator < result.denominator) throw new Error("ODDS_BELOW_ONE");
+  return result;
+}
+function rationalToDecimal(value, scale = 6) {
+  const factor = 10n ** BigInt(scale);
+  const scaled = value.numerator * factor / value.denominator;
+  const whole = scaled / factor;
+  const fraction = String(scaled % factor).padStart(scale, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : String(whole);
+}
+function combinationGradeMultiplier(decimalOdds, outcome, factorNumerator = 1n, factorDenominator = 2n) {
+  const odds = parseExactDecimal(decimalOdds);
+  if (outcome === "LOSS") return rational(0n, 1n);
+  if (outcome === "PUSH" || outcome === "VOID") return rational(1n, 1n);
+  if (outcome === "WIN") return odds;
+  if (factorNumerator < 0n || factorDenominator <= 0n || factorNumerator > factorDenominator) throw new Error("INVALID_DEAD_HEAT_FACTOR");
+  return add(rational(1n, 1n), multiply(subtract(odds, rational(1n, 1n)), rational(factorNumerator, factorDenominator)));
+}
+function settleCombinationPart(input) {
+  const multiplier = input.legs.reduce((current, leg) => multiply(current, combinationGradeMultiplier(leg.decimalOdds, leg.outcome, leg.factorNumerator, leg.factorDenominator)), rational(1n, 1n));
+  const allWin = input.legs.length > 0 && input.legs.every((leg) => leg.outcome === "WIN");
+  const gross = allWin && input.acceptedPotentialReturnMinor !== void 0 ? input.acceptedPotentialReturnMinor : input.stakeMinor * multiplier.numerator / multiplier.denominator;
+  const payoutMinor = input.stakeReturned === false ? gross > input.stakeMinor ? gross - input.stakeMinor : 0n : gross;
+  return { payoutMinor, multiplier: rationalToDecimal(multiplier), inputHash: evidenceHash({ stakeMinor: input.stakeMinor, legs: input.legs, stakeReturned: input.stakeReturned ?? true }) };
+}
+var init_combination = __esm({
+  "features/sportsbook/domain/combination.ts"() {
+    "use strict";
+    init_engine();
+  }
+});
+
+// features/sportsbook/adapters/sandbox.ts
+function installedSandboxAdapter(connection) {
+  const kind = String(connection.capabilities?.kind ?? "");
+  const adapter = sandboxAdapters[kind];
+  if (!adapter || connection.adapterId !== adapter.manifest().id || connection.certificationStatus !== "SANDBOX" || !String(connection.configReference ?? "").startsWith("sandbox:")) return null;
+  return adapter;
+}
+var import_node_crypto3, SandboxAdapter, sandboxAdapters;
+var init_sandbox = __esm({
+  "features/sportsbook/adapters/sandbox.ts"() {
+    "use strict";
+    import_node_crypto3 = require("node:crypto");
+    SandboxAdapter = class {
+      constructor(kind, webhookSecret = "sandbox-only") {
+        this.kind = kind;
+        this.webhookSecret = webhookSecret;
+        this.results = /* @__PURE__ */ new Map();
+        this.fingerprints = /* @__PURE__ */ new Map();
+      }
+      manifest() {
+        return { id: `sandbox-${this.kind}`, version: "1.0.0", schemas: ["sandbox.v1"] };
+      }
+      async capabilities() {
+        return { supported: [this.kind, "query", "webhook", "reconcile"], unsupported: ["production-certified"] };
+      }
+      async validateConfig(configRef) {
+        return { valid: configRef.startsWith("sandbox:"), errors: configRef.startsWith("sandbox:") ? [] : ["Sandbox config must start with sandbox:"] };
+      }
+      async execute(_ctx, command, idempotencyKey) {
+        const fingerprint = JSON.stringify([command.type, command.externalRef ?? null, command.payload ?? null]);
+        const prior = this.results.get(idempotencyKey);
+        if (prior) {
+          if (this.fingerprints.get(idempotencyKey) !== fingerprint) throw new Error("ADAPTER_IDEMPOTENCY_CONFLICT");
+          return prior;
+        }
+        const result = { status: command.type === "simulate_pending" ? "PENDING" : command.type === "simulate_failure" ? "FAILED" : "SUCCEEDED", externalRef: command.externalRef ?? `${this.kind}-${idempotencyKey}`, payload: command.payload };
+        this.results.set(idempotencyKey, result);
+        this.fingerprints.set(idempotencyKey, fingerprint);
+        this.results.set(result.externalRef, result);
+        return result;
+      }
+      /** Process-local memory only: a miss (e.g. after restart) is not evidence of non-effect, so it reports PENDING. */
+      async query(_ctx, externalRef) {
+        return this.results.get(externalRef) ?? { status: "PENDING", externalRef };
+      }
+      /** `binding` (e.g. tenant + installation id) is covered by the MAC so signed bytes cannot be replayed against another installation. */
+      sign(raw, timestamp7, binding) {
+        const mac = (0, import_node_crypto3.createHmac)("sha256", this.webhookSecret).update(timestamp7).update(".");
+        if (binding !== void 0) mac.update(binding).update(".");
+        return mac.update(raw).digest("hex");
+      }
+      verifyWebhook(raw, headers, binding) {
+        const timestamp7 = headers.get("x-sandbox-timestamp") ?? "";
+        const supplied = headers.get("x-sandbox-signature") ?? "";
+        const expected = this.sign(raw, timestamp7, binding);
+        if (!supplied || supplied.length !== expected.length || !(0, import_node_crypto3.timingSafeEqual)(Buffer.from(supplied), Buffer.from(expected))) return { valid: false, reason: "INVALID_SIGNATURE" };
+        try {
+          return { valid: true, event: JSON.parse(Buffer.from(raw).toString()) };
+        } catch {
+          return { valid: false, reason: "INVALID_JSON" };
+        }
+      }
+      normalize(event) {
+        return [{ id: event.id, type: event.type, occurredAt: event.occurredAt, payload: event.payload, source: { adapterId: this.manifest().id, version: "1.0.0", externalId: event.id } }];
+      }
+      async health() {
+        return { ok: true, latencyMs: 0, details: "sandbox" };
+      }
+      async *reconcile() {
+        for (const result of new Set(this.results.values())) yield result;
+      }
+    };
+    sandboxAdapters = Object.fromEntries(["sports", "results", "kyc", "aml", "geo", "payments", "messaging", "analytics", "tax", "reporting", "integrity", "affiliates", "pam"].map((kind) => [kind, new SandboxAdapter(kind)]));
+  }
+});
+
+// features/sportsbook/domain/onboarding.ts
+function buildOnboardingFixture(input) {
+  if (!/^[a-z0-9-]+$/.test(input.slug) || !/^[A-Z]{3}$/.test(input.currency) || input.currencyExponent < 0 || input.currencyExponent > 6) throw new Error("INVALID_ONBOARDING_INPUT");
+  const seed = `sportsbook:${input.slug}:v1`;
+  const id = (kind) => `${kind}_${evidenceHash(`${seed}:${kind}`).slice(0, 20)}`;
+  return { version: "1", fixtureHash: evidenceHash(input), tenant: { id: id("tenant"), name: input.operatorName, slug: input.slug, status: "ACTIVE", defaultTimezone: input.timezone }, brand: { id: id("brand"), name: input.brandName, domain: input.domain, defaultLocale: "en", status: "ACTIVE" }, jurisdiction: { id: id("jurisdiction"), code: input.jurisdictionCode, status: "PENDING" }, currency: { code: input.currency, exponent: input.currencyExponent }, providers: ["sports", "results", "kyc", "aml", "geo", "payments", "messaging", "analytics", "tax", "reporting", "integrity", "affiliates", "pam"].map((kind) => ({ id: id(`provider-${kind}`), kind, adapterId: `sandbox-${kind}`, certificationStatus: "SANDBOX" })), starterCatalog: { sport: { id: id("sport"), key: "football", name: "Football" }, competition: { id: id("competition"), key: "sandbox-league", name: "Sandbox League" } }, externalGates: ["licence approval", "jurisdiction policy approval", "provider certification", "finance chart approval"] };
+}
+function prepareSandboxPromotionProgress(progress, fixtureHash) {
+  const completeEvidenceHash = evidenceHash({ fixtureHash, stage: "PROMOTIONS" });
+  const pendingEvidenceHash = evidenceHash({ fixtureHash, stage: "PROMOTIONS", provisioning: "PENDING" });
+  if (!progress) return { kind: "CREATE", evidenceHash: pendingEvidenceHash };
+  if (progress.status === "PENDING" && progress.evidenceHash === pendingEvidenceHash) return { kind: "KEEP_PENDING" };
+  if (progress.status === "COMPLETE" && progress.evidenceHash === completeEvidenceHash) {
+    return { kind: "RESET_PENDING", previousEvidenceHash: completeEvidenceHash, evidenceHash: pendingEvidenceHash };
+  }
+  throw new Error("ONBOARDING_PROMOTIONS_PROGRESS_CONFLICT");
+}
+async function ensurePromotionsThenComplete(ensurePromotions, completeProgress) {
+  await ensurePromotions();
+  await completeProgress();
+}
+var init_onboarding = __esm({
+  "features/sportsbook/domain/onboarding.ts"() {
+    "use strict";
+    init_engine();
+  }
+});
+
+// features/sportsbook/domain/trading-eligibility.ts
+function isEventTradingEligible(status3) {
+  return status3 === "SCHEDULED" || status3 === "LIVE";
+}
+function assertEventTradingTransition(currentStatus, nextStatus) {
+  if (isEventTradingEligible(nextStatus) && !isEventTradingEligible(currentStatus)) {
+    throw new Error("TRADING_REOPENING_REQUIRES_REVIEWED_POLICY");
+  }
+}
+function assertMarketOpenAllowed(marketStatus, eventStatus) {
+  if (!isEventTradingEligible(eventStatus)) throw new Error("PARENT_EVENT_NOT_TRADING_ELIGIBLE");
+  if (marketStatus !== "OPEN") throw new Error("MARKET_REOPENING_REQUIRES_REVIEWED_POLICY");
+}
+function assertEventAllowsNewMarket(eventStatus) {
+  if (!isEventTradingEligible(eventStatus)) throw new Error("PARENT_EVENT_NOT_TRADING_ELIGIBLE");
+}
+function assertMarketFirstOpenAllowed(input) {
+  if (!isEventTradingEligible(input.eventStatus)) throw new Error("PARENT_EVENT_NOT_TRADING_ELIGIBLE");
+  if (!input.createdAwaitingPrices || input.everOpened) throw new Error("MARKET_REOPENING_REQUIRES_REVIEWED_POLICY");
+  if (input.selections === 0 || input.unpricedSelections > 0) throw new Error("MARKET_NOT_FULLY_PRICED");
+}
+function isEventAcceptingBets(event, now = /* @__PURE__ */ new Date()) {
+  if (event.status === "LIVE") return true;
+  if (event.status !== "SCHEDULED" || !event.startAt) return false;
+  return new Date(event.startAt).getTime() > now.getTime();
+}
+function maxPriceAgeMs(live) {
+  const value = Number(live ? process.env.MAX_PRICE_AGE_MS ?? 3e4 : process.env.MAX_PREMATCH_PRICE_AGE_MS ?? 864e5);
+  return Number.isFinite(value) && value > 0 ? value : live ? 3e4 : 864e5;
+}
+function isLivePricing(eventStatus, tradingMode) {
+  return eventStatus === "LIVE" || tradingMode === "LIVE";
+}
+function assertTransition(map, kind, from, to) {
+  if (from === to) return;
+  if (!map[String(from)]?.includes(String(to))) throw new Error(`${kind}_TRANSITION_NOT_ALLOWED:${String(from)}->${String(to)}`);
+}
+var AWAITING_PRICES, EVENT_TRANSITIONS, MARKET_TRANSITIONS, SUPPORT_CASE_TRANSITIONS, assertEventTransition, assertMarketTransition, assertSupportCaseTransition;
+var init_trading_eligibility = __esm({
+  "features/sportsbook/domain/trading-eligibility.ts"() {
+    "use strict";
+    AWAITING_PRICES = "AWAITING_PRICES";
+    EVENT_TRANSITIONS = {
+      SCHEDULED: ["LIVE", "SUSPENDED", "ENDED", "CANCELLED"],
+      LIVE: ["SUSPENDED", "ENDED", "CANCELLED"],
+      SUSPENDED: ["ENDED", "CANCELLED"],
+      ENDED: [],
+      CANCELLED: []
+    };
+    MARKET_TRANSITIONS = {
+      OPEN: ["SUSPENDED", "CLOSED", "GRADED"],
+      SUSPENDED: ["OPEN", "CLOSED", "GRADED"],
+      CLOSED: ["GRADED"],
+      GRADED: []
+    };
+    SUPPORT_CASE_TRANSITIONS = {
+      OPEN: ["TRIAGED", "WAITING_CUSTOMER", "WAITING_OPERATOR", "RESOLVED", "CLOSED"],
+      TRIAGED: ["WAITING_CUSTOMER", "WAITING_OPERATOR", "RESOLVED", "CLOSED"],
+      WAITING_CUSTOMER: ["TRIAGED", "WAITING_OPERATOR", "RESOLVED", "CLOSED"],
+      WAITING_OPERATOR: ["TRIAGED", "WAITING_CUSTOMER", "RESOLVED", "CLOSED"],
+      RESOLVED: ["TRIAGED", "WAITING_OPERATOR", "CLOSED"],
+      CLOSED: []
+    };
+    assertEventTransition = (from, to) => assertTransition(EVENT_TRANSITIONS, "EVENT", from, to);
+    assertMarketTransition = (from, to) => assertTransition(MARKET_TRANSITIONS, "MARKET", from, to);
+    assertSupportCaseTransition = (from, to) => assertTransition(SUPPORT_CASE_TRANSITIONS, "SUPPORT_CASE", from, to);
+  }
+});
+
+// features/platform/onboarding/lib/seed.json
+var seed_default;
+var init_seed = __esm({
+  "features/platform/onboarding/lib/seed.json"() {
+    seed_default = {
+      version: 2,
+      operator: {
+        slug: "northline",
+        operatorName: "Northline Gaming",
+        brandName: "Northline Sports",
+        domain: "sportsbook.local",
+        currency: "USD",
+        currencyExponent: 2,
+        jurisdictionCode: "SANDBOX",
+        timezone: "America/New_York"
+      },
+      dependencyOrder: [
+        "OPERATOR",
+        "BRAND",
+        "POLICY",
+        "PROVIDERS",
+        "CATALOG",
+        "LICENSING",
+        "CERTIFICATION"
+      ],
+      externalGates: ["LICENSING", "CERTIFICATION"],
+      catalog: {
+        region: { key: "north-america", name: "North America", countryCodes: ["US", "CA"] },
+        sports: [
+          {
+            key: "football",
+            name: "Football",
+            competitions: [
+              {
+                key: "northern-gridiron-conference",
+                name: "Northern Gridiron Conference",
+                season: { key: "ngc-2026", name: "2026 Regular Season" },
+                events: [
+                  {
+                    key: "ngc-halifax-portland",
+                    name: "Halifax Ironclads v Portland Pioneers",
+                    startsInDays: 2,
+                    startTimeUtc: "17:00",
+                    markets: [
+                      { definition: "moneyline", name: "Moneyline", selections: [{ key: "home", label: "Halifax Ironclads", odds: "1.65" }, { key: "away", label: "Portland Pioneers", odds: "2.30" }] },
+                      { definition: "spread", name: "Point spread", line: "3.5", selections: [{ key: "home", label: "Halifax Ironclads -3.5", odds: "1.91" }, { key: "away", label: "Portland Pioneers +3.5", odds: "1.91" }] },
+                      { definition: "total", name: "Total points", line: "44.5", selections: [{ key: "over", label: "Over 44.5", odds: "1.87" }, { key: "under", label: "Under 44.5", odds: "1.95" }] }
+                    ]
+                  },
+                  {
+                    key: "ngc-duluth-erie",
+                    name: "Duluth Lumberjacks v Erie Mariners",
+                    startsInDays: 2,
+                    startTimeUtc: "20:25",
+                    markets: [
+                      { definition: "moneyline", name: "Moneyline", selections: [{ key: "home", label: "Duluth Lumberjacks", odds: "2.05" }, { key: "away", label: "Erie Mariners", odds: "1.80" }] },
+                      { definition: "spread", name: "Point spread", line: "1.5", selections: [{ key: "home", label: "Duluth Lumberjacks +1.5", odds: "1.91" }, { key: "away", label: "Erie Mariners -1.5", odds: "1.91" }] },
+                      { definition: "total", name: "Total points", line: "41.5", selections: [{ key: "over", label: "Over 41.5", odds: "1.91" }, { key: "under", label: "Under 41.5", odds: "1.91" }] }
+                    ]
+                  },
+                  {
+                    key: "ngc-kingston-bangor",
+                    name: "Kingston Stags v Bangor Blizzard",
+                    startsInDays: 3,
+                    startTimeUtc: "00:20",
+                    markets: [
+                      { definition: "moneyline", name: "Moneyline", selections: [{ key: "home", label: "Kingston Stags", odds: "1.40" }, { key: "away", label: "Bangor Blizzard", odds: "3.00" }] },
+                      { definition: "spread", name: "Point spread", line: "7.5", selections: [{ key: "home", label: "Kingston Stags -7.5", odds: "1.95" }, { key: "away", label: "Bangor Blizzard +7.5", odds: "1.87" }] }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            key: "soccer",
+            name: "Soccer",
+            competitions: [
+              {
+                key: "harbor-league",
+                name: "Harbor League",
+                season: { key: "harbor-2026", name: "2026 Season" },
+                events: [
+                  {
+                    key: "harbor-kingsport-ashford",
+                    name: "Kingsport Rovers v Ashford Athletic",
+                    startsInDays: 1,
+                    startTimeUtc: "19:00",
+                    markets: [
+                      { definition: "match-result", name: "Match result", selections: [{ key: "home", label: "Kingsport Rovers", odds: "2.10" }, { key: "draw", label: "Draw", odds: "3.40" }, { key: "away", label: "Ashford Athletic", odds: "3.50" }] },
+                      { definition: "total", name: "Total goals", line: "2.5", selections: [{ key: "over", label: "Over 2.5", odds: "1.95" }, { key: "under", label: "Under 2.5", odds: "1.85" }] }
+                    ]
+                  },
+                  {
+                    key: "harbor-millbrook-westhaven",
+                    name: "Millbrook City v Westhaven United",
+                    startsInDays: 3,
+                    startTimeUtc: "15:00",
+                    markets: [
+                      { definition: "match-result", name: "Match result", selections: [{ key: "home", label: "Millbrook City", odds: "1.75" }, { key: "draw", label: "Draw", odds: "3.80" }, { key: "away", label: "Westhaven United", odds: "4.50" }] },
+                      { definition: "total", name: "Total goals", line: "2.5", selections: [{ key: "over", label: "Over 2.5", odds: "1.80" }, { key: "under", label: "Under 2.5", odds: "2.00" }] }
+                    ]
+                  },
+                  {
+                    key: "harbor-redcliff-portalder",
+                    name: "Redcliff Town v Port Alder FC",
+                    startsInDays: 4,
+                    startTimeUtc: "18:30",
+                    markets: [
+                      { definition: "match-result", name: "Match result", selections: [{ key: "home", label: "Redcliff Town", odds: "2.75" }, { key: "draw", label: "Draw", odds: "3.20" }, { key: "away", label: "Port Alder FC", odds: "2.60" }] },
+                      { definition: "total", name: "Total goals", line: "2.5", selections: [{ key: "over", label: "Over 2.5", odds: "2.05" }, { key: "under", label: "Under 2.5", odds: "1.75" }] }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            key: "basketball",
+            name: "Basketball",
+            competitions: [
+              {
+                key: "coastal-basketball-association",
+                name: "Coastal Basketball Association",
+                season: { key: "cba-2026", name: "2026\u201327 Season" },
+                events: [
+                  {
+                    key: "cba-bayview-granite",
+                    name: "Bayview Hawks v Granite Peaks",
+                    startsInDays: 1,
+                    startTimeUtc: "23:30",
+                    markets: [
+                      { definition: "moneyline", name: "Moneyline", selections: [{ key: "home", label: "Bayview Hawks", odds: "1.55" }, { key: "away", label: "Granite Peaks", odds: "2.50" }] },
+                      { definition: "spread", name: "Point spread", line: "5.5", selections: [{ key: "home", label: "Bayview Hawks -5.5", odds: "1.91" }, { key: "away", label: "Granite Peaks +5.5", odds: "1.91" }] },
+                      { definition: "total", name: "Total points", line: "221.5", selections: [{ key: "over", label: "Over 221.5", odds: "1.91" }, { key: "under", label: "Under 221.5", odds: "1.91" }] }
+                    ]
+                  },
+                  {
+                    key: "cba-riverside-summit",
+                    name: "Riverside Comets v Summit Falcons",
+                    startsInDays: 2,
+                    startTimeUtc: "00:00",
+                    markets: [
+                      { definition: "moneyline", name: "Moneyline", selections: [{ key: "home", label: "Riverside Comets", odds: "1.95" }, { key: "away", label: "Summit Falcons", odds: "1.87" }] },
+                      { definition: "spread", name: "Point spread", line: "1.5", selections: [{ key: "home", label: "Riverside Comets +1.5", odds: "1.91" }, { key: "away", label: "Summit Falcons -1.5", odds: "1.91" }] },
+                      { definition: "total", name: "Total points", line: "214.5", selections: [{ key: "over", label: "Over 214.5", odds: "1.87" }, { key: "under", label: "Under 214.5", odds: "1.95" }] }
+                    ]
+                  },
+                  {
+                    key: "cba-harborview-mesa",
+                    name: "Harborview Tides v Mesa Coyotes",
+                    startsInDays: 4,
+                    startTimeUtc: "02:00",
+                    markets: [
+                      { definition: "moneyline", name: "Moneyline", selections: [{ key: "home", label: "Harborview Tides", odds: "2.40" }, { key: "away", label: "Mesa Coyotes", odds: "1.60" }] },
+                      { definition: "total", name: "Total points", line: "226.5", selections: [{ key: "over", label: "Over 226.5", odds: "1.91" }, { key: "under", label: "Under 226.5", odds: "1.91" }] }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            key: "tennis",
+            name: "Tennis",
+            competitions: [
+              {
+                key: "lakeside-open",
+                name: "Lakeside Open",
+                season: { key: "lakeside-2026", name: "2026 Tournament" },
+                events: [
+                  {
+                    key: "lakeside-moreau-lindqvist",
+                    name: "Elias Moreau v Kasper Lindqvist",
+                    startsInDays: 1,
+                    startTimeUtc: "16:00",
+                    markets: [
+                      { definition: "moneyline", name: "Match winner", selections: [{ key: "home", label: "Elias Moreau", odds: "1.72" }, { key: "away", label: "Kasper Lindqvist", odds: "2.10" }] }
+                    ]
+                  },
+                  {
+                    key: "lakeside-varga-aalto",
+                    name: "Tomas Varga v Henrik Aalto",
+                    startsInDays: 1,
+                    startTimeUtc: "18:00",
+                    markets: [
+                      { definition: "moneyline", name: "Match winner", selections: [{ key: "home", label: "Tomas Varga", odds: "2.35" }, { key: "away", label: "Henrik Aalto", odds: "1.58" }] }
+                    ]
+                  },
+                  {
+                    key: "lakeside-okafor-brandt",
+                    name: "Nia Okafor v Lena Brandt",
+                    startsInDays: 2,
+                    startTimeUtc: "15:30",
+                    markets: [
+                      { definition: "moneyline", name: "Match winner", selections: [{ key: "home", label: "Nia Okafor", odds: "1.48" }, { key: "away", label: "Lena Brandt", odds: "2.65" }] }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    };
+  }
+});
+
+// features/keystone/mutations/onboarding-catalog.ts
+function assertOnboardingCatalog() {
+  for (const sport of onboardingCatalog.sports) for (const competition of sport.competitions) for (const event of competition.events) {
+    if (!/^[a-z0-9-]+$/.test(event.key) || !/^\d{2}:\d{2}$/.test(event.startTimeUtc) || !(event.startsInDays >= 1)) throw new Error("INVALID_ONBOARDING_CATALOG");
+    for (const market of event.markets) {
+      if (market.selections.length < 2 || new Set(market.selections.map((selection) => selection.key)).size !== market.selections.length) throw new Error("INVALID_ONBOARDING_CATALOG");
+      if (market.selections.some((selection) => !ODDS.test(selection.odds) || Number(selection.odds) <= 1)) throw new Error("INVALID_ONBOARDING_CATALOG");
+    }
+  }
+}
+async function ensureOnboardingCatalogRoots(tx, tenantId, timezone) {
+  const { region: seedRegion, sports } = onboardingCatalog;
+  const region = await tx.region.findFirst({ where: { tenantId, key: seedRegion.key } }) ?? await tx.region.create({ data: { tenantId, key: seedRegion.key, name: seedRegion.name, countryCodes: seedRegion.countryCodes, status: "ACTIVE" } });
+  for (const seedSport of sports) {
+    const sport = await tx.sport.findFirst({ where: { tenantId, key: seedSport.key } }) ?? await tx.sport.create({ data: { tenantId, key: seedSport.key, name: seedSport.name, active: true } });
+    for (const seedCompetition of seedSport.competitions) {
+      const competition = await tx.competition.findFirst({ where: { tenantId, key: seedCompetition.key } }) ?? await tx.competition.create({ data: { tenantId, sportId: sport.id, regionId: region.id, key: seedCompetition.key, name: seedCompetition.name, timezone, status: "ACTIVE" } });
+      if (!await tx.season.findFirst({ where: { tenantId, competitionId: competition.id, key: seedCompetition.season.key } })) {
+        await tx.season.create({ data: { tenantId, competitionId: competition.id, key: seedCompetition.season.key, name: seedCompetition.season.name, startsAt: new Date(Date.now() - 30 * 864e5), endsAt: new Date(Date.now() + 180 * 864e5), status: "ACTIVE" } });
+      }
+    }
+  }
+}
+function eventStart(event) {
+  const [hours, minutes] = event.startTimeUtc.split(":").map(Number);
+  const start = /* @__PURE__ */ new Date();
+  start.setUTCDate(start.getUTCDate() + event.startsInDays);
+  start.setUTCHours(hours, minutes, 0, 0);
+  return start;
+}
+async function ensureOnboardingCatalogEvents(prisma, tenantId, actorId, appendAudit2) {
+  let created = 0;
+  for (const seedSport of onboardingCatalog.sports) for (const seedCompetition of seedSport.competitions) for (const seedEvent of seedCompetition.events) {
+    const externalKey = `onboarding:${seedEvent.key}`;
+    const made = await prisma.$transaction(async (tx) => {
+      if (await tx.event.findFirst({ where: { tenantId, externalKey }, select: { id: true } })) return false;
+      const actor = await tx.user.findUnique({ where: { id: actorId }, include: { role: true } });
+      if (!actor?.role?.canManageOnboarding || actor.tenantId !== tenantId) throw new Error("Not found");
+      await writeSeedEvent(tx, { tenantId, actorId, seedCompetition, seedEvent, externalKey, startAt: eventStart(seedEvent), canOpen: actor.role.canTrade === true, source: "OPERATOR", reason: "Opening prices set during onboarding", auditReason: "SANDBOX_ONBOARDING" }, appendAudit2);
+      return true;
+    });
+    if (made) created++;
+  }
+  return created;
+}
+async function writeSeedEvent(tx, input, appendAudit2) {
+  const { tenantId, actorId, seedCompetition, seedEvent, externalKey, canOpen } = input;
+  const competition = await tx.competition.findFirst({ where: { tenantId, key: seedCompetition.key } });
+  const season = competition ? await tx.season.findFirst({ where: { tenantId, competitionId: competition.id, key: seedCompetition.season.key } }) : null;
+  const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-sports", certificationStatus: "SANDBOX", status: "ACTIVE" } });
+  if (!competition || !provider) throw new Error("ONBOARDING_CATALOG_ROOTS_MISSING");
+  const now = /* @__PURE__ */ new Date();
+  const event = await tx.event.create({ data: { tenantId, competitionId: competition.id, seasonId: season?.id ?? null, externalKey, name: seedEvent.name, startAt: input.startAt, status: "SCHEDULED", version: 1 } });
+  const marketIds = [];
+  for (const seedMarket of seedEvent.markets) {
+    const definition = await tx.marketDefinition.findFirst({ where: { tenantId, key: seedMarket.definition, status: "ACTIVE" }, orderBy: { version: "desc" } });
+    if (!definition) throw new Error("MARKET_DEFINITION_NOT_ACTIVE");
+    const line = seedMarket.line ?? "";
+    const market = await tx.market.create({ data: { tenantId, eventId: event.id, definitionId: definition.id, definitionKey: definition.key, parameters: line ? { name: seedMarket.name, line } : { name: seedMarket.name }, line, tradingMode: "PREMATCH", cashOutEnabled: true, status: "SUSPENDED", version: 1 } });
+    await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "MARKET", scopeId: market.id, fromStatus: AWAITING_PRICES, toStatus: "SUSPENDED", reason: "Awaiting prices", source: "CATALOG", actorId, effectiveAt: now } });
+    for (const seedSelection of seedMarket.selections) {
+      const selection = await tx.selection.create({ data: { tenantId, marketId: market.id, key: seedSelection.key, label: seedSelection.label, status: "OPEN" } });
+      const payload = { source: "ONBOARDING_SEED", marketId: market.id, selectionId: selection.id, decimalOdds: seedSelection.odds, line, sequence: "1", actorId };
+      const envelope = await tx.rawEnvelope.create({ data: { tenantId, providerConnectionId: provider.id, direction: "INBOUND", externalId: `onboarding:${(0, import_node_crypto4.randomUUID)()}`, schemaVersion: "sandbox.v1", payload, payloadHash: evidenceHash(payload), receivedAt: now } });
+      await tx.priceSnapshot.create({ data: { tenantId, selectionId: selection.id, providerConnectionId: provider.id, decimalOdds: seedSelection.odds, line, sequence: "1", effectiveAt: now, receivedAt: now, rawEnvelopeId: envelope.id, status: "OPEN" } });
+    }
+    if (canOpen) {
+      assertMarketFirstOpenAllowed({ eventStatus: event.status, createdAwaitingPrices: true, everOpened: false, unpricedSelections: 0, selections: seedMarket.selections.length });
+      const opened = await tx.market.updateMany({ where: { id: market.id, tenantId, status: "SUSPENDED", version: 1 }, data: { status: "OPEN", version: 2 } });
+      if (opened.count !== 1) throw new Error("STALE_MARKET_STATE");
+      await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "MARKET", scopeId: market.id, fromStatus: "SUSPENDED", toStatus: "OPEN", reason: input.reason, source: input.source, actorId, effectiveAt: now } });
+    }
+    marketIds.push(market.id);
+  }
+  await appendAudit2(tx, tenantId, actorId, "catalog.event_created", "Event", event.id, input.auditReason, { competitionId: competition.id, externalKey, marketIds, opened: canOpen });
+  return event;
+}
+var import_node_crypto4, onboardingCatalog, ODDS;
+var init_onboarding_catalog = __esm({
+  "features/keystone/mutations/onboarding-catalog.ts"() {
+    "use strict";
+    import_node_crypto4 = require("node:crypto");
+    init_seed();
+    init_engine();
+    init_trading_eligibility();
+    onboardingCatalog = seed_default.catalog;
+    ODDS = /^\d{1,4}(\.\d{1,4})?$/;
+  }
+});
+
+// features/integrations/payment/authorizenet.ts
+var authorizenet_exports = {};
+__export(authorizenet_exports, {
+  cancelPaymentFunction: () => cancelPaymentFunction,
+  capturePaymentFunction: () => capturePaymentFunction,
+  createPaymentFunction: () => createPaymentFunction,
+  generatePaymentLinkFunction: () => generatePaymentLinkFunction,
+  getPaymentStatusFunction: () => getPaymentStatusFunction,
+  handleWebhookFunction: () => handleWebhookFunction,
+  mapTransactionStatus: () => mapTransactionStatus,
+  refundPaymentFunction: () => refundPaymentFunction
+});
+function merchantAuthentication() {
+  const name = process.env.AUTHORIZENET_API_LOGIN_ID;
+  const transactionKey = process.env.AUTHORIZENET_TRANSACTION_KEY;
+  if (!name || !transactionKey) throw new Error("Authorize.net credentials are not configured");
+  return { name, transactionKey };
+}
+async function call(operation, body, refId) {
+  const payload = { [operation]: { merchantAuthentication: merchantAuthentication(), ...refId ? { refId: ref(refId) } : {}, ...body } };
+  const response = await fetch(endpoint(), {
+    method: "POST",
+    redirect: "error",
+    signal: AbortSignal.timeout(3e4),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw new Error(`Authorize.net HTTP ${response.status}`);
+  const result = JSON.parse((await response.text()).replace(/^\uFEFF/, ""));
+  return result;
+}
+function transactionError(result) {
+  const tx = result?.transactionResponse;
+  return tx?.errors?.[0]?.errorText || result?.messages?.message?.[0]?.text || "Authorize.net rejected the transaction";
+}
+function mapTransactionStatus(status3) {
+  return STATUS[status3] || "unknown";
+}
+async function createPaymentFunction({ amount, currency, opaqueData, cart, order, idempotencyKey, captureNow }) {
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error("Invalid payment amount");
+  if (String(currency || "").toUpperCase() !== "USD") throw new Error("Authorize.net adapter supports USD only");
+  if (!opaqueData) {
+    return {
+      status: "requires_payment_method",
+      amount,
+      currency: "USD",
+      acceptJs: {
+        apiLoginId: process.env.AUTHORIZENET_API_LOGIN_ID || "",
+        clientKey: process.env.NEXT_PUBLIC_AUTHORIZENET_CLIENT_KEY || "",
+        env: isProduction() ? "production" : "sandbox"
+      }
+    };
+  }
+  const invoiceNumber = ref(String(order?.displayId || order?.orderNumber || order?.id || cart?.id || "order"));
+  const result = await call(
+    "createTransactionRequest",
+    {
+      transactionRequest: {
+        transactionType: captureNow ? "authCaptureTransaction" : "authOnlyTransaction",
+        amount: dollars(amount),
+        payment: { opaqueData },
+        order: { invoiceNumber }
+      }
+    },
+    idempotencyKey || cart?.id || order?.id
+  );
+  const tx = result.transactionResponse;
+  if (result.messages?.resultCode !== "Ok" || tx?.responseCode !== "1" || !tx?.transId || tx.transId === "0") {
+    return { status: "failed", amount, currency: "USD", error: transactionError(result) };
+  }
+  return {
+    status: captureNow ? "succeeded" : "authorized",
+    paymentIntentId: String(tx.transId),
+    amount,
+    currency: "USD",
+    data: { transId: tx.transId, authCode: tx.authCode, accountNumber: tx.accountNumber, accountType: tx.accountType }
+  };
+}
+async function capturePaymentFunction({ paymentId, amount, idempotencyKey }) {
+  if (!paymentId) throw new Error("Payment reference is required");
+  const result = await call(
+    "createTransactionRequest",
+    { transactionRequest: { transactionType: "priorAuthCaptureTransaction", ...amount ? { amount: dollars(amount) } : {}, refTransId: paymentId } },
+    idempotencyKey || paymentId
+  );
+  const tx = result.transactionResponse;
+  if (result.messages?.resultCode === "Ok" && tx?.responseCode === "1") {
+    return getPaymentStatusFunction({ paymentId });
+  }
+  return { status: "unknown", error: transactionError(result) };
+}
+async function cancelPaymentFunction({ paymentId, idempotencyKey }) {
+  if (!paymentId) throw new Error("Payment reference is required");
+  const result = await call(
+    "createTransactionRequest",
+    { transactionRequest: { transactionType: "voidTransaction", refTransId: paymentId } },
+    idempotencyKey || `void${paymentId}`
+  );
+  const ok = result.messages?.resultCode === "Ok" && result.transactionResponse?.responseCode === "1";
+  return { status: ok ? "canceled" : "unknown", error: ok ? void 0 : transactionError(result) };
+}
+async function refundPaymentFunction({ paymentId, amount, currency, idempotencyKey }) {
+  if (!paymentId) throw new Error("Payment reference is required");
+  const details = await call("getTransactionDetailsRequest", { transId: paymentId });
+  const transaction = details.transaction;
+  if (!transaction) throw new Error(transactionError(details));
+  const settled = transaction.transactionStatus === "settledSuccessfully";
+  if (!settled) {
+    const voided = await cancelPaymentFunction({ paymentId, idempotencyKey });
+    return { ...voided, status: voided.status === "canceled" ? "refunded" : voided.status, amount: cents(transaction.authAmount), currency: "USD", method: "void" };
+  }
+  const refundAmount = amount ?? cents(transaction.settleAmount);
+  const result = await call(
+    "createTransactionRequest",
+    {
+      transactionRequest: {
+        transactionType: "refundTransaction",
+        amount: dollars(refundAmount),
+        payment: { creditCard: { cardNumber: String(transaction.payment?.creditCard?.cardNumber || "").slice(-4), expirationDate: "XXXX" } },
+        refTransId: paymentId
+      }
+    },
+    idempotencyKey || `refund${paymentId}`
+  );
+  const tx = result.transactionResponse;
+  const ok = result.messages?.resultCode === "Ok" && tx?.responseCode === "1";
+  return { status: ok ? "refunded" : "unknown", amount: refundAmount, currency: currency || "USD", data: tx, error: ok ? void 0 : transactionError(result), method: "refund" };
+}
+async function getPaymentStatusFunction({ paymentId }) {
+  if (!paymentId) throw new Error("Payment reference is required");
+  const result = await call("getTransactionDetailsRequest", { transId: paymentId });
+  const transaction = result.transaction;
+  if (!transaction) return { status: "unknown", error: transactionError(result) };
+  const status3 = mapTransactionStatus(transaction.transactionStatus);
+  const amount = status3 === "authorized" ? cents(transaction.authAmount) : cents(transaction.settleAmount || transaction.authAmount);
+  return {
+    status: status3,
+    amount,
+    currency: "USD",
+    data: { transId: transaction.transId, transactionStatus: transaction.transactionStatus, authAmount: transaction.authAmount, settleAmount: transaction.settleAmount }
+  };
+}
+async function generatePaymentLinkFunction({ paymentId }) {
+  const host = isProduction() ? "https://account.authorize.net" : "https://sandbox.authorize.net";
+  return `${host}/ui/themes/sandbox/Transaction/TransactionReceipt.aspx?transid=${encodeURIComponent(paymentId || "")}`;
+}
+async function handleWebhookFunction({ rawBody, headers = {} }) {
+  const signatureKey = process.env.AUTHORIZENET_SIGNATURE_KEY;
+  if (!signatureKey) throw new Error("Authorize.net webhook signature key is not configured");
+  if (!rawBody) throw new Error("Raw webhook body is required");
+  const supplied = String(headers["x-anet-signature"] || "").toLowerCase();
+  const expected = `sha512=${(0, import_node_crypto5.createHmac)("sha512", signatureKey).update(rawBody).digest("hex")}`;
+  const a = Buffer.from(supplied);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !(0, import_node_crypto5.timingSafeEqual)(a, b)) throw new Error("Webhook signature verification failed");
+  const event = JSON.parse(rawBody);
+  return { isValid: true, event: { ...event, id: event.notificationId }, type: String(event.eventType || ""), resource: event.payload || {} };
+}
+var import_node_crypto5, isProduction, endpoint, ref, dollars, cents, STATUS;
+var init_authorizenet = __esm({
+  "features/integrations/payment/authorizenet.ts"() {
+    "use strict";
+    import_node_crypto5 = require("node:crypto");
+    isProduction = () => process.env.AUTHORIZENET_ENV === "production";
+    endpoint = () => isProduction() ? "https://api.authorize.net/xml/v1/request.api" : "https://apitest.authorize.net/xml/v1/request.api";
+    ref = (value) => value.replace(/[^A-Za-z0-9-]/g, "").slice(-20);
+    dollars = (minor2) => (minor2 / 100).toFixed(2);
+    cents = (value) => Math.round(Number(value) * 100);
+    STATUS = {
+      authorizedPendingCapture: "authorized",
+      capturedPendingSettlement: "succeeded",
+      settledSuccessfully: "succeeded",
+      refundPendingSettlement: "refunded",
+      refundSettledSuccessfully: "refunded",
+      voided: "canceled",
+      declined: "failed",
+      expired: "failed",
+      failedReview: "failed",
+      generalError: "failed",
+      settlementError: "failed",
+      communicationError: "unknown",
+      underReview: "unknown",
+      FDSPendingReview: "unknown",
+      FDSAuthorizedPendingReview: "unknown"
+    };
+  }
+});
+
+// features/integrations/payment/manual.ts
+var manual_exports = {};
+__export(manual_exports, {
+  capturePaymentFunction: () => capturePaymentFunction2,
+  createPaymentFunction: () => createPaymentFunction2,
+  generatePaymentLinkFunction: () => generatePaymentLinkFunction2,
+  getPaymentStatusFunction: () => getPaymentStatusFunction2,
+  handleWebhookFunction: () => handleWebhookFunction2,
+  refundPaymentFunction: () => refundPaymentFunction2
+});
+async function createPaymentFunction2(input) {
+  if (!Number.isSafeInteger(input.amount) || (input.amount ?? 0) <= 0) throw new Error("Invalid payment amount");
+  return { status: "pending", amount: input.amount, currency: input.currency ?? "USD", paymentIntentId: input.idempotencyKey ?? "" };
+}
+async function capturePaymentFunction2(input) {
+  return { status: "succeeded", paymentIntentId: input.paymentId, amount: input.amount, currency: input.currency ?? "USD" };
+}
+async function refundPaymentFunction2(input) {
+  return { status: "unknown", paymentIntentId: input.paymentId, amount: input.amount, currency: input.currency ?? "USD" };
+}
+async function getPaymentStatusFunction2(input) {
+  return { status: "unknown", paymentIntentId: input.paymentId };
+}
+async function generatePaymentLinkFunction2(input) {
+  return { status: "pending", paymentIntentId: input.paymentId };
+}
+async function handleWebhookFunction2() {
+  return { isValid: false };
+}
+var init_manual = __esm({
+  "features/integrations/payment/manual.ts"() {
+    "use strict";
+  }
+});
+
+// features/integrations/payment/index.ts
+var paymentProviderAdapters;
+var init_payment = __esm({
+  "features/integrations/payment/index.ts"() {
+    "use strict";
+    init_sandbox();
+    paymentProviderAdapters = {
+      authorizenet: () => Promise.resolve().then(() => (init_authorizenet(), authorizenet_exports)),
+      manual: () => Promise.resolve().then(() => (init_manual(), manual_exports))
+    };
+  }
+});
+
+// features/keystone/utils/paymentProviderAdapter.ts
+async function executePaymentProvider(provider, command, idempotencyKey) {
+  if (provider.status !== "ACTIVE") throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
+  if (provider.adapterId === "sandbox-payments") {
+    if (provider.certificationStatus !== "SANDBOX") throw new Error("PAYMENT_ADAPTER_UNSUPPORTED");
+    const configuration = await sandboxAdapters.payments.validateConfig(provider.configReference);
+    if (!configuration.valid) throw new Error("PAYMENT_ADAPTER_INVALID_CONFIG");
+    return sandboxAdapters.payments.execute({}, command, idempotencyKey);
+  }
+  if (!(provider.adapterId in paymentProviderAdapters)) throw new Error("PAYMENT_ADAPTER_UNSUPPORTED");
+  if (provider.secretReference && !process.env[provider.secretReference]) throw new Error("PAYMENT_ADAPTER_INVALID_CONFIG");
+  const adapter = await paymentProviderAdapters[provider.adapterId]();
+  if (command.type === "withdrawal") {
+    if (provider.adapterId !== "manual") throw new Error("PAYMENT_ADAPTER_UNSUPPORTED");
+    return { status: "UNKNOWN", externalRef: idempotencyKey, reasonCode: "OPERATOR_PAYOUT_REQUIRED" };
+  }
+  if (provider.adapterId === "manual") throw new Error("PAYMENT_ADAPTER_UNSUPPORTED");
+  const result = await adapter.createPaymentFunction({ amount: Number(command.payload.amountMinor), currency: command.payload.currency, idempotencyKey, captureNow: true, opaqueData: command.payload.opaqueData });
+  if (result.status === "succeeded") return { status: "SUCCEEDED", externalRef: String(result.paymentIntentId ?? ""), reasonCode: "" };
+  if (result.status === "failed") return { status: "FAILED", externalRef: "", reasonCode: "PROVIDER_DECLINED" };
+  return { status: "UNKNOWN", externalRef: String(result.paymentIntentId ?? ""), reasonCode: "PROVIDER_OUTCOME_UNKNOWN" };
+}
+async function refundPaymentProvider(provider, reference, amountMinor, idempotencyKey) {
+  if (provider.status !== "ACTIVE") throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
+  if (provider.adapterId === "sandbox-payments") return { status: "SUCCEEDED", externalRef: `refund:${reference || idempotencyKey}`, method: "sandbox" };
+  if (provider.adapterId === "manual") return { status: "SUCCEEDED", externalRef: `cash-return:${reference || idempotencyKey}`, method: "cash" };
+  if (provider.adapterId !== "authorizenet" || !reference) throw new Error("PAYMENT_ADAPTER_UNSUPPORTED");
+  const adapter = await paymentProviderAdapters.authorizenet();
+  const result = await adapter.refundPaymentFunction({ paymentId: reference, amount: Number(amountMinor), currency: "USD", idempotencyKey });
+  if (result.status === "refunded") return { status: "SUCCEEDED", externalRef: String(result.data?.transId && result.data.transId !== "0" ? result.data.transId : reference), method: result.method };
+  return { status: result.status === "failed" ? "FAILED" : "UNKNOWN", externalRef: "" };
+}
+var init_paymentProviderAdapter = __esm({
+  "features/keystone/utils/paymentProviderAdapter.ts"() {
+    "use strict";
+    init_payment();
+  }
+});
+
+// features/sportsbook/api/sandbox-policy.ts
+var init_sandbox_policy = __esm({
+  "features/sportsbook/api/sandbox-policy.ts"() {
+    "use strict";
+  }
+});
+
+// features/keystone/lib/constraint-errors.ts
+var init_constraint_errors = __esm({
+  "features/keystone/lib/constraint-errors.ts"() {
+    "use strict";
+  }
+});
+
+// features/sportsbook/customer/errors.ts
+var CustomerError;
+var init_errors = __esm({
+  "features/sportsbook/customer/errors.ts"() {
+    "use strict";
+    init_sandbox_policy();
+    init_constraint_errors();
+    CustomerError = class extends Error {
+      constructor(code, status3, details) {
+        super(code);
+        this.code = code;
+        this.status = status3;
+        this.details = details;
+        this.name = "CustomerError";
+      }
+    };
+  }
+});
+
+// features/sportsbook/customer/currency.ts
+async function resolveTenantCurrency(prisma, tenantId, operation) {
+  const rows = await prisma.tenantCurrency.findMany({ where: { tenantId, status: "ACTIVE" }, include: { currency: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 100 });
+  const usable = rows.filter((row) => row.currency?.status === "ACTIVE" && typeof row.currency.code === "string" && row.currency.code.length > 0 && Number.isInteger(row.currency.exponent) && row.currency.exponent >= 0 && row.currency.exponent <= 6);
+  const defaults = usable.filter((row) => row.defaultForBrand);
+  if (defaults.length > 1) throw new CustomerError("CURRENCY_CONFIGURATION_AMBIGUOUS", 409);
+  const selected = defaults[0] ?? (usable.length === 1 ? usable[0] : null);
+  if (!selected) throw new CustomerError(usable.length > 1 ? "CURRENCY_CONFIGURATION_AMBIGUOUS" : "CURRENCY_UNAVAILABLE", 409);
+  if (operation) {
+    const enabled = operation === "DEPOSIT" ? selected.depositsEnabled : operation === "WITHDRAWAL" ? selected.withdrawalsEnabled : selected.wageringEnabled;
+    if (!enabled) throw new CustomerError(`${operation}_CURRENCY_DISABLED`, 409);
+  }
+  return { code: selected.currency.code, exponent: selected.currency.exponent, depositsEnabled: Boolean(selected.depositsEnabled), withdrawalsEnabled: Boolean(selected.withdrawalsEnabled), wageringEnabled: Boolean(selected.wageringEnabled) };
+}
+var init_currency = __esm({
+  "features/sportsbook/customer/currency.ts"() {
+    "use strict";
+    init_errors();
+  }
+});
+
+// features/keystone/tenant-scope.ts
+function runWithTenantScope(tenantId, work) {
+  return tenantStorage.run(tenantId, work);
+}
+function rethrowKeystonePrismaError(value) {
+  const extensions = value?.extensions;
+  if (!(value instanceof Error) || extensions?.code !== "KS_PRISMA_ERROR") return value;
+  const prisma = extensions.prisma ?? {};
+  const message = typeof extensions.debug?.message === "string" ? extensions.debug.message : value.message.replace(/^Prisma error:?\s*/, "");
+  throw Object.assign(new Error(message), prisma, { name: prisma.name ?? "PrismaClientError", code: prisma.code, meta: prisma.meta });
+}
+function throwingClient(tx) {
+  return new Proxy(tx, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (typeof property === "string" && rawOperations.has(property) && typeof value === "function") return (...args) => rethrowing(value.apply(target, args));
+      if (typeof property === "string" && value && typeof value === "object" && [...modelOperations].some((operation) => typeof value[operation] === "function")) {
+        return new Proxy(value, {
+          get(delegate, operation, delegateReceiver) {
+            const method = Reflect.get(delegate, operation, delegateReceiver);
+            if (typeof operation !== "string" || !modelOperations.has(operation) || typeof method !== "function") return method;
+            return (...args) => rethrowing(method.apply(delegate, args));
+          }
+        });
+      }
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
+async function setLocalTenant(tx, tenantId) {
+  await tx.$queryRaw`SELECT set_config('app.tenant_id', ${tenantId ?? ""}, true)`;
+}
+function tenantScopedPrisma(client) {
+  const base = client;
+  const withLocalTenant = async (tenantId, work) => base.$transaction(async (tx) => {
+    await setLocalTenant(tx, tenantId);
+    return work(tx);
+  });
+  return new Proxy(base, {
+    get(target, property, receiver) {
+      if (property === "$transaction") {
+        return (work, options) => {
+          const tenantId = tenantStorage.getStore();
+          const settle = (results) => results.map(rethrowKeystonePrismaError);
+          if (Array.isArray(work)) {
+            if (tenantId === void 0) return target.$transaction.call(target, work, options).then(settle);
+            const setTenant = target.$queryRaw`SELECT set_config('app.tenant_id', ${tenantId ?? ""}, true)`;
+            return target.$transaction.call(target, [setTenant, ...work], options).then((results) => settle(results.slice(1)));
+          }
+          if (tenantId === void 0) return target.$transaction.call(target, (tx) => work(throwingClient(tx)), options);
+          return target.$transaction.call(target, async (tx) => {
+            await setLocalTenant(tx, tenantId);
+            return work(throwingClient(tx));
+          }, options);
+        };
+      }
+      if (typeof property === "string" && rawOperations.has(property)) {
+        return (...args) => {
+          const tenantId = tenantStorage.getStore();
+          if (tenantId === void 0) return rethrowing(target[property](...args));
+          return withLocalTenant(tenantId, (tx) => rethrowing(tx[property](...args)));
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      if (typeof property === "string" && value && typeof value === "object" && [...modelOperations].some((operation) => typeof value[operation] === "function")) {
+        return new Proxy(value, {
+          get(delegate, operation, delegateReceiver) {
+            const method = Reflect.get(delegate, operation, delegateReceiver);
+            if (typeof operation !== "string" || !modelOperations.has(operation) || typeof method !== "function") return method;
+            return (...args) => {
+              const tenantId = tenantStorage.getStore();
+              if (tenantId === void 0) return rethrowing(method.apply(delegate, args));
+              return withLocalTenant(tenantId, (tx) => rethrowing(tx[property][operation](...args)));
+            };
+          }
+        });
+      }
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
+var import_node_async_hooks, tenantStorage, modelOperations, rawOperations, rethrowing;
+var init_tenant_scope = __esm({
+  "features/keystone/tenant-scope.ts"() {
+    "use strict";
+    import_node_async_hooks = require("node:async_hooks");
+    tenantStorage = new import_node_async_hooks.AsyncLocalStorage();
+    modelOperations = /* @__PURE__ */ new Set(["aggregate", "count", "create", "createMany", "delete", "deleteMany", "findFirst", "findFirstOrThrow", "findMany", "findUnique", "findUniqueOrThrow", "groupBy", "update", "updateMany", "upsert"]);
+    rawOperations = /* @__PURE__ */ new Set(["$executeRaw", "$executeRawUnsafe", "$queryRaw", "$queryRawUnsafe"]);
+    rethrowing = (work) => work && typeof work.then === "function" ? work.then(rethrowKeystonePrismaError) : rethrowKeystonePrismaError(work);
+  }
+});
+
+// features/keystone/identity-bootstrap.ts
+async function bootstrapOperatorIdentity(prisma, userId) {
+  if (!userId) return null;
+  return runWithTenantScope(null, () => prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT set_config('app.bootstrap_user_id', ${userId}, true)`;
+    const rows = await tx.$queryRaw`SELECT tenant, "passwordResetRedeemedAt" FROM "User" WHERE id = ${userId} LIMIT 1`;
+    const row = rows[0];
+    return row ? { tenantId: row.tenant ?? null, passwordResetRedeemedAt: row.passwordResetRedeemedAt ?? null } : null;
+  }));
+}
+var init_identity_bootstrap = __esm({
+  "features/keystone/identity-bootstrap.ts"() {
+    "use strict";
+    init_tenant_scope();
+  }
+});
+
+// features/sportsbook/customer/auth.ts
+function validatedSession(session, now, servicing = false) {
+  if (!session?.tenant || !session.player || !session.tenantId || !session.playerId || session.tenantId !== session.tenant.id || session.playerId !== session.player.id || session.player.tenantId !== session.tenantId || session.revokedAt || !(session.expiresAt instanceof Date) || !Number.isFinite(session.expiresAt.getTime()) || session.expiresAt <= now || (servicing ? !SERVICING_STATUSES.has(session.tenant.status ?? "") : session.tenant.status !== "ACTIVE") || (servicing ? !SERVICING_STATUSES.has(session.player.status ?? "") : session.player.status !== "ACTIVE")) throw new CustomerError("AUTHENTICATION_REQUIRED", 401);
+  return { ...session, tenant: session.tenant, player: session.player };
+}
+async function assertCurrentCustomerActor(prisma, actor, lock = false, now = /* @__PURE__ */ new Date(), servicing = false) {
+  if (!actor.sessionId || !actor.tenantId || !actor.playerId) throw new CustomerError("AUTHENTICATION_REQUIRED", 401);
+  if (lock) {
+    await prisma.$queryRaw`SELECT set_config('app.tenant_id', ${actor.tenantId}, true)`;
+    await prisma.$queryRaw`SELECT id FROM "Tenant" WHERE id = ${actor.tenantId} FOR SHARE`;
+    await prisma.$queryRaw`SELECT id FROM "Player" WHERE id = ${actor.playerId} AND tenant = ${actor.tenantId} FOR SHARE`;
+    await prisma.$queryRaw`SELECT id FROM "CustomerSession" WHERE id = ${actor.sessionId} AND tenant = ${actor.tenantId} AND player = ${actor.playerId} FOR SHARE`;
+  }
+  const session = validatedSession(await prisma.customerSession.findUnique({ where: { id: actor.sessionId }, include: { tenant: true, player: true } }), now, servicing);
+  if (session.id !== actor.sessionId || session.tenantId !== actor.tenantId || session.playerId !== actor.playerId || actor.assuranceLevel && actor.assuranceLevel !== (session.assuranceLevel ?? "GUEST")) {
+    throw new CustomerError("AUTHENTICATION_REQUIRED", 401);
+  }
+  const currency = await resolveTenantCurrency(prisma, session.tenant.id);
+  if (actor.currency && currency.code !== actor.currency) throw new CustomerError("CUSTOMER_CURRENCY_CHANGED", 409);
+}
+var import_node_crypto6, CUSTOMER_SESSION_MAX_AGE_SECONDS, SERVICING_STATUSES;
+var init_auth = __esm({
+  "features/sportsbook/customer/auth.ts"() {
+    "use strict";
+    import_node_crypto6 = require("node:crypto");
+    init_errors();
+    init_currency();
+    init_identity_bootstrap();
+    init_tenant_scope();
+    init_sandbox_policy();
+    CUSTOMER_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+    SERVICING_STATUSES = /* @__PURE__ */ new Set(["ACTIVE", "SUSPENDED", "CLOSED"]);
+  }
+});
+
+// features/sportsbook/domain/transaction.ts
+function isRetryableTransactionError(error) {
+  const value = error;
+  const detail = `${value?.name ?? ""} ${value?.message ?? ""} ${String(value?.cause ?? "")}`;
+  return ["P2034", "P2002", "40001", "40P01"].includes(value?.code ?? "") || /TransactionWriteConflict|write conflict|deadlock|serialization/i.test(detail);
+}
+var transactionBackoff;
+var init_transaction = __esm({
+  "features/sportsbook/domain/transaction.ts"() {
+    "use strict";
+    transactionBackoff = (attempt) => new Promise((resolve) => setTimeout(resolve, Math.min(15 * 2 ** attempt, 300)));
+  }
+});
+
+// features/sportsbook/customer/audit.ts
+var init_audit = __esm({
+  "features/sportsbook/customer/audit.ts"() {
+    "use strict";
+    init_engine();
+  }
+});
+
+// features/sportsbook/domain/balance.ts
+function nextProjection(current, change, now = /* @__PURE__ */ new Date()) {
+  const postedDelta = change.postedDelta ?? 0n;
+  const availableDelta = change.availableDelta ?? postedDelta;
+  const posted = BigInt(current.postedMinor) + postedDelta;
+  const available = BigInt(current.availableMinor) + availableDelta;
+  if (available > posted) throw new Error("BALANCE_PROJECTION_INVARIANT");
+  return {
+    postedMinor: String(posted),
+    pendingMinor: current.pendingMinor,
+    availableMinor: String(available),
+    version: Number(current.version ?? 0) + 1,
+    asOf: now
+  };
+}
+var postedChange, reserveChange, releaseChange, captureChange;
+var init_balance = __esm({
+  "features/sportsbook/domain/balance.ts"() {
+    "use strict";
+    postedChange = (delta) => ({ postedDelta: delta, availableDelta: delta });
+    reserveChange = (amount) => ({ postedDelta: 0n, availableDelta: -amount });
+    releaseChange = (amount) => ({ postedDelta: 0n, availableDelta: amount });
+    captureChange = (amount) => ({ postedDelta: -amount, availableDelta: 0n });
+  }
+});
+
+// features/sportsbook/customer/idempotency.ts
+async function finishCustomerCommand(prisma, commandId, status3, result) {
+  const updated = await prisma.customerCommand.updateMany({ where: { id: commandId, status: "IN_PROGRESS" }, data: { status: status3, result } });
+  return updated.count === 1;
+}
+var init_idempotency = __esm({
+  "features/sportsbook/customer/idempotency.ts"() {
+    "use strict";
+    init_engine();
+    init_errors();
+  }
+});
+
+// features/sportsbook/customer/funding.ts
+async function lockedProjection(tx, tenantId, accountId) {
+  const current = await tx.balanceProjection.findFirst({ where: { tenantId, accountId }, orderBy: { version: "desc" } });
+  if (!current) return null;
+  await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${current.id} FOR UPDATE`;
+  return tx.balanceProjection.findFirst({ where: { tenantId, accountId }, orderBy: { version: "desc" } });
+}
+async function dispatchPinnedPayment(intent, provider, fresh, opaqueData) {
+  if (!provider) return { status: "UNKNOWN", externalRef: "", reasonCode: "PROVIDER_INSTALLATION_MISSING" };
+  const snapshot = intent.riskEvidence?.provider;
+  if (snapshot && (snapshot.adapterId !== provider.adapterId || snapshot.adapterVersion !== provider.adapterVersion || snapshot.configReference !== provider.configReference)) {
+    return { status: "UNKNOWN", externalRef: "", reasonCode: "PROVIDER_CONFIGURATION_CHANGED" };
+  }
+  try {
+    const result = await executePaymentProvider(provider, { type: intent.type === "DEPOSIT" ? "deposit" : "withdrawal", payload: { amountMinor: intent.amountMinor, currency: intent.currency, opaqueData } }, `${provider.id}:${intent.idempotencyKey}`);
+    if (result.status === "SUCCEEDED") return { status: "SUCCEEDED", externalRef: result.externalRef, reasonCode: "" };
+    if (result.status === "FAILED") return { status: "FAILED", externalRef: result.externalRef, reasonCode: "PROVIDER_DECLINED" };
+    return { status: "UNKNOWN", externalRef: result.externalRef, reasonCode: "PROVIDER_PENDING" };
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+    if (fresh && PRE_DISPATCH_REFUSALS.has(code)) return { status: "FAILED", externalRef: "", reasonCode: code };
+    return { status: "UNKNOWN", externalRef: "", reasonCode: PRE_DISPATCH_REFUSALS.has(code) ? code : "PROVIDER_OUTCOME_UNKNOWN" };
+  }
+}
+async function applyPaymentOutcome(tx, current, outcome, now) {
+  const tenantId = current.tenantId;
+  const amountMinor = BigInt(current.amountMinor);
+  const [cash, clearing] = await Promise.all([
+    tx.ledgerAccount.findFirst({ where: { tenantId, playerId: current.playerId, key: "PLAYER_CASH", currency: current.currency } }),
+    tx.ledgerAccount.findFirst({ where: { tenantId, playerId: null, key: "PAYMENT_CLEARING", currency: current.currency } })
+  ]);
+  if (!cash || !clearing) throw new Error("PAYMENT_LEDGER_UNAVAILABLE");
+  let status3 = outcome.status;
+  if (outcome.status === "SUCCEEDED") {
+    const deposit = current.type === "DEPOSIT";
+    const journalKey = !deposit && isCustomerOrigin(current) ? `withdrawal:${current.idempotencyKey}` : `payment:${current.idempotencyKey}`;
+    if (await tx.journalTransaction.findFirst({ where: { tenantId, idempotencyKey: journalKey } })) throw new Error("JOURNAL_ALREADY_POSTED");
+    const journal = await tx.journalTransaction.create({ data: { tenantId, type: deposit ? "DEPOSIT" : "WITHDRAWAL", idempotencyKey: journalKey, correlationId: current.id, status: "POSTED", effectiveAt: now } });
+    await tx.journalEntry.createMany({ data: [
+      { tenantId, transactionId: journal.id, accountId: clearing.id, side: deposit ? "DEBIT" : "CREDIT", amountMinor: current.amountMinor, currency: current.currency },
+      { tenantId, transactionId: journal.id, accountId: cash.id, side: deposit ? "CREDIT" : "DEBIT", amountMinor: current.amountMinor, currency: current.currency }
+    ] });
+    if (!deposit) {
+      const captured = await tx.hold.updateMany({ where: { id: current.holdId ?? "", tenantId, status: "ACTIVE" }, data: { status: "CAPTURED", version: { increment: 1 } } });
+      if (captured.count !== 1) throw new Error("WITHDRAWAL_HOLD_NOT_ACTIVE");
+    }
+    const projection = await lockedProjection(tx, tenantId, cash.id);
+    if (!projection) throw new Error("PAYMENT_LEDGER_UNAVAILABLE");
+    await tx.balanceProjection.create({ data: { tenantId, accountId: cash.id, ...nextProjection(projection, deposit ? postedChange(amountMinor) : captureChange(amountMinor), now) } });
+  } else if (outcome.status === "FAILED") {
+    if (current.type === "WITHDRAWAL" && current.holdId) {
+      const released = await tx.hold.updateMany({ where: { id: current.holdId, tenantId, status: "ACTIVE" }, data: { status: "RELEASED", version: { increment: 1 } } });
+      if (released.count === 1) {
+        const projection = await lockedProjection(tx, tenantId, cash.id);
+        if (!projection) throw new Error("PAYMENT_LEDGER_UNAVAILABLE");
+        await tx.balanceProjection.create({ data: { tenantId, accountId: cash.id, ...nextProjection(projection, releaseChange(amountMinor), now) } });
+      }
+    }
+  } else {
+    status3 = "UNKNOWN";
+  }
+  const intent = await tx.paymentIntent.update({ where: { id: current.id }, data: { status: status3, completedAt: status3 === "UNKNOWN" ? null : now, ...outcome.externalRef ? { providerSessionReference: outcome.externalRef } : {} } });
+  const attempt = await tx.paymentAttempt.findFirst({ where: { tenantId, paymentIntentId: current.id }, orderBy: { attempt: "desc" } });
+  if (attempt) await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: status3, reasonCode: outcome.reasonCode, ...outcome.externalRef ? { externalReference: outcome.externalRef } : {} } });
+  return { status: status3, intent };
+}
+var PRE_DISPATCH_REFUSALS, isCustomerOrigin;
+var init_funding = __esm({
+  "features/sportsbook/customer/funding.ts"() {
+    "use strict";
+    init_paymentProviderAdapter();
+    init_auth();
+    init_errors();
+    init_transaction();
+    init_audit();
+    init_currency();
+    init_balance();
+    init_idempotency();
+    PRE_DISPATCH_REFUSALS = /* @__PURE__ */ new Set(["PAYMENT_PROVIDER_UNAVAILABLE", "PAYMENT_ADAPTER_UNSUPPORTED", "PAYMENT_ADAPTER_INVALID_CONFIG"]);
+    isCustomerOrigin = (intent) => /^customer(-withdrawal)?:/.test(String(intent.idempotencyKey ?? ""));
+  }
+});
+
+// features/sportsbook/customer/promotions.ts
+async function ensureSandboxPromotions(prisma, tenantId) {
+  const now = /* @__PURE__ */ new Date();
+  const currency = (await resolveTenantCurrency(prisma, tenantId)).code;
+  await serializable(prisma, async (tx) => {
+    for (const fixture of promotionFixtures) {
+      let promotion = await tx.promotion.findFirst({ where: { tenantId, key: fixture.key } });
+      if (!promotion) {
+        const termsHash = evidenceHash({ key: fixture.key, economics: fixture.economics, requirements: fixture.requirements, version: "sandbox-full-v1" });
+        promotion = await tx.promotion.create({ data: { tenantId, key: fixture.key, name: fixture.name, description: fixture.description, type: fixture.type, status: "ACTIVE", startsAt: new Date(now.getTime() - 864e5), endsAt: new Date(now.getTime() + 30 * 864e5), budgetMinor: fixture.budgetMinor, currency, termsVersion: "sandbox-full-v1", termsHash } });
+        const rule = await tx.promotionRuleVersion.create({ data: { tenantId, promotionId: promotion.id, version: 1, eligibility: { kyc: "APPROVED", onePerPlayer: true }, economics: fixture.economics, wageringRequirements: fixture.requirements, abuseControls: { duplicateAccount: "DENY", linkedPaymentMethod: "REVIEW", maxAwardsPerPlayer: 1 }, contributionRules: { sportsbook: 100 }, status: "ACTIVE", effectiveFrom: now, evidenceHash: termsHash } });
+        await tx.campaignBudget.create({ data: { tenantId, promotionId: promotion.id, allocatedMinor: fixture.budgetMinor, awardedMinor: "0", redeemedMinor: "0", forfeitedMinor: "0", currency, version: 1, status: "ACTIVE" } });
+      }
+    }
+  });
+}
+var serializable, promotionFixtures;
+var init_promotions = __esm({
+  "features/sportsbook/customer/promotions.ts"() {
+    "use strict";
+    init_auth();
+    init_audit();
+    init_errors();
+    init_idempotency();
+    init_engine();
+    init_transaction();
+    init_currency();
+    serializable = async (prisma, work) => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await prisma.$transaction(work, { isolationLevel: "Serializable" });
+        } catch (error) {
+          if (attempt >= 7 || !isRetryableTransactionError(error)) throw error;
+          await transactionBackoff(attempt);
+        }
+      }
+    };
+    promotionFixtures = [
+      { key: "sandbox-free-bet", name: "First play free bet", description: "A $5 restricted free bet. Stake is not returned on a win.", type: "FREE_BET", budgetMinor: "500000", economics: { amountMinor: "500", stakeReturned: false }, requirements: { minimumOdds: "1.50", validStructures: ["STRAIGHT", "PARLAY"] } },
+      { key: "sandbox-odds-boost", name: "Weekend odds boost", description: "A 10% profit boost capped at $10 for eligible pre-match wagers.", type: "ODDS_BOOST", budgetMinor: "100000", economics: { boostBasisPoints: 1e3, maxBoostMinor: "1000" }, requirements: { minimumOdds: "1.80", validStructures: ["STRAIGHT", "PARLAY"] } },
+      { key: "sandbox-deposit-match", name: "Deposit match sandbox", description: "A $10 restricted bonus wallet award with 3\xD7 wagering evidence.", type: "DEPOSIT_MATCH", budgetMinor: "500000", economics: { amountMinor: "1000", stakeReturned: true }, requirements: { wageringMultiple: 3, validStructures: ["STRAIGHT", "PARLAY", "SYSTEM"] } }
+    ];
+  }
+});
+
+// features/sportsbook/customer/limit-enforcement.ts
+async function wagerLimitViolation(tx, tenantId, playerId, stakeMinor, now = /* @__PURE__ */ new Date(), sessionId, currency) {
+  const wagerCurrency = currency ?? (await resolveTenantCurrency(tx, tenantId)).code;
+  const limits = await tx.playerLimit.findMany({ where: { tenantId, playerId, type: { in: ["STAKE", "LOSS", "SESSION"] }, effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }, orderBy: { effectiveFrom: "desc" } });
+  for (const limit of limits) {
+    const maximum = integerMinor(limit.amountMinor), from = periodStart(limit.period ?? "DAILY", now);
+    if (maximum === null || maximum < 0n) return { code: "LIMIT_UNAVAILABLE", limitId: limit.id, maximum: 0n, used: 0n };
+    if (limit.type !== "SESSION" && limit.currency && limit.currency !== wagerCurrency) continue;
+    if (limit.type === "STAKE") {
+      const wagers = await tx.wager.findMany({ where: { tenantId, playerId, currency: wagerCurrency, status: { not: "REJECTED" }, createdAt: { gte: from } }, select: { stakeMinor: true } }), used = wagers.reduce((sum, item) => sum + (integerMinor(item.stakeMinor) ?? 0n), 0n);
+      if (used + stakeMinor > maximum) return { code: "STAKE_LIMIT_EXCEEDED", limitId: limit.id, maximum, used };
+    }
+    if (limit.type === "LOSS") {
+      const wagers = await tx.wager.findMany({ where: { tenantId, playerId, currency: wagerCurrency, status: { in: ["SETTLED", "CASHED_OUT"] }, createdAt: { gte: from } }, select: { id: true, stakeMinor: true, status: true } }), ids = wagers.map((item) => item.id);
+      const [settlements, cashouts] = await Promise.all([tx.settlement.findMany({ where: { tenantId, wagerId: { in: ids } }, orderBy: [{ wagerId: "asc" }, { version: "desc" }] }), tx.cashOutAcceptance.findMany({ where: { tenantId, wagerId: { in: ids }, status: "ACCEPTED", reversalOfId: null }, select: { wagerId: true, amountMinor: true, currency: true } })]);
+      const latest = /* @__PURE__ */ new Map();
+      for (const settlement of settlements) if (settlement.wagerId && !latest.has(settlement.wagerId)) latest.set(settlement.wagerId, settlement);
+      const cashedOut = /* @__PURE__ */ new Map();
+      for (const row of cashouts) {
+        const amount = integerMinor(row.amountMinor);
+        if (amount === null || row.currency && row.currency !== wagerCurrency) return { code: "LOSS_LIMIT_EVIDENCE_UNAVAILABLE", limitId: limit.id, maximum, used: 0n };
+        cashedOut.set(row.wagerId, (cashedOut.get(row.wagerId) ?? 0n) + amount);
+      }
+      let net = 0n;
+      for (const wager of wagers) {
+        const stake = integerMinor(wager.stakeMinor), settlement = latest.get(wager.id), payout = settlement ? integerMinor(settlement.payoutMinor) : 0n;
+        if (stake === null || payout === null || wager.status === "SETTLED" && !settlement) return { code: "LOSS_LIMIT_EVIDENCE_UNAVAILABLE", limitId: limit.id, maximum, used: net };
+        net += stake - payout - (cashedOut.get(wager.id) ?? 0n);
+      }
+      if (net >= maximum) return { code: "LOSS_LIMIT_REACHED", limitId: limit.id, maximum, used: net };
+    }
+    if (limit.type === "SESSION") {
+      const session = sessionId ? await tx.customerSession.findFirst({ where: { id: sessionId, tenantId, playerId } }) : await tx.customerSession.findFirst({ where: { tenantId, playerId, revokedAt: null, expiresAt: { gt: now } }, orderBy: { createdAt: "asc" } });
+      if (session) {
+        const minutes = BigInt(Math.floor((now.getTime() - session.createdAt.getTime()) / 6e4));
+        if (minutes >= maximum) return { code: "SESSION_LIMIT_REACHED", limitId: limit.id, maximum, used: minutes };
+      }
+    }
+  }
+  return null;
+}
+var periodStart, integerMinor;
+var init_limit_enforcement = __esm({
+  "features/sportsbook/customer/limit-enforcement.ts"() {
+    "use strict";
+    init_currency();
+    periodStart = (period, now) => new Date(now.getTime() - (period === "DAILY" ? 1 : period === "WEEKLY" ? 7 : 30) * 864e5);
+    integerMinor = (value) => typeof value === "string" && /^-?\d+$/.test(value) ? BigInt(value) : null;
+  }
+});
+
+// features/sportsbook/customer/acceptance-gates.ts
+async function currentGeoApproved(tx, tenantId, playerId, now) {
+  const latest = await tx.geoCheck.findFirst({
+    where: { tenantId, checkedAt: { not: null, lte: now }, geoSession: { tenantId, playerId } },
+    include: { geoSession: true },
+    orderBy: [{ checkedAt: "desc" }, { createdAt: "desc" }]
+  });
+  if (!latest || latest.decision !== "ALLOW" || !latest.checkedAt) return false;
+  if (now.getTime() - latest.checkedAt.getTime() > GEO_DECISION_MAX_AGE_MS) return false;
+  const session = latest.geoSession;
+  return Boolean(session && session.status === "ACTIVE" && (!session.expiresAt || session.expiresAt > now));
+}
+async function currentKycApproved(tx, tenantId, player, now) {
+  if (player.kycStatus !== "APPROVED") return false;
+  const latest = await tx.verificationCase.findFirst({ where: { tenantId, playerId: player.id, type: "KYC" }, orderBy: { createdAt: "desc" } });
+  return Boolean(latest && latest.status === "APPROVED" && (!latest.expiresAt || latest.expiresAt > now));
+}
+async function currentWagerProvenance(tx, tenantId) {
+  const channel = await tx.operatorChannel.findFirst({
+    where: { tenantId, type: "WEB", status: { in: ["ACTIVE", "PENDING"] } },
+    orderBy: [{ status: "asc" }, { createdAt: "asc" }]
+  });
+  return {
+    channelId: channel?.id ?? null,
+    brandId: channel?.brandId ?? null,
+    legalEntityId: channel?.legalEntityId ?? null,
+    operatorJurisdictionId: channel?.operatorJurisdictionId ?? null
+  };
+}
+async function riskLimitViolation(tx, input) {
+  const { tenantId, playerId, currency, now } = input;
+  const rules2 = await tx.limitRule.findMany({
+    where: { tenantId, currency, profile: { tenantId, status: "ACTIVE", OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: now } }], AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }] } },
+    orderBy: [{ priority: "desc" }, { createdAt: "asc" }]
+  });
+  const marketIds = new Set(input.allocations.map((item) => item.marketId));
+  const eventIds = new Set(input.allocations.flatMap((item) => item.eventId ? [item.eventId] : []));
+  const newLiability = input.allocations.reduce((sum, item) => sum + item.liabilityMinor, 0n);
+  for (const rule of rules2) {
+    const scope = String(rule.scopeType || "").toUpperCase();
+    const scopeId = String(rule.scopeId || "");
+    const applies = scope === "TENANT" ? !scopeId || scopeId === tenantId : scope === "PLAYER" ? scopeId === playerId : scope === "EVENT" ? eventIds.has(scopeId) : scope === "MARKET" ? marketIds.has(scopeId) : false;
+    if (!applies) continue;
+    const maxStake = money(rule.maxStakeMinor), maxPayout = money(rule.maxPayoutMinor), maxLiability = money(rule.maxLiabilityMinor);
+    if (maxStake !== null && input.stakeMinor > maxStake) return { code: "LIMIT_RULE_EXCEEDED", limitRuleId: rule.id };
+    if (maxPayout !== null && input.potentialReturnMinor > maxPayout) return { code: "LIMIT_RULE_EXCEEDED", limitRuleId: rule.id };
+    if (maxLiability === null) continue;
+    let added = 0n;
+    let where;
+    if (scope === "MARKET") {
+      added = input.allocations.filter((item) => item.marketId === scopeId).reduce((sum, item) => sum + item.liabilityMinor, 0n);
+      where = { marketId: scopeId };
+    } else if (scope === "EVENT") {
+      const markets = await tx.market.findMany({ where: { tenantId, eventId: scopeId }, select: { id: true } });
+      const ids = markets.map((item) => item.id);
+      added = input.allocations.filter((item) => item.eventId === scopeId).reduce((sum, item) => sum + item.liabilityMinor, 0n);
+      where = { marketId: { in: ids } };
+    } else if (scope === "PLAYER") {
+      added = newLiability;
+      where = { wager: { playerId } };
+    } else {
+      added = newLiability;
+      where = {};
+    }
+    const open = await tx.wagerExposureAllocation.findMany({ where: { tenantId, status: { not: "CLOSED" }, wager: { currency }, ...where }, select: { remainingLiabilityMinor: true } });
+    const current = open.reduce((sum, item) => sum + (money(item.remainingLiabilityMinor) ?? 0n), 0n);
+    if (current + added > maxLiability) return { code: "LIABILITY_LIMIT_EXCEEDED", limitRuleId: rule.id };
+  }
+  return null;
+}
+var GEO_DECISION_MAX_AGE_MS, money;
+var init_acceptance_gates = __esm({
+  "features/sportsbook/customer/acceptance-gates.ts"() {
+    "use strict";
+    GEO_DECISION_MAX_AGE_MS = 864e5;
+    money = (value) => value && /^\d+$/.test(value) ? BigInt(value) : null;
+  }
+});
+
+// features/sportsbook/domain/result-facts.ts
+function parseCanonicalSelectionFacts(payload, expectedEventId) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("INVALID_CANONICAL_RESULT");
+  const body = payload;
+  if (body.schemaVersion !== "openfront.selection-results.v1" || typeof body.eventId !== "string" || !body.eventId.trim()) throw new Error("INVALID_CANONICAL_RESULT");
+  if (body.eventId.length > MAX_KEY_LENGTH || body.eventId.includes("\0")) throw new Error("INVALID_CANONICAL_RESULT");
+  if (expectedEventId && body.eventId !== expectedEventId) throw new Error("RESULT_EVENT_MISMATCH");
+  if (!Array.isArray(body.selections) || body.selections.length === 0) throw new Error("CANONICAL_SELECTION_FACTS_REQUIRED");
+  if (body.selections.length > MAX_CANONICAL_SELECTION_FACTS) throw new Error("CANONICAL_SELECTION_FACTS_LIMIT_EXCEEDED");
+  const seen = /* @__PURE__ */ new Set();
+  const facts = body.selections.map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("INVALID_CANONICAL_SELECTION_FACT");
+    const row = value;
+    if (typeof row.marketKey !== "string" || !row.marketKey.trim() || typeof row.selectionKey !== "string" || !row.selectionKey.trim() || typeof row.outcome !== "string" || !outcomes.has(row.outcome)) {
+      throw new Error("INVALID_CANONICAL_SELECTION_FACT");
+    }
+    if (row.marketKey.length > MAX_KEY_LENGTH || row.selectionKey.length > MAX_KEY_LENGTH || row.marketKey.includes("\0") || row.selectionKey.includes("\0")) throw new Error("INVALID_CANONICAL_SELECTION_FACT");
+    const identity = `${row.marketKey}\0${row.selectionKey}`;
+    if (seen.has(identity)) throw new Error("DUPLICATE_CANONICAL_SELECTION_FACT");
+    seen.add(identity);
+    const factorNumerator = row.factorNumerator;
+    const factorDenominator = row.factorDenominator;
+    if (row.outcome === "DEAD_HEAT") {
+      if (typeof factorNumerator !== "string" || typeof factorDenominator !== "string" || factorNumerator.length > MAX_FACTOR_DIGITS || factorDenominator.length > MAX_FACTOR_DIGITS || !/^\d+$/.test(factorNumerator) || !/^\d+$/.test(factorDenominator) || BigInt(factorNumerator) <= 0n || BigInt(factorDenominator) <= 0n || BigInt(factorNumerator) > BigInt(factorDenominator)) {
+        throw new Error("INVALID_DEAD_HEAT_FACTOR");
+      }
+    } else if (factorNumerator !== void 0 || factorDenominator !== void 0) {
+      throw new Error("UNEXPECTED_SELECTION_FACTOR");
+    }
+    return {
+      marketKey: row.marketKey,
+      selectionKey: row.selectionKey,
+      outcome: row.outcome,
+      ...typeof factorNumerator === "string" ? { factorNumerator } : {},
+      ...typeof factorDenominator === "string" ? { factorDenominator } : {}
+    };
+  });
+  return { eventId: body.eventId, facts };
+}
+function resolveCanonicalSelectionFact(payload, eventId, marketKey, selectionKey) {
+  const { facts } = parseCanonicalSelectionFacts(payload, eventId);
+  return facts.find((fact) => fact.marketKey === marketKey && fact.selectionKey === selectionKey) ?? null;
+}
+var MAX_CANONICAL_SELECTION_FACTS, MAX_KEY_LENGTH, MAX_FACTOR_DIGITS, outcomes;
+var init_result_facts = __esm({
+  "features/sportsbook/domain/result-facts.ts"() {
+    "use strict";
+    MAX_CANONICAL_SELECTION_FACTS = 1024;
+    MAX_KEY_LENGTH = 128;
+    MAX_FACTOR_DIGITS = 18;
+    outcomes = /* @__PURE__ */ new Set(["WIN", "LOSS", "PUSH", "VOID", "DEAD_HEAT"]);
+  }
+});
+
+// features/sportsbook/domain/ledger-reconciliation.ts
+function analyzeJournalBalances(entries) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const entry of entries) {
+    const key2 = `${entry.transactionId}\0${entry.currency}`;
+    const group = groups.get(key2) ?? { transactionId: entry.transactionId, currency: entry.currency, debitMinor: 0n, creditMinor: 0n };
+    const amount = BigInt(entry.amountMinor);
+    if (amount < 0n || !["DEBIT", "CREDIT"].includes(entry.side)) throw new Error("INVALID_JOURNAL_ENTRY");
+    if (entry.side === "DEBIT") group.debitMinor += amount;
+    else group.creditMinor += amount;
+    groups.set(key2, group);
+  }
+  const transactions = [...groups.values()].map((group) => ({ ...group, differenceMinor: group.debitMinor - group.creditMinor }));
+  const unbalanced = transactions.filter((item) => item.differenceMinor !== 0n);
+  const absoluteDifferenceMinor = unbalanced.reduce((sum, item) => sum + (item.differenceMinor < 0n ? -item.differenceMinor : item.differenceMinor), 0n);
+  return { transactions, unbalanced, absoluteDifferenceMinor };
+}
+var init_ledger_reconciliation = __esm({
+  "features/sportsbook/domain/ledger-reconciliation.ts"() {
+    "use strict";
+  }
+});
+
+// features/sportsbook/domain/house-rules.ts
+async function activeHouseRule(tx, tenantId, market, now) {
+  const event = await tx.event.findFirst({ where: { id: market.eventId ?? "", tenantId }, include: { competition: { include: { sport: true } } } });
+  const sportKey = event?.competition?.sport?.key ?? "";
+  const candidates = await tx.houseRuleVersion.findMany({ where: { tenantId, status: "ACTIVE", effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] } });
+  const eligible = candidates.filter((rule) => (!specific(rule.sportKey) || rule.sportKey === sportKey) && (!specific(rule.marketDefinitionKey) || rule.marketDefinitionKey === market.definitionKey));
+  eligible.sort((left, right) => Number(specific(right.marketDefinitionKey)) - Number(specific(left.marketDefinitionKey)) || Number(specific(right.sportKey)) - Number(specific(left.sportKey)) || Number(right.version) - Number(left.version));
+  if (eligible.length > 1) {
+    const [left, right] = eligible;
+    if (specific(left.marketDefinitionKey) === specific(right.marketDefinitionKey) && specific(left.sportKey) === specific(right.sportKey) && left.version === right.version) throw new Error("AMBIGUOUS_HOUSE_RULE");
+  }
+  return eligible[0] ?? null;
+}
+async function approvedHouseRuleEvidence(tx, tenantId, rule) {
+  if (rule.tenantId !== tenantId || !rule.approvalRequestId || rule.semanticHash !== evidenceHash({ action: "HOUSE_RULE", name: rule.name, sportKey: rule.sportKey, marketDefinitionKey: rule.marketDefinitionKey, rules: rule.rules, effectiveFrom: rule.effectiveFrom })) return null;
+  const approval = await tx.approvalRequest.findFirst({ where: { id: rule.approvalRequestId, tenantId, action: `HOUSE_RULE:${rule.name}`, payloadHash: rule.semanticHash, status: "APPROVED" } });
+  return approval?.approverId && approval.requesterId !== approval.approverId ? approval : null;
+}
+var specific;
+var init_house_rules = __esm({
+  "features/sportsbook/domain/house-rules.ts"() {
+    "use strict";
+    init_engine();
+    specific = (key2) => Boolean(key2 && key2 !== "*");
+  }
+});
+
+// features/sportsbook/domain/result-approval.ts
+function resultApprovalHash(result) {
+  if (!result.tenantId || !result.eventId || !result.providerConnectionId || evidenceHash(result.payload) !== result.payloadHash) throw new Error("RESULT_CONTENT_EVIDENCE_MISMATCH");
+  return evidenceHash({ action: "APPROVE_RESULT", tenantId: result.tenantId, resultVersionId: result.id, eventId: result.eventId, providerConnectionId: result.providerConnectionId, version: result.version, payloadHash: result.payloadHash });
+}
+var init_result_approval = __esm({
+  "features/sportsbook/domain/result-approval.ts"() {
+    "use strict";
+    init_engine();
+  }
+});
+
+// features/keystone/lib/email-layout.ts
+function storeNameFromEnv(fallback = "Sportsbook") {
+  const match = /^\s*"?([^"<]+?)"?\s*</.exec(process.env.SMTP_FROM || "");
+  return match?.[1]?.trim() || fallback;
+}
+function emailButton(label, href) {
+  return `<table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin:8px 0 24px;">
+<tr><td class="em-btn" align="center" bgcolor="${C.button}" style="border-radius:8px;background:${C.button};">
+<a class="em-btn-a" href="${escapeHtml(href)}" target="_blank" style="display:inline-block;padding:14px 28px;font-family:${FONT};font-size:16px;font-weight:600;line-height:20px;color:${C.buttonText};text-decoration:none;border-radius:8px;">${escapeHtml(label)}</a>
+</td></tr></table>`;
+}
+function emailLayout(input) {
+  const store = escapeHtml(input.storeName || storeNameFromEnv());
+  const support = escapeHtml(input.supportEmail || SUPPORT_EMAIL);
+  return `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>${escapeHtml(input.title)}</title>
+<style>
+:root { color-scheme: light dark; supported-color-schemes: light dark; }
+body { margin:0; padding:0; -webkit-text-size-adjust:100%; }
+a { color:${C.link}; }
+@media (max-width: 620px) { .em-pad { padding-left:20px !important; padding-right:20px !important; } }
+@media (prefers-color-scheme: dark) {
+  .em-canvas { background:#09090b !important; }
+  .em-card { background:#18181b !important; border-color:#27272a !important; }
+  .em-text { color:#fafafa !important; }
+  .em-muted { color:#a1a1aa !important; }
+  .em-line { border-color:#3f3f46 !important; }
+  .em-panel { background:#27272a !important; border-color:#3f3f46 !important; color:#fafafa !important; }
+  .em-btn { background:#fafafa !important; }
+  .em-btn-a { color:#18181b !important; }
+  .em-link { color:#fafafa !important; }
+}
+[data-ogsc] .em-text { color:#fafafa !important; }
+[data-ogsc] .em-muted { color:#a1a1aa !important; }
+[data-ogsb] .em-canvas { background:#09090b !important; }
+[data-ogsb] .em-card { background:#18181b !important; }
+</style>
+</head>
+<body class="em-canvas" style="margin:0;padding:0;background:${C.canvas};">
+${input.preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">${escapeHtml(input.preheader)}</div>` : ""}
+<table role="presentation" class="em-canvas" width="100%" border="0" cellspacing="0" cellpadding="0" bgcolor="${C.canvas}" style="background:${C.canvas};">
+<tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:600px;">
+<tr><td class="em-pad" style="padding:8px 32px 20px;font-family:${FONT};font-size:18px;line-height:24px;font-weight:700;letter-spacing:-0.01em;"><span class="em-text" style="color:${C.text};">${store}</span></td></tr>
+<tr><td class="em-card" bgcolor="${C.card}" style="background:${C.card};border:1px solid ${C.line};border-radius:12px;">
+<table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+<tr><td class="em-pad" style="padding:32px 32px 16px;">
+<h1 class="em-text" style="margin:0 0 16px;font-family:${FONT};font-size:24px;line-height:32px;font-weight:700;letter-spacing:-0.02em;color:${C.text};">${escapeHtml(input.title)}</h1>
+${input.body}
+</td></tr>
+</table>
+</td></tr>
+<tr><td class="em-pad" style="padding:20px 32px 8px;font-family:${FONT};font-size:13px;line-height:20px;color:${C.subtle};">
+<span class="em-muted" style="color:${C.subtle};">${input.footerNote ? `${input.footerNote}<br>` : ""}Questions? Email <a class="em-link" href="mailto:${support}" style="color:${C.muted};text-decoration:underline;">${support}</a>.<br>${store}</span>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+var SUPPORT_EMAIL, FONT, C, escapeHtml, p, emailParagraph, emailMuted;
+var init_email_layout = __esm({
+  "features/keystone/lib/email-layout.ts"() {
+    "use strict";
+    SUPPORT_EMAIL = "hello@sportsbook.openship.org";
+    FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
+    C = {
+      canvas: "#f4f4f5",
+      card: "#ffffff",
+      text: "#18181b",
+      muted: "#52525b",
+      subtle: "#71717a",
+      line: "#e4e4e7",
+      panel: "#fafafa",
+      button: "#18181b",
+      buttonText: "#ffffff",
+      link: "#18181b"
+    };
+    escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    p = (html, style = "") => `<p class="em-text" style="margin:0 0 16px;font-family:${FONT};font-size:16px;line-height:24px;color:${C.text};${style}">${html}</p>`;
+    emailParagraph = p;
+    emailMuted = (html) => `<p class="em-muted" style="margin:0 0 16px;font-family:${FONT};font-size:14px;line-height:22px;color:${C.muted};">${html}</p>`;
+  }
+});
+
+// features/keystone/lib/mail.ts
+function getBaseUrlForEmails() {
+  if (process.env.SMTP_STORE_LINK) {
+    return process.env.SMTP_STORE_LINK;
+  }
+  console.warn("SMTP_STORE_LINK not set. Please add SMTP_STORE_LINK to your environment variables for email links to work properly.");
+  return "";
+}
+function passwordResetEmail({ url }) {
+  return emailLayout({
+    preheader: "Use this link to choose a new password.",
+    title: "Reset your password",
+    body: `${emailParagraph("We received a request to reset the password for your account. Use the button below to choose a new one.")}
+${emailButton("Reset password", url)}
+${emailMuted("If you did not request this, you can safely ignore this email. Your password will not change.")}`
+  });
+}
+async function sendPasswordResetEmail(resetToken, to, baseUrl) {
+  const frontendUrl = baseUrl || getBaseUrlForEmails();
+  const info = await transport.sendMail({
+    to,
+    from: process.env.SMTP_FROM,
+    subject: "Your password reset token!",
+    html: passwordResetEmail({
+      url: `${frontendUrl}/dashboard/reset?token=${resetToken}`
+    })
+  });
+  if (process.env.SMTP_USER?.includes("ethereal.email")) {
+    console.log(`\u{1F4E7} Message Sent!  Preview it at ${(0, import_nodemailer.getTestMessageUrl)(info)}`);
+  }
+}
+var import_nodemailer, transport;
+var init_mail = __esm({
+  "features/keystone/lib/mail.ts"() {
+    "use strict";
+    import_nodemailer = require("nodemailer");
+    init_email_layout();
+    transport = (0, import_nodemailer.createTransport)({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT ?? 587),
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASSWORD
+      },
+      disableFileAccess: true,
+      disableUrlAccess: true
+    });
+  }
+});
+
+// features/keystone/mutations/approval-control.ts
+async function assertCurrentActor(tx, context, tenantId, capability) {
+  if (isTrustedInternalContext(context, capability)) {
+    if (context.trustedTenantId !== tenantId) throw new Error("Not found");
+    return String(context.trustedActorId);
+  }
+  const actorId = context?.session?.itemId;
+  if (!actorId) throw new Error("Not found");
+  await lockUser(tx, actorId);
+  const user = await tx.user.findUnique({ where: { id: actorId }, include: { role: true, tenant: true } });
+  if (!holdsTenantCapability(user, tenantId, capability) || !user.operatorMfaEnabled) throw new Error("Not found");
+  return actorId;
+}
+async function assertApprovalAuthority(tx, approval, executorId) {
+  if (!approval.approverId || approval.approverId === approval.requesterId) throw new Error("DUAL_CONTROL_REQUIRED");
+  if (approval.approverId === executorId) throw new Error("DUAL_CONTROL_REQUIRED");
+  await lockUser(tx, approval.approverId);
+  const [approver, requester] = await Promise.all([
+    tx.user.findUnique({ where: { id: approval.approverId }, include: { role: true, tenant: true } }),
+    tx.user.findUnique({ where: { id: approval.requesterId }, select: { id: true, tenantId: true } })
+  ]);
+  if (!holdsTenantCapability(approver, approval.tenantId, "canApproveSensitiveActions")) throw new Error("APPROVER_AUTHORITY_NOT_CURRENT");
+  if (!requester || requester.tenantId !== approval.tenantId) throw new Error("REQUESTER_AUTHORITY_NOT_CURRENT");
+}
+async function consumeApproval(tx, context, input) {
+  const executorId = await assertCurrentActor(tx, context, input.tenantId, input.capability);
+  await tx.$queryRaw`SELECT id FROM "ApprovalRequest" WHERE id = ${input.approvalId} AND tenant = ${input.tenantId} FOR UPDATE`;
+  const row = await tx.approvalRequest.findFirst({ where: { id: input.approvalId, tenantId: input.tenantId, action: input.action, payloadHash: input.payloadHash, status: "APPROVED" } });
+  if (!row?.approverId || row.approverId === row.requesterId) throw new Error("DUAL_CONTROL_REQUIRED");
+  if (row.consumedAt) {
+    if (input.consumedKey && row.consumedKey === input.consumedKey) return { ...row, replay: true };
+    throw new Error("APPROVAL_ALREADY_CONSUMED");
+  }
+  if (!row.expiresAt) throw new Error("APPROVAL_REAPPROVAL_REQUIRED");
+  if (new Date(row.expiresAt) <= /* @__PURE__ */ new Date()) throw new Error("APPROVAL_EXPIRED");
+  await assertApprovalAuthority(tx, { tenantId: input.tenantId, requesterId: row.requesterId, approverId: row.approverId }, executorId);
+  const claimed = await tx.approvalRequest.updateMany({
+    where: { id: row.id, tenantId: input.tenantId, status: "APPROVED", consumedAt: null, expiresAt: { gt: /* @__PURE__ */ new Date() } },
+    data: { consumedAt: /* @__PURE__ */ new Date(), consumedById: executorId, consumedKey: input.consumedKey ?? row.id }
+  });
+  if (claimed.count !== 1) throw new Error("APPROVAL_ALREADY_CONSUMED");
+  return { ...row, replay: false };
+}
+var APPROVAL_TTL_MS, approvalExpiry, reviewPayload, approvalReview, isTrustedInternalContext, lockUser, holdsTenantCapability;
+var init_approval_control = __esm({
+  "features/keystone/mutations/approval-control.ts"() {
+    "use strict";
+    APPROVAL_TTL_MS = 24 * 60 * 60 * 1e3;
+    approvalExpiry = (from = /* @__PURE__ */ new Date()) => new Date(from.getTime() + APPROVAL_TTL_MS);
+    reviewPayload = (value) => JSON.parse(JSON.stringify(value ?? null));
+    approvalReview = (payload) => ({ requestPayload: reviewPayload(payload), expiresAt: approvalExpiry() });
+    isTrustedInternalContext = (context, capability) => Boolean(context?.trustedTenantId && context?.trustedActorId && context?.trustedCapabilities?.includes(capability)) && (process.env.NODE_ENV === "test" || Boolean(process.env.NODE_TEST_CONTEXT) || process.env.SPORTSBOOK_SANDBOX === "true");
+    lockUser = (tx, userId) => tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR SHARE`;
+    holdsTenantCapability = (user, tenantId, capability) => Boolean(user && user.tenantId === tenantId && user.role && user.role.tenantId === tenantId && user.role[capability] && user.tenant?.status === "ACTIVE");
+  }
+});
+
+// features/keystone/mutations/setting-policy.ts
+async function normalizeTenantSetting(tx, tenantId, key2, raw) {
+  const definition = await tx.configDefinition.findFirst({ where: { tenantId, key: key2 } });
+  if (!definition) throw new Error("SETTING_NOT_DEFINED");
+  if (definition.secret) throw new Error("SECRET_SETTING_NOT_SUPPORTED");
+  const scopes = Array.isArray(definition.allowedScopes) ? definition.allowedScopes.map(String) : [];
+  if (!scopes.includes("TENANT")) throw new Error("SETTING_SCOPE_NOT_ALLOWED");
+  const text7 = String(raw ?? "").trim();
+  let value;
+  switch (definition.valueType) {
+    case "MONEY":
+      if (!/^\d+$/.test(text7)) throw new Error("INVALID_SETTING_VALUE");
+      value = text7;
+      break;
+    case "INTEGER":
+      if (!/^-?\d+$/.test(text7) || !Number.isSafeInteger(Number(text7))) throw new Error("INVALID_SETTING_VALUE");
+      value = Number(text7);
+      break;
+    case "BOOLEAN":
+      if (text7 !== "true" && text7 !== "false") throw new Error("INVALID_SETTING_VALUE");
+      value = text7 === "true";
+      break;
+    case "JSON":
+      try {
+        value = JSON.parse(text7);
+      } catch {
+        throw new Error("INVALID_SETTING_VALUE");
+      }
+      if (!value || typeof value !== "object") throw new Error("INVALID_SETTING_VALUE");
+      break;
+    case "STRING":
+      if (!text7) throw new Error("INVALID_SETTING_VALUE");
+      value = text7;
+      break;
+    default:
+      throw new Error("SETTING_TYPE_UNSUPPORTED");
+  }
+  return { definition, value, valueType: String(definition.valueType) };
+}
+var init_setting_policy = __esm({
+  "features/keystone/mutations/setting-policy.ts"() {
+    "use strict";
+  }
+});
+
+// features/sportsbook/domain/zoned-time.ts
+function wallClockMs(instant, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(new Date(instant));
+  const value = (type) => Number(parts.find((part) => part.type === type)?.value);
+  return Date.UTC(value("year"), value("month") - 1, value("day"), value("hour"), value("minute"), value("second")) + (instant % 1e3 + 1e3) % 1e3;
+}
+function validTimeZone(timeZone) {
+  if (!timeZone) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return timeZone;
+  } catch {
+    return null;
+  }
+}
+function resolveOperatorInstant(value, timeZone, label = "TIME") {
+  const text7 = typeof value === "string" ? value.trim() : "";
+  if (!text7) throw new Error(`INVALID_${label}`);
+  if (EXPLICIT_OFFSET.test(text7)) {
+    const instant = new Date(text7);
+    if (Number.isNaN(instant.getTime())) throw new Error(`INVALID_${label}`);
+    return instant;
+  }
+  const match = LOCAL_INPUT.exec(text7);
+  if (!match) throw new Error(`INVALID_${label}`);
+  const zone = validTimeZone(timeZone);
+  if (!zone) throw new Error(`${label}_TIMEZONE_NOT_CONFIGURED`);
+  const [, y, mo, d, h, mi, s, ms] = match;
+  const local = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s ?? 0), Number((ms ?? "0").padEnd(3, "0")));
+  const check = new Date(local);
+  if (check.getUTCFullYear() !== Number(y) || check.getUTCMonth() !== Number(mo) - 1 || check.getUTCDate() !== Number(d) || check.getUTCHours() !== Number(h) || check.getUTCMinutes() !== Number(mi)) throw new Error(`INVALID_${label}`);
+  const offsets = new Set([-2, 0, 2].map((days) => {
+    const probe = local + days * 864e5;
+    return wallClockMs(probe, zone) - probe;
+  }));
+  const candidates = [...new Set([...offsets].map((offset) => local - offset))].filter((instant) => wallClockMs(instant, zone) === local);
+  if (candidates.length === 0) throw new Error(`NONEXISTENT_LOCAL_${label}`);
+  if (candidates.length > 1) throw new Error(`AMBIGUOUS_LOCAL_${label}_PROVIDE_OFFSET`);
+  return new Date(candidates[0]);
+}
+async function tenantTimeZone(tx, tenantId) {
+  const [tenant4, locale] = await Promise.all([
+    tx.tenant.findUnique({ where: { id: tenantId }, select: { defaultTimezone: true } }),
+    tx.brandLocale.findFirst({ where: { tenantId, status: "ACTIVE" }, orderBy: [{ default: "desc" }, { createdAt: "asc" }], select: { timezone: true } })
+  ]);
+  return validTimeZone(tenant4?.defaultTimezone) ?? validTimeZone(locale?.timezone) ?? "UTC";
+}
+var LOCAL_INPUT, EXPLICIT_OFFSET;
+var init_zoned_time = __esm({
+  "features/sportsbook/domain/zoned-time.ts"() {
+    "use strict";
+    LOCAL_INPUT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
+    EXPLICIT_OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+  }
+});
+
+// features/sportsbook/settlement/full-straight.ts
+async function assertCurrentRiskOperator(tx, tenantId, actorId) {
+  await tx.$queryRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+  await tx.$queryRaw`SELECT id FROM "Tenant" WHERE id = ${tenantId} FOR SHARE`;
+  await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${actorId} AND tenant = ${tenantId} FOR SHARE`;
+  const user = await tx.user.findFirst({ where: { id: actorId, tenantId }, include: { role: true } });
+  if (!user?.roleId) fail("SETTLEMENT_AUTHORITY_REQUIRED");
+  await tx.$queryRaw`SELECT id FROM "Role" WHERE id = ${user.roleId} FOR SHARE`;
+  const current = await tx.user.findFirst({ where: { id: actorId, tenantId }, include: { role: true } });
+  const tenant4 = await tx.tenant.findFirst({ where: { id: tenantId, status: "ACTIVE" } });
+  if (!tenant4 || current?.roleId !== user.roleId || !current?.role?.canManageRisk || !current.operatorMfaEnabled) fail("SETTLEMENT_AUTHORITY_REQUIRED");
+}
+async function assertApprovalIdentities(tx, tenantId, approval) {
+  for (const [id, approver] of [[approval.requesterId, false], [approval.approverId, true]]) {
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${id} AND tenant = ${tenantId} FOR SHARE`;
+    const user = await tx.user.findFirst({ where: { id, tenantId }, include: { role: true } });
+    if (!user?.roleId) fail("APPROVAL_PRINCIPAL_SCOPE_REQUIRED");
+    await tx.$queryRaw`SELECT id FROM "Role" WHERE id = ${user.roleId} FOR SHARE`;
+    const current = await tx.user.findFirst({ where: { id, tenantId }, include: { role: true } });
+    if (!current?.operatorMfaEnabled || (approver ? !current.role?.canApproveSensitiveActions : !current.role?.canTrade && !current.role?.canManageSportsbook)) fail("APPROVAL_PRINCIPAL_SCOPE_REQUIRED");
+  }
+}
+async function loadFullStraightPlan(tx, tenantId, wagerId) {
+  await lockWagerForSettlement(tx, tenantId, wagerId);
+  const wager = await tx.wager.findFirst({ where: { id: wagerId, tenantId } });
+  if (!wager?.playerId || wager.structure !== "STRAIGHT") fail("UNSUPPORTED_FULL_STRAIGHT_CONTRACT");
+  if (!["ACCEPTED", "OPEN", "GRADED"].includes(wager.status) || wager.bonusAwardId || wager.promotionId) fail("UNSUPPORTED_FULL_STRAIGHT_STATE_OR_FUNDING");
+  const settled = await tx.settlement.findFirst({ where: { tenantId, wagerId } });
+  if (settled) fail("WAGER_ALREADY_SETTLED");
+  const part = one(await tx.wagerPart.findMany({ where: { tenantId, wagerId }, take: 2 }), "FULL_STRAIGHT_PART_COVERAGE_REQUIRED");
+  const leg = one(await tx.wagerLeg.findMany({ where: { tenantId, wagerId }, take: 2 }), "FULL_STRAIGHT_LEG_COVERAGE_REQUIRED");
+  if (part.partIndex !== 0 || part.status !== "OPEN" || leg.wagerPartId !== part.id || leg.legIndex !== 0 || minor(part.stakeMinor) !== minor(wager.stakeMinor) || minor(part.potentialReturnMinor) !== minor(wager.potentialReturnMinor)) fail("ACCEPTED_PART_EVIDENCE_MISMATCH");
+  if (await tx.cashOutAcceptance.findFirst({ where: { tenantId, wagerId } })) fail("CASHOUT_SETTLEMENT_PLAN_REQUIRED");
+  await tx.$queryRaw`SELECT id FROM "Player" WHERE id = ${wager.playerId} AND tenant = ${tenantId} FOR SHARE`;
+  if (!await tx.player.findFirst({ where: { id: wager.playerId, tenantId } })) fail("SETTLEMENT_PLAYER_SCOPE_MISMATCH");
+  const selection = await tx.selection.findFirst({ where: { id: leg.selectionKey, tenantId }, include: { market: true } });
+  if (!selection?.market || selection.market.id !== leg.marketKey || selection.market.eventId !== leg.eventKey) fail("SETTLEMENT_SELECTION_SCOPE_MISMATCH");
+  const acceptedSnapshot = await tx.priceSnapshot.findFirst({ where: { id: leg.snapshotId, tenantId, selectionId: leg.selectionKey } });
+  if (!acceptedSnapshot?.providerConnectionId || acceptedSnapshot.decimalOdds !== leg.decimalOdds || String(acceptedSnapshot.line ?? "") !== leg.line || !await tx.providerConnection.findFirst({ where: { id: acceptedSnapshot.providerConnectionId, tenantId } })) fail("ACCEPTED_PRICE_SOURCE_SCOPE_REQUIRED");
+  await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${leg.eventKey} AND tenant = ${tenantId} FOR SHARE`;
+  await tx.$queryRaw`SELECT id FROM "Selection" WHERE id = ${leg.selectionKey} AND tenant = ${tenantId} FOR SHARE`;
+  const result = one(await tx.resultVersion.findMany({ where: { tenantId, eventId: leg.eventKey, status: "APPROVED" }, take: 2 }), "ONE_APPROVED_RESULT_REQUIRED");
+  await tx.$queryRaw`SELECT id FROM "ResultVersion" WHERE id = ${result.id} AND tenant = ${tenantId} FOR SHARE`;
+  const approval = await tx.approvalRequest.findFirst({ where: { tenantId, action: "APPROVE_RESULT", payloadHash: resultApprovalHash(result), status: "APPROVED" } });
+  if (!approval?.approverId || approval.requesterId === approval.approverId || !result.approvedAt) fail("INDEPENDENT_RESULT_EVIDENCE_REQUIRED");
+  await assertApprovalIdentities(tx, tenantId, approval);
+  if (!await tx.providerConnection.findFirst({ where: { id: result.providerConnectionId, tenantId } })) fail("RESULT_SOURCE_SCOPE_MISMATCH");
+  const fact = resolveCanonicalSelectionFact(result.payload, leg.eventKey, leg.marketKey, selection.key);
+  if (!fact) fail("CANONICAL_SELECTION_RESULT_REQUIRED");
+  if (!["WIN", "LOSS", "VOID"].includes(fact.outcome)) fail("UNSUPPORTED_FULL_STRAIGHT_OUTCOME");
+  const grade = one(await tx.legGrade.findMany({ where: { tenantId, wagerLegId: leg.id, marketGrade: { resultVersionId: result.id } }, include: { marketGrade: true }, take: 2 }), "EXACT_SELECTION_GRADE_COVERAGE_REQUIRED");
+  const marketGrade = grade.marketGrade, trace = marketGrade?.trace;
+  if (!marketGrade || marketGrade.tenantId !== tenantId || marketGrade.marketId !== leg.marketKey || marketGrade.resultVersionId !== result.id || trace?.selectionId !== leg.selectionKey || trace?.selectionKey !== selection.key || trace?.resultHash !== result.payloadHash || trace?.factHash !== evidenceHash(fact) || grade.outcome !== fact.outcome || marketGrade.outcome !== fact.outcome || grade.factorNumerator || grade.factorDenominator || marketGrade.factorNumerator || marketGrade.factorDenominator) fail("SELECTION_GRADE_EVIDENCE_MISMATCH");
+  if (marketGrade.inputHash !== evidenceHash({ marketId: leg.marketKey, selectionId: leg.selectionKey, resultVersionId: result.id, outcome: fact.outcome, factorNumerator: null, factorDenominator: null, ruleVersion: marketGrade.ruleVersion, ruleHash: trace.ruleHash, resultHash: result.payloadHash }) || grade.inputHash !== evidenceHash({ gradeId: marketGrade.id, legId: leg.id, selectionId: leg.selectionKey })) fail("GRADE_CONTENT_EVIDENCE_MISMATCH");
+  const rule = await tx.houseRuleVersion.findFirst({ where: { id: trace.ruleId, tenantId } });
+  if (!rule || `${rule.name}@${rule.version}` !== leg.ruleVersion || marketGrade.ruleVersion !== leg.ruleVersion || rule.semanticHash !== trace.ruleHash) fail("ACCEPTED_RULE_EVIDENCE_REQUIRED");
+  await tx.$queryRaw`SELECT id FROM "HouseRuleVersion" WHERE id = ${rule.id} AND tenant = ${tenantId} FOR SHARE`;
+  const ruleApproval = await tx.approvalRequest.findFirst({ where: { id: rule.approvalRequestId ?? "", tenantId, action: `HOUSE_RULE:${rule.name}`, payloadHash: rule.semanticHash, status: "APPROVED" } });
+  if (!ruleApproval?.approverId || ruleApproval.approverId === ruleApproval.requesterId || !wager.acceptedAt || rule.effectiveFrom > wager.acceptedAt || rule.effectiveTo && rule.effectiveTo <= wager.acceptedAt) fail("ACCEPTED_RULE_APPROVAL_REQUIRED");
+  await assertApprovalIdentities(tx, tenantId, ruleApproval);
+  if (rule.semanticHash !== evidenceHash({ action: "HOUSE_RULE", name: rule.name, sportKey: rule.sportKey, marketDefinitionKey: rule.marketDefinitionKey, rules: rule.rules, effectiveFrom: rule.effectiveFrom })) fail("RULE_CONTENT_EVIDENCE_MISMATCH");
+  if (rule.rules?.taxPolicy !== "NONE") fail("SETTLEMENT_TAX_POLICY_REQUIRED");
+  if (rule.rules?.currencyExponent !== 2) fail("ACCEPTED_CURRENCY_EXPONENT_EVIDENCE_REQUIRED");
+  if (!Array.isArray(rule.rules?.structures) || !rule.rules.structures.includes("STRAIGHT") || fact.outcome === "VOID" && rule.rules.void !== true) fail("OUTCOME_NOT_ALLOWED_BY_ACCEPTED_RULE");
+  const quoteLeg = one(await tx.customerQuoteLegTerms.findMany({ where: { tenantId, playerId: wager.playerId, quoteId: wager.quoteId, quoteKey: wager.quoteId, legIndex: "0" }, take: 2 }), "ORIGINAL_QUOTE_EVIDENCE_REQUIRED");
+  if (quoteLeg.eventId !== leg.eventKey || quoteLeg.marketId !== leg.marketKey || quoteLeg.selectionId !== leg.selectionKey || quoteLeg.ruleVersion !== leg.ruleVersion || quoteLeg.evidenceHash !== evidenceHash({ quoteId: wager.quoteId, index: 0, selectionId: quoteLeg.selectionId, snapshotId: quoteLeg.priceSnapshotId, decimalOdds: quoteLeg.decimalOdds, line: quoteLeg.line, ruleVersion: quoteLeg.ruleVersion, ruleHash: rule.semanticHash, currency: wager.currency, currencyExponent: rule.rules.currencyExponent })) fail("ORIGINAL_QUOTE_EVIDENCE_REQUIRED");
+  const decision = one(await tx.acceptanceDecision.findMany({ where: { tenantId, wagerId }, take: 2 }), "ACCEPTANCE_EVIDENCE_REQUIRED");
+  const price = decision.gateResults?.acceptedPriceEvidence?.[0];
+  if (!decision.accepted || decision.inputHash !== wager.termsHash || decision.gateResults?.rejectedParts?.length || decision.gateResults?.acceptedParts?.length !== 1 || decision.gateResults.acceptedParts[0] !== 0 || !price || price.legIndex !== 0 || price.snapshotId !== leg.snapshotId || price.decimalOdds !== leg.decimalOdds || price.line !== leg.line) fail("ACCEPTED_PRICE_EVIDENCE_MISMATCH");
+  const commandId = /^combination:([A-Za-z0-9_-]+)$/.exec(wager.idempotencyKey)?.[1];
+  if (!commandId) fail("ORIGINAL_CUSTOMER_COMMAND_REQUIRED");
+  await tx.$queryRaw`SELECT id FROM "CustomerCommand" WHERE id = ${commandId} AND tenant = ${tenantId} AND player = ${wager.playerId} FOR SHARE`;
+  const command = await tx.customerCommand.findFirst({ where: { id: commandId, tenantId, playerId: wager.playerId, type: "WAGER", status: "SUCCEEDED" } });
+  if (!command?.result || command.result.wagerId !== wagerId || command.result.receiptId !== wagerId || command.result.state !== "ACCEPTED" || command.result.accepted !== true || command.result.termsHash !== wager.termsHash || command.result.acceptedStakeMinor !== wager.stakeMinor || command.result.potentialReturnMinor !== wager.potentialReturnMinor || command.result.acceptedPartIndexes?.length !== 1 || command.result.acceptedPartIndexes[0] !== 0 || command.result.rejectedPartIndexes?.length || !/^[a-f0-9]{64}$/.test(command.requestHash)) fail("ORIGINAL_CUSTOMER_COMMAND_REQUIRED");
+  const receiptPart = command.result.acceptedParts?.[0], receiptPrice = command.result.acceptedPrices?.[0];
+  if (command.result.acceptedParts?.length !== 1 || !receiptPart || receiptPart.index !== part.partIndex || receiptPart.key !== part.combinationKey || receiptPart.stakeMinor !== part.stakeMinor || receiptPart.potentialReturnMinor !== part.potentialReturnMinor || receiptPart.decimalOdds !== part.decimalOdds || command.result.acceptedPrices?.length !== 1 || !receiptPrice || receiptPrice.legIndex !== 0 || receiptPrice.selectionId !== leg.selectionKey || receiptPrice.priceSnapshotId !== leg.snapshotId || receiptPrice.decimalOdds !== leg.decimalOdds || receiptPrice.line !== leg.line) fail("ORIGINAL_CUSTOMER_COMMAND_REQUIRED");
+  const oldPrice = parseExactDecimal(part.decimalOdds), acceptedPrice = parseExactDecimal(leg.decimalOdds);
+  if (oldPrice.numerator * acceptedPrice.denominator !== acceptedPrice.numerator * oldPrice.denominator) fail("ACCEPTED_PRICE_EVIDENCE_MISMATCH");
+  const configured = await tx.tenantCurrency.findFirst({ where: { tenantId, status: "ACTIVE", currency: { code: wager.currency } }, include: { currency: true } });
+  if (!configured?.currency || configured.currency.code !== wager.currency || !Number.isInteger(configured.currency.exponent) || configured.currency.exponent !== rule.rules.currencyExponent) fail("SETTLEMENT_CURRENCY_EVIDENCE_REQUIRED");
+  const accounts = {};
+  for (const key2 of ["PLAYER_CASH", "WAGERS_PENDING", "GAMING_REVENUE", "WINNINGS_EXPENSE"]) accounts[key2] = one(await tx.ledgerAccount.findMany({ where: { tenantId, playerId: key2 === "PLAYER_CASH" ? wager.playerId : null, currency: wager.currency, key: key2, status: "ACTIVE" }, take: 2 }), `EXACT_LEDGER_ACCOUNT_REQUIRED:${key2}`);
+  await tx.$queryRaw`SELECT id FROM "LedgerAccount" WHERE id = ${accounts.PLAYER_CASH.id} AND tenant = ${tenantId} FOR UPDATE`;
+  const balance = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
+  if (!balance || minor(balance.availableMinor) > minor(balance.postedMinor)) fail("SETTLEMENT_BALANCE_EVIDENCE_REQUIRED");
+  minor(balance.pendingMinor);
+  await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${balance.id} AND tenant = ${tenantId} FOR UPDATE`;
+  const hold = one(await tx.hold.findMany({ where: { tenantId, accountId: accounts.PLAYER_CASH.id, purposeType: "WAGER", purposeId: wagerId }, take: 2 }), "EXACT_CAPTURED_HOLD_REQUIRED");
+  if (hold.status !== "CAPTURED" || minor(hold.amountMinor) !== minor(wager.stakeMinor)) fail("EXACT_CAPTURED_HOLD_REQUIRED");
+  const stakeJournal = one(await tx.journalTransaction.findMany({ where: { tenantId, correlationId: wagerId, type: "WAGER_STAKE", status: "POSTED" }, take: 2 }), "STAKE_JOURNAL_EVIDENCE_REQUIRED");
+  const entries = await tx.journalEntry.findMany({ where: { tenantId, transactionId: stakeJournal.id }, take: 3 });
+  if (entries.length !== 2 || !entries.some((entry) => entry.accountId === accounts.PLAYER_CASH.id && entry.side === "DEBIT") || !entries.some((entry) => entry.accountId === accounts.WAGERS_PENDING.id && entry.side === "CREDIT") || entries.some((entry) => entry.currency !== wager.currency || minor(entry.amountMinor) !== minor(wager.stakeMinor))) fail("STAKE_JOURNAL_EVIDENCE_MISMATCH");
+  await tx.$queryRaw`SELECT id FROM "ExposurePosition" WHERE tenant = ${tenantId} AND "scopeType" = 'MARKET' AND "scopeId" = ${leg.marketKey} AND currency = ${wager.currency} FOR UPDATE`;
+  const allocation = one(await tx.wagerExposureAllocation.findMany({ where: { tenantId, wagerId }, take: 2 }), "EXACT_EXPOSURE_ALLOCATION_REQUIRED");
+  const exposure = one(await tx.exposurePosition.findMany({ where: { tenantId, scopeType: "MARKET", scopeId: leg.marketKey, currency: wager.currency }, take: 2 }), "EXACT_EXPOSURE_POSITION_REQUIRED");
+  const liability = minor(wager.potentialReturnMinor) - minor(wager.stakeMinor);
+  if (allocation.marketId !== leg.marketKey || allocation.status !== "OPEN" || minor(allocation.remainingStakeMinor) !== minor(wager.stakeMinor) || minor(allocation.remainingLiabilityMinor) !== liability || minor(exposure.stakeMinor) < minor(wager.stakeMinor) || minor(exposure.liabilityMinor) < liability) fail("EXPOSURE_CONSERVATION_EVIDENCE_REQUIRED");
+  const calculated = settleCombinationPart({ stakeMinor: minor(part.stakeMinor), acceptedPotentialReturnMinor: minor(part.potentialReturnMinor), stakeReturned: true, legs: [{ decimalOdds: leg.decimalOdds, outcome: fact.outcome }] });
+  if (calculated.payoutMinor > minor(wager.maxPayoutMinor)) fail("ACCEPTED_PAYOUT_CAP_EXCEEDED");
+  const bundle = { contract: CONTRACT, tenantId, wagerId, playerId: wager.playerId, wagerVersion: wager.version, termsHash: wager.termsHash, quoteLegEvidenceHash: quoteLeg.evidenceHash, partId: part.id, legId: leg.id, commandId: command.id, commandRequestHash: command.requestHash, commandReceiptHash: evidenceHash(command.result), stakeMinor: wager.stakeMinor, potentialReturnMinor: wager.potentialReturnMinor, decimalOdds: leg.decimalOdds, line: leg.line, snapshotId: leg.snapshotId, priceProviderConnectionId: acceptedSnapshot.providerConnectionId, currency: wager.currency, currencyExponent: configured.currency.exponent, eventId: leg.eventKey, marketId: leg.marketKey, selectionId: leg.selectionKey, selectionKey: selection.key, resultVersionId: result.id, resultVersion: result.version, resultHash: result.payloadHash, providerConnectionId: result.providerConnectionId, approvalId: approval.id, gradeId: grade.id, gradeHash: grade.inputHash, marketGradeId: marketGrade.id, marketGradeHash: marketGrade.inputHash, ruleId: rule.id, ruleVersion: leg.ruleVersion, ruleHash: rule.semanticHash, ruleApprovalId: ruleApproval.id, outcome: fact.outcome, payoutMinor: String(calculated.payoutMinor), roundingRule: "DOWN_AT_POSTING", stakeJournalId: stakeJournal.id, stakeEntries: entries.map((entry) => ({ id: entry.id, accountId: entry.accountId, side: entry.side, amountMinor: entry.amountMinor, currency: entry.currency })).sort((a, b) => a.id.localeCompare(b.id)), holdId: hold.id, holdVersion: hold.version, allocationId: allocation.id, allocationVersion: allocation.version, accounts: Object.fromEntries(Object.entries(accounts).map(([key2, row]) => [key2, row.id])) };
+  const plan = { state: "READY", contract: CONTRACT, planHash: evidenceHash(bundle), tenantId, wagerId, playerId: wager.playerId, outcome: fact.outcome, stakeMinor: wager.stakeMinor, payoutMinor: String(calculated.payoutMinor), currency: wager.currency, currencyExponent: configured.currency.exponent, resultVersionId: result.id, ruleVersion: leg.ruleVersion, bundle };
+  return { plan, wager, part, leg, result, grade, balance, hold, accounts, allocation, exposure };
+}
+function getFullStraightPlan(prisma, tenantId, actorId, wagerId, session) {
+  return serializable2(prisma, async (tx) => {
+    assertHumanSession(session, actorId);
+    await assertCurrentRiskOperator(tx, tenantId, actorId);
+    const plan = (await loadFullStraightPlan(tx, tenantId, wagerId)).plan;
+    assertHumanSession(session, actorId);
+    return plan;
+  });
+}
+async function settleFullStraight(tx, tenantId, actorId, input, session) {
+  assertHumanSession(session, actorId);
+  if (!/^[A-Za-z0-9:_-]{8,128}$/.test(input.idempotencyKey) || !/^[a-f0-9]{64}$/.test(input.planHash ?? "")) fail("REVIEWED_SETTLEMENT_PLAN_REQUIRED");
+  if (input.expectedActorId !== actorId || input.expectedTenantId !== tenantId) fail("SETTLEMENT_INTENT_SCOPE_CHANGED");
+  await assertCurrentRiskOperator(tx, tenantId, actorId);
+  return executeFullStraight(tx, tenantId, actorId, input, () => assertHumanSession(session, actorId), "REVIEWED_FULL_STRAIGHT_PLAN");
+}
+async function settleFullStraightAutomatically(tx, tenantId, wagerId, resultVersionId, guard = () => void 0) {
+  const idempotencyKey = automaticSettlementKey(wagerId, resultVersionId);
+  await lockWagerForSettlement(tx, tenantId, wagerId);
+  const prior = await tx.settlement.findFirst({ where: { tenantId, inputHash: idempotencyKey } });
+  let planHash;
+  if (prior) planHash = (await tx.settlementLine.findFirst({ where: { tenantId, settlementId: prior.id } }))?.trace?.planHash;
+  else {
+    const plan = (await loadFullStraightPlan(tx, tenantId, wagerId)).plan;
+    if (plan.resultVersionId !== resultVersionId) fail("STALE_SETTLEMENT_REQUEST");
+    planHash = plan.planHash;
+  }
+  return executeFullStraight(tx, tenantId, AUTOMATIC_SETTLEMENT_ACTOR, { wagerId, idempotencyKey, planHash }, guard, "APPROVED_RESULT_AUTOMATIC");
+}
+async function executeFullStraight(tx, tenantId, actorId, input, guard, reason) {
+  await lockWagerForSettlement(tx, tenantId, input.wagerId);
+  const wager = await tx.wager.findFirst({ where: { id: input.wagerId, tenantId } });
+  if (!wager?.playerId) fail("SETTLEMENT_PLAYER_SCOPE_MISMATCH");
+  await tx.$queryRaw`SELECT id FROM "Player" WHERE id = ${wager.playerId} AND tenant = ${tenantId} FOR SHARE`;
+  if (!await tx.player.findFirst({ where: { id: wager.playerId, tenantId } })) fail("SETTLEMENT_PLAYER_SCOPE_MISMATCH");
+  const requestHash = evidenceHash({ contract: CONTRACT, tenantId, actorId, wagerId: input.wagerId, planHash: input.planHash, idempotencyKey: input.idempotencyKey });
+  const prior = await tx.settlement.findFirst({ where: { tenantId, inputHash: input.idempotencyKey } });
+  if (prior) {
+    const line = one(await tx.settlementLine.findMany({ where: { tenantId, settlementId: prior.id }, take: 2 }), "ORIGINAL_SETTLEMENT_RECEIPT_REQUIRED");
+    if (prior.wagerId !== input.wagerId || line.trace?.contract !== CONTRACT || line.trace?.requestHash !== requestHash || line.trace?.planHash !== input.planHash) fail("SETTLEMENT_IDEMPOTENCY_CONFLICT");
+    const bundle = line.trace.bundle;
+    if (!bundle || evidenceHash(bundle) !== input.planHash || bundle.tenantId !== tenantId || bundle.wagerId !== input.wagerId || bundle.playerId !== wager.playerId || bundle.termsHash !== wager.termsHash || bundle.stakeMinor !== wager.stakeMinor || bundle.currency !== wager.currency || bundle.payoutMinor !== prior.payoutMinor || bundle.payoutMinor !== line.amountMinor || bundle.resultVersionId !== prior.resultVersionId || bundle.outcome !== prior.outcome || line.trace.capturedHoldId !== bundle.holdId) fail("ORIGINAL_SETTLEMENT_RECEIPT_REQUIRED");
+    if (!await tx.journalTransaction.findFirst({ where: { id: prior.journalTransactionId, tenantId, status: "POSTED", correlationId: input.wagerId, idempotencyKey: `full-straight:${input.idempotencyKey}` } })) fail("ORIGINAL_SETTLEMENT_RECEIPT_REQUIRED");
+    const originalCommand = await tx.customerCommand.findFirst({ where: { id: bundle.commandId, tenantId, playerId: wager.playerId, type: "WAGER", status: "SUCCEEDED", requestHash: bundle.commandRequestHash } });
+    if (!originalCommand || evidenceHash(originalCommand.result) !== bundle.commandReceiptHash) fail("ORIGINAL_SETTLEMENT_RECEIPT_SCOPE_REQUIRED");
+    for (const [key2, accountId] of Object.entries(bundle.accounts)) if (!await tx.ledgerAccount.findFirst({ where: { id: accountId, tenantId, currency: bundle.currency, key: key2, playerId: key2 === "PLAYER_CASH" ? wager.playerId : null } })) fail("ORIGINAL_SETTLEMENT_RECEIPT_SCOPE_REQUIRED");
+    const originalJournal = settlementJournal({ idempotencyKey: `full-straight:${input.idempotencyKey}`, stake: minor(bundle.stakeMinor), payout: minor(bundle.payoutMinor), currency: bundle.currency, pendingAccountId: bundle.accounts.WAGERS_PENDING, cashAccountId: bundle.accounts.PLAYER_CASH, revenueAccountId: bundle.accounts.GAMING_REVENUE, winningsExpenseAccountId: bundle.accounts.WINNINGS_EXPENSE });
+    const originalEntries = await tx.journalEntry.findMany({ where: { tenantId, transactionId: prior.journalTransactionId }, take: originalJournal.entries.length + 1 });
+    const signature = (entry) => `${entry.accountId}:${entry.side}:${entry.currency}:${entry.amountMinor ?? String(entry.amount)}`;
+    if (evidenceHash(originalEntries.map(signature).sort()) !== evidenceHash(originalJournal.entries.map(signature).sort())) fail("ORIGINAL_SETTLEMENT_RECEIPT_REQUIRED");
+    guard();
+    return prior.id;
+  }
+  const data = await loadFullStraightPlan(tx, tenantId, input.wagerId), { plan, accounts, balance } = data;
+  if (plan.planHash !== input.planHash) fail("STALE_SETTLEMENT_PLAN");
+  const journal = settlementJournal({ idempotencyKey: `full-straight:${input.idempotencyKey}`, stake: minor(plan.stakeMinor), payout: minor(plan.payoutMinor), currency: plan.currency, pendingAccountId: accounts.WAGERS_PENDING.id, cashAccountId: accounts.PLAYER_CASH.id, revenueAccountId: accounts.GAMING_REVENUE.id, winningsExpenseAccountId: accounts.WINNINGS_EXPENSE.id });
+  if (await tx.journalTransaction.findFirst({ where: { tenantId, idempotencyKey: journal.idempotencyKey } })) fail("ORIGINAL_SETTLEMENT_RECEIPT_REQUIRED");
+  const now = /* @__PURE__ */ new Date();
+  const run = await tx.settlementRun.create({ data: { tenantId, triggerType: "RESULT_APPROVED", resultVersionId: plan.resultVersionId, inputHash: requestHash, status: "RUNNING", wagersConsidered: 1, wagersSettled: 0, startedAt: now } });
+  guard();
+  const posted = await postJournal(tx, tenantId, journal, input.wagerId);
+  await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, postedMinor: String(minor(balance.postedMinor) + minor(plan.payoutMinor)), availableMinor: String(minor(balance.availableMinor) + minor(plan.payoutMinor)), pendingMinor: balance.pendingMinor, version: balance.version + 1, asOf: now } });
+  const settlement = await tx.settlement.create({ data: { tenantId, wagerId: input.wagerId, resultVersionId: plan.resultVersionId, settlementRunId: run.id, version: 1, outcome: plan.outcome, grossPayoutMinor: plan.payoutMinor, payoutMinor: plan.payoutMinor, taxMinor: "0", inputHash: input.idempotencyKey, journalTransactionId: posted.id } });
+  await tx.settlementLine.create({ data: { tenantId, settlementId: settlement.id, wagerPartId: data.part.id, wagerLegId: data.leg.id, lineType: plan.outcome === "LOSS" ? "LOSS" : plan.outcome === "VOID" ? "STAKE_RETURN" : "PROFIT", amountMinor: plan.payoutMinor, unroundedValue: `${plan.payoutMinor}.000000`, scale: 6, roundingRule: "DOWN_AT_POSTING", residualMinor: "0", trace: { contract: CONTRACT, requestHash, planHash: plan.planHash, bundle: plan.bundle, capturedHoldId: data.hold.id, grades: [{ legId: data.leg.id, gradeId: data.grade.id, outcome: plan.outcome }] } } });
+  const changed = await tx.wager.updateMany({ where: { id: input.wagerId, tenantId, version: data.wager.version, status: data.wager.status }, data: { status: "SETTLED", version: { increment: 1 } } });
+  if (changed.count !== 1) fail("STALE_WAGER_STATE");
+  await tx.wagerPart.update({ where: { id: data.part.id }, data: { status: "SETTLED", settlementId: settlement.id, gradeSummary: { outcome: plan.outcome, payoutMinor: plan.payoutMinor, resultVersionId: plan.resultVersionId, ruleVersion: plan.ruleVersion } } });
+  const closedStake = minor(data.allocation.remainingStakeMinor), closedLiability = minor(data.allocation.remainingLiabilityMinor);
+  const closed = await tx.wagerExposureAllocation.updateMany({ where: { id: data.allocation.id, tenantId, wagerId: input.wagerId, version: data.allocation.version, status: "OPEN" }, data: { remainingStakeMinor: "0", remainingLiabilityMinor: "0", status: "CLOSED", version: { increment: 1 } } });
+  if (closed.count !== 1) fail("STALE_EXPOSURE_ALLOCATION");
+  await tx.exposurePosition.update({ where: { id: data.exposure.id }, data: { stakeMinor: String(minor(data.exposure.stakeMinor) - closedStake), liabilityMinor: String(minor(data.exposure.liabilityMinor) - closedLiability), version: { increment: 1 }, asOf: now } });
+  await tx.settlementRun.update({ where: { id: run.id }, data: { status: "COMPLETED", wagersSettled: 1, completedAt: now } });
+  await appendAudit(tx, tenantId, actorId, "wager.settled_full", "Wager", input.wagerId, reason, { settlementId: settlement.id, requestHash, planHash: plan.planHash, resultVersionId: plan.resultVersionId, payoutMinor: plan.payoutMinor });
+  guard();
+  return settlement.id;
+}
+var assertHumanSession, CONTRACT, fail, minor, one, AUTOMATIC_SETTLEMENT_ACTOR, automaticSettlementKey;
+var init_full_straight = __esm({
+  "features/sportsbook/settlement/full-straight.ts"() {
+    "use strict";
+    init_sportsbook();
+    init_engine();
+    init_combination();
+    init_ledger();
+    init_result_facts();
+    init_result_approval();
+    init_session_assurance();
+    assertHumanSession = (session, actorId) => {
+      if (session?.itemId !== actorId || !hasOperatorMfaAssurance(session)) fail("SETTLEMENT_SESSION_ASSURANCE_REQUIRED");
+    };
+    CONTRACT = "openfront.full-straight.initial.v1";
+    fail = (reason) => {
+      throw new Error(reason);
+    };
+    minor = (value) => typeof value === "string" && /^\d{1,24}$/.test(value) ? BigInt(value) : fail("INVALID_SETTLEMENT_MONEY");
+    one = (rows, reason) => rows.length === 1 ? rows[0] : fail(reason);
+    AUTOMATIC_SETTLEMENT_ACTOR = "sportsbook-worker";
+    automaticSettlementKey = (wagerId, resultVersionId) => `auto:${wagerId}:${resultVersionId}`;
+  }
+});
+
+// features/sportsbook/settlement/settlement-request.ts
+var settlement_request_exports = {};
+__export(settlement_request_exports, {
+  handleSettlementRequested: () => handleSettlementRequested
+});
+async function handleSettlementRequested(prisma, tenantId, payload, fence) {
+  const resultVersionId = typeof payload?.resultVersionId === "string" ? payload.resultVersionId : "";
+  if (!resultVersionId) throw new Error("SETTLEMENT_REQUEST_RESULT_REQUIRED");
+  const result = await prisma.resultVersion.findFirst({ where: { id: resultVersionId, tenantId } });
+  const outcome = { resultVersionId, graded: 0, settled: [], skipped: [] };
+  if (!result?.eventId || result.status !== "APPROVED") {
+    outcome.skipped.push({ id: resultVersionId, reason: `RESULT_${String(result?.status ?? "MISSING")}` });
+    return outcome;
+  }
+  const selections = await prisma.selection.findMany({ where: { tenantId, market: { eventId: result.eventId } }, select: { id: true, marketId: true }, orderBy: { id: "asc" } });
+  for (const selection of selections) {
+    try {
+      await prisma.$transaction(async (tx) => {
+        await fence(tx);
+        await gradeSelectionFromApprovedResult(tx, tenantId, AUTOMATIC_SETTLEMENT_ACTOR, { marketId: selection.marketId, selectionId: selection.id, resultVersionId, reason: "Approved result graded by the settlement worker" });
+      });
+      outcome.graded++;
+    } catch (error) {
+      const reason = reasonOf(error);
+      if (isTransient(reason)) throw error;
+      outcome.skipped.push({ id: selection.id, reason });
+    }
+  }
+  const legs = await prisma.wagerLeg.findMany({ where: { tenantId, eventKey: result.eventId }, select: { wagerId: true } });
+  const wagerIds = [...new Set(legs.map((leg) => String(leg.wagerId ?? "")).filter(Boolean))];
+  const open = await prisma.wager.findMany({ where: { tenantId, id: { in: wagerIds }, structure: "STRAIGHT", status: { in: ["ACCEPTED", "OPEN", "GRADED"] } }, select: { id: true }, orderBy: { id: "asc" } });
+  for (const wager of open) {
+    try {
+      const settlementId = await serializable2(prisma, async (tx) => {
+        await fence(tx);
+        return settleFullStraightAutomatically(tx, tenantId, wager.id, resultVersionId);
+      });
+      outcome.settled.push(String(settlementId));
+    } catch (error) {
+      const reason = reasonOf(error);
+      if (isTransient(reason)) throw error;
+      outcome.skipped.push({ id: wager.id, reason });
+    }
+  }
+  return outcome;
+}
+var reasonOf, isTransient;
+var init_settlement_request = __esm({
+  "features/sportsbook/settlement/settlement-request.ts"() {
+    "use strict";
+    init_sportsbook();
+    init_full_straight();
+    reasonOf = (error) => error instanceof Error ? error.message : "UNKNOWN";
+    isTransient = (reason) => /LEASE|lease|could not serialize|deadlock|P2034|ECONN|timeout/i.test(reason);
+  }
+});
+
+// features/keystone/mutations/sportsbook.ts
+async function lockWagerForSettlement(tx, tenantId, wagerId) {
+  const rows = await tx.$queryRaw`SELECT id FROM "Wager" WHERE id = ${wagerId} AND tenant = ${tenantId} FOR UPDATE`;
+  if (!rows.length) throw new Error("Not found");
+}
+async function assertCurrentSettlement(tx, tenantId, wagerId, settlementId) {
+  const current = await tx.settlement.findFirst({ where: { tenantId, wagerId }, orderBy: { version: "desc" } });
+  if (!current || current.id !== settlementId) throw new Error("STALE_SETTLEMENT_CORRECTION");
+  return current;
+}
+async function gradeSelectionFromApprovedResult(tx, tenantId, actorId, a) {
+  await tx.$queryRaw`SELECT id FROM "Selection" WHERE id = ${a.selectionId} AND tenant = ${tenantId} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM "ResultVersion" WHERE id = ${a.resultVersionId} AND tenant = ${tenantId} FOR UPDATE`;
+  const selection = await tx.selection.findFirst({ where: { id: a.selectionId, tenantId }, include: { market: true } }), result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "APPROVED" } });
+  if (!selection?.market || !result || selection.market.id !== a.marketId || selection.market.eventId !== result.eventId) throw new Error("UNAPPROVED_OR_MISMATCHED_RESULT");
+  const fact = resolveCanonicalSelectionFact(result.payload, result.eventId, selection.market.id, selection.key);
+  if (!fact) throw new Error("CANONICAL_SELECTION_RESULT_REQUIRED");
+  const now = /* @__PURE__ */ new Date(), rule = await activeHouseRule(tx, tenantId, selection.market, now);
+  if (!rule) throw new Error("APPROVED_HOUSE_RULE_REQUIRED");
+  const ruleBody = rule.rules ?? {};
+  if (fact.outcome === "DEAD_HEAT" && ruleBody.deadHeat !== true || fact.outcome === "PUSH" && ruleBody.push !== true || fact.outcome === "VOID" && ruleBody.void !== true) throw new Error("OUTCOME_NOT_ALLOWED_BY_HOUSE_RULE");
+  const ruleVersion = `${rule.name}@${rule.version}`, inputHash = evidenceHash({ marketId: selection.market.id, selectionId: selection.id, resultVersionId: result.id, outcome: fact.outcome, factorNumerator: fact.factorNumerator ?? null, factorDenominator: fact.factorDenominator ?? null, ruleVersion, ruleHash: rule.semanticHash, resultHash: result.payloadHash });
+  const prior = await tx.marketGrade.findFirst({ where: { tenantId, inputHash } });
+  if (prior) return prior.id;
+  const grade = await tx.marketGrade.create({ data: { tenantId, marketId: selection.market.id, resultVersionId: result.id, ruleVersion, outcome: fact.outcome, factorNumerator: fact.factorNumerator ?? "", factorDenominator: fact.factorDenominator ?? "", trace: { selectionId: selection.id, selectionKey: selection.key, reason: a.reason, resultHash: result.payloadHash, factHash: evidenceHash(fact), ruleId: rule.id, ruleHash: rule.semanticHash }, inputHash } });
+  const legs = await tx.wagerLeg.findMany({ where: { tenantId, marketKey: selection.market.id, selectionKey: selection.id } });
+  const legGradeRows = (gradeId, rows) => rows.map((leg) => ({ tenantId, wagerLegId: leg.id, marketGradeId: gradeId, outcome: fact.outcome, factorNumerator: fact.factorNumerator ?? "", factorDenominator: fact.factorDenominator ?? "", inputHash: evidenceHash({ gradeId, legId: leg.id, selectionId: selection.id }) }));
+  const sameRuleLegs = legs.filter((leg) => leg.ruleVersion === ruleVersion);
+  if (sameRuleLegs.length) await tx.legGrade.createMany({ data: legGradeRows(grade.id, sameRuleLegs) });
+  const reviewRequiredLegIds = [];
+  for (const accepted of [...new Set(legs.filter((leg) => leg.ruleVersion !== ruleVersion).map((leg) => String(leg.ruleVersion ?? "")))]) {
+    const acceptedLegs = legs.filter((leg) => String(leg.ruleVersion ?? "") === accepted), match = /^(.+)@(\d+)$/.exec(accepted), acceptedRule = match ? await tx.houseRuleVersion.findFirst({ where: { tenantId, name: match[1], version: Number(match[2]) } }) : null, acceptedBody = acceptedRule?.rules ?? {};
+    if (!acceptedRule || !await approvedHouseRuleEvidence(tx, tenantId, acceptedRule) || fact.outcome === "DEAD_HEAT" && acceptedBody.deadHeat !== true || fact.outcome === "PUSH" && acceptedBody.push !== true || fact.outcome === "VOID" && acceptedBody.void !== true) {
+      reviewRequiredLegIds.push(...acceptedLegs.map((leg) => leg.id));
+      continue;
+    }
+    const acceptedInputHash = evidenceHash({ marketId: selection.market.id, selectionId: selection.id, resultVersionId: result.id, outcome: fact.outcome, factorNumerator: fact.factorNumerator ?? null, factorDenominator: fact.factorDenominator ?? null, ruleVersion: accepted, ruleHash: acceptedRule.semanticHash, resultHash: result.payloadHash });
+    if (await tx.marketGrade.findFirst({ where: { tenantId, inputHash: acceptedInputHash } })) continue;
+    const acceptedGrade = await tx.marketGrade.create({ data: { tenantId, marketId: selection.market.id, resultVersionId: result.id, ruleVersion: accepted, outcome: fact.outcome, factorNumerator: fact.factorNumerator ?? "", factorDenominator: fact.factorDenominator ?? "", trace: { selectionId: selection.id, selectionKey: selection.key, reason: a.reason, resultHash: result.payloadHash, factHash: evidenceHash(fact), ruleId: acceptedRule.id, ruleHash: acceptedRule.semanticHash }, inputHash: acceptedInputHash } });
+    await tx.legGrade.createMany({ data: legGradeRows(acceptedGrade.id, acceptedLegs) });
+  }
+  if (reviewRequiredLegIds.length) await appendAudit(tx, tenantId, actorId, "selection.grade_review_required", "Selection", selection.id, "ACCEPTED_RULE_UNRESOLVED", { resultVersionId: result.id, legIds: reviewRequiredLegIds });
+  const selections = await tx.selection.findMany({ where: { tenantId, marketId: selection.market.id }, select: { id: true } }), grades = await tx.marketGrade.findMany({ where: { tenantId, marketId: selection.market.id, resultVersionId: result.id }, select: { trace: true } }), gradedIds = new Set(grades.map((item) => String(item.trace?.selectionId ?? ""))), complete = selections.length > 0 && selections.every((item) => gradedIds.has(item.id));
+  if (complete) assertMarketTransition(selection.market.status, "GRADED");
+  await tx.market.update({ where: { id: selection.market.id }, data: { status: complete ? "GRADED" : selection.market.status === "OPEN" ? "SUSPENDED" : selection.market.status, version: { increment: 1 } } });
+  await appendAudit(tx, tenantId, actorId, "selection.graded", "Selection", selection.id, a.reason, { gradeId: grade.id, marketId: selection.market.id, resultVersionId: result.id, outcome: fact.outcome, ruleVersion, inputHash, complete });
+  return grade.id;
+}
+var import_node_crypto7, import_node_crypto8, graphql, requireUnscopedCapability, requireTenant, serializable2, decimalOddsFromAmounts, limitPeriodStart, stakeLimitFacts, journalEntryFingerprint, postJournal, appendAudit, rejectApprovedResultVersion, requireScopedPlayer, parseObject, positiveMoney, roleCapabilityKeys, parseRoleCapabilities, accountMap, sportsbookTypeDefs, sportsbookResolvers;
+var init_sportsbook = __esm({
+  "features/keystone/mutations/sportsbook.ts"() {
+    "use strict";
+    import_node_crypto7 = require("node:crypto");
+    init_engine();
+    init_ledger();
+    init_onboarding();
+    init_trading_eligibility();
+    init_onboarding_catalog();
+    init_funding();
+    init_balance();
+    init_promotions();
+    init_limit_enforcement();
+    init_acceptance_gates();
+    init_auth();
+    init_idempotency();
+    init_transaction();
+    init_result_facts();
+    init_ledger_reconciliation();
+    init_session_assurance();
+    init_trading_eligibility();
+    init_store_logo();
+    init_house_rules();
+    init_result_approval();
+    import_node_crypto8 = require("node:crypto");
+    init_mail();
+    init_approval_control();
+    init_setting_policy();
+    init_zoned_time();
+    graphql = String.raw;
+    requireUnscopedCapability = async (context, capability) => {
+      const itemId = context.session?.itemId;
+      if (!itemId || !hasOperatorMfaAssurance(context.session)) throw new Error("Not found");
+      const user = await context.prisma.user.findUnique({ where: { id: itemId }, include: { role: true } });
+      if (!user?.role?.[capability]) throw new Error("Not found");
+      return user;
+    };
+    requireTenant = async (context, capability = "canManageSportsbook") => {
+      const isTrustedInternal = Boolean(context.trustedTenantId && context.trustedActorId && context.trustedCapabilities?.includes(capability)) && (process.env.NODE_ENV === "test" || Boolean(process.env.NODE_TEST_CONTEXT) || process.env.SPORTSBOOK_SANDBOX === "true");
+      if (isTrustedInternal) return context.trustedTenantId;
+      const user = await requireUnscopedCapability(context, capability);
+      if (!user.tenantId) throw new Error("Not found");
+      return user.tenantId;
+    };
+    serializable2 = async (prisma, fn) => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await prisma.$transaction(fn, { isolationLevel: "Serializable" });
+        } catch (error) {
+          if (attempt >= 7 || !isRetryableTransactionError(error)) throw error;
+          await transactionBackoff(attempt);
+        }
+      }
+    };
+    decimalOddsFromAmounts = (gross, stake) => {
+      if (stake <= 0n) throw new Error("INVALID_STAKE");
+      const scaled = gross * 1000000n / stake;
+      return `${scaled / 1000000n}.${String(scaled % 1000000n).padStart(6, "0")}`;
+    };
+    limitPeriodStart = (period, now) => new Date(now.getTime() - (period === "DAILY" ? 1 : period === "WEEKLY" ? 7 : 30) * 864e5);
+    stakeLimitFacts = async (tx, tenantId, playerId, now, currency) => {
+      const limits = (await tx.playerLimit.findMany({ where: { tenantId, playerId, type: "STAKE", effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] } })).filter((limit) => !limit.currency || limit.currency === currency);
+      let selected = null;
+      for (const limit of limits) {
+        const wagers = await tx.wager.findMany({ where: { tenantId, playerId, currency, status: { not: "REJECTED" }, createdAt: { gte: limitPeriodStart(limit.period ?? "DAILY", now) } }, select: { stakeMinor: true } });
+        const wageredInPeriod = wagers.reduce((sum, wager) => sum + BigInt(wager.stakeMinor), 0n), periodLimit = BigInt(limit.amountMinor), remaining = periodLimit - wageredInPeriod;
+        if (!selected || remaining < selected.remaining) selected = { periodLimit, wageredInPeriod, remaining };
+      }
+      return selected;
+    };
+    journalEntryFingerprint = (rows) => rows.map((e) => `${e.accountId}|${e.side}|${e.amountMinor ?? String(e.amount)}|${e.currency}`).sort().join("\n");
+    postJournal = async (tx, tenantId, journal, correlationId) => {
+      validateJournal(journal);
+      const reversalOfId = journal.reversalOf ? (await tx.journalTransaction.findFirst({ where: { tenantId, idempotencyKey: journal.reversalOf } }))?.id ?? null : null;
+      const prior = await tx.journalTransaction.findFirst({ where: { tenantId, idempotencyKey: journal.idempotencyKey } });
+      if (prior) {
+        const priorEntries = await tx.journalEntry.findMany({ where: { tenantId, transactionId: prior.id } });
+        if (prior.type !== journal.type || prior.correlationId !== correlationId || (prior.reversalOfId ?? null) !== reversalOfId || journalEntryFingerprint(priorEntries) !== journalEntryFingerprint(journal.entries)) throw new Error("JOURNAL_IDEMPOTENCY_CONFLICT");
+        return { ...prior, replayed: true };
+      }
+      const posted = await tx.journalTransaction.create({ data: { tenantId, type: journal.type, idempotencyKey: journal.idempotencyKey, correlationId, status: "POSTED", effectiveAt: /* @__PURE__ */ new Date(), reversalOfId } });
+      await tx.journalEntry.createMany({ data: journal.entries.map((e) => ({ tenantId, transactionId: posted.id, accountId: e.accountId, side: e.side, amountMinor: String(e.amount), currency: e.currency })) });
+      return posted;
+    };
+    appendAudit = async (tx, tenantId, actorId, action, targetType, targetId, reason, payload) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
+      const previous = await tx.auditEvent.findFirst({ where: { tenantId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+      const payloadHash = evidenceHash(payload);
+      const hash = evidenceHash({ tenantId, previousHash: previous?.hash ?? "", actorId, action, targetType, targetId, reason, payloadHash });
+      return tx.auditEvent.create({ data: { tenantId, actorId, action, targetType, targetId, reason, payloadHash, previousHash: previous?.hash ?? "", hash } });
+    };
+    rejectApprovedResultVersion = async (tx, tenantId, actorId, approval, reason) => {
+      const recorded = approval.requestPayload?.resultVersionId;
+      const candidates = await tx.resultVersion.findMany({ where: { tenantId, status: "PENDING", ...recorded ? { id: String(recorded) } : {} } });
+      const result = candidates.find((item) => {
+        try {
+          return resultApprovalHash(item) === approval.payloadHash;
+        } catch {
+          return false;
+        }
+      });
+      if (!result) return;
+      const updated = await tx.resultVersion.updateMany({ where: { id: result.id, tenantId, status: "PENDING" }, data: { status: "REJECTED" } });
+      if (updated.count === 1) await appendAudit(tx, tenantId, actorId, "result.rejected", "ResultVersion", result.id, reason, { approvalId: approval.id, payloadHash: approval.payloadHash });
+    };
+    requireScopedPlayer = async (tx, tenantId, playerId) => {
+      const player = await tx.player.findFirst({ where: { id: playerId, tenantId } });
+      if (!player) throw new Error("Not found");
+      return player;
+    };
+    parseObject = (value, label) => {
+      try {
+        const parsed = JSON.parse(value);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+        return parsed;
+      } catch {
+        throw new Error(`INVALID_${label}`);
+      }
+    };
+    positiveMoney = (value, label) => {
+      if (!/^\d+$/.test(value) || BigInt(value) <= 0n) throw new Error(`INVALID_${label}`);
+      return value;
+    };
+    roleCapabilityKeys = ["canAccessDashboard", "canManageOnboarding", "canManageSportsbook", "canTrade", "canManageRisk", "canManageCompliance", "canManageFinance", "canManageIntegrations", "canApproveSensitiveActions", "canReadAudit", "canManageRoles", "canManagePeople"];
+    parseRoleCapabilities = (raw) => {
+      let value;
+      try {
+        value = JSON.parse(raw);
+      } catch {
+        throw new Error("INVALID_CAPABILITIES");
+      }
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("INVALID_CAPABILITIES");
+      const input = value, result = {};
+      for (const key2 of Object.keys(input)) {
+        if (!roleCapabilityKeys.includes(key2) || typeof input[key2] !== "boolean") throw new Error("INVALID_CAPABILITIES");
+        result[key2] = input[key2];
+      }
+      return result;
+    };
+    accountMap = async (tx, tenantId, playerId, currency) => {
+      const rows = await tx.ledgerAccount.findMany({ where: { tenantId, currency, OR: [{ playerId }, { key: { in: ["WAGERS_PENDING", "GAMING_REVENUE", "WINNINGS_EXPENSE", "PAYMENT_CLEARING"] } }] } });
+      const map = Object.fromEntries(rows.map((a) => [a.key, a]));
+      for (const key2 of ["PLAYER_CASH", "WAGERS_PENDING", "GAMING_REVENUE", "WINNINGS_EXPENSE", "PAYMENT_CLEARING"]) if (!map[key2]) throw new Error(`MISSING_LEDGER_ACCOUNT:${key2}`);
+      return map;
+    };
+    sportsbookTypeDefs = graphql`
+  type WagerCommandResult { accepted: Boolean!, wagerId: ID, rejectionCode: String, termsHash: String!, potentialReturnMinor: String! }
+  type OnboardingPreview { version: String!, fixtureHash: String!, payload: String! }
+  extend type Mutation {
+    previewSportsbookOnboarding(slug:String!,operatorName:String!,brandName:String!,domain:String!,currency:String!,currencyExponent:Int!,jurisdictionCode:String!,timezone:String!): OnboardingPreview!
+    acceptStraightWager(quoteId:ID!,idempotencyKey:String!): WagerCommandResult!
+    applySportsbookOnboarding(slug:String!,operatorName:String!,brandName:String!,domain:String!,currency:String!,currencyExponent:Int!,jurisdictionCode:String!,timezone:String!): OnboardingPreview!
+    createCatalogEvent(competitionId:ID!,externalKey:String!,name:String!,startAt:String!,marketDefinition:String!,selections:String!): ID!
+    ingestSandboxPrice(selectionId:ID!,decimalOdds:String!,line:String,sequence:String!,externalId:String!): Boolean!
+    setMarketPrices(marketId:ID!,prices:String!,line:String): Int!
+    setMarketStatus(marketId:ID!,status:String!,reason:String!,expectedVersion:Int!,expectedStatus:String!): Boolean!
+    ingestSandboxResult(eventId:ID!,payload:String!): ID!
+    requestResultApproval(resultVersionId:ID!,reason:String!): ID!
+    withdrawResultVersion(resultVersionId:ID!,reason:String!): Boolean!
+    approveResultVersion(resultVersionId:ID!,approvalId:ID!,reason:String!): Boolean!
+    suspendMarket(marketId:ID!,reason:String!): Boolean!
+    gradeMarket(marketId:ID!,resultVersionId:ID!,outcome:String!,factorNumerator:String,factorDenominator:String,ruleVersion:String!,reason:String!): ID!
+    gradeMarketSelection(marketId:ID!,selectionId:ID!,resultVersionId:ID!,reason:String!): ID!
+    createRiskLimit(profileId:ID!,scopeType:String!,scopeId:String!,maxStakeMinor:String!,maxPayoutMinor:String!,maxLiabilityMinor:String!,currency:String!): ID!
+    openWagerInvestigation(wagerId:ID!,category:String!,reason:String!): ID!
+    sandboxPayment(playerId:ID!,type:String!,amountMinor:String!,currency:String!,idempotencyKey:String!): ID!
+    setResponsibleGamingLimit(playerId:ID!,type:String!,period:String!,amountMinor:String!,currency:String!): ID!
+    selfExclude(playerId:ID!,scope:String!,endsAt:String): ID!
+    openVerificationCase(playerId:ID!,type:String!,evidenceReference:String!): ID!
+    decideVerificationCase(caseId:ID!,decision:String!,reason:String!): Boolean!
+    reviewAMLCase(playerId:ID!,status:String!,riskBand:String!,reason:String!): ID!
+    settleWager(wagerId:ID!,resultVersionId:ID!,outcome:String!,factorNumerator:String,factorDenominator:String,idempotencyKey:String!): ID!
+    requestResettlementApproval(settlementId:ID!,resultVersionId:ID!,outcome:String!,factorNumerator:String,factorDenominator:String,reason:String!): ID!
+    resettleWager(settlementId:ID!,resultVersionId:ID!,outcome:String!,factorNumerator:String,factorDenominator:String,idempotencyKey:String!,approvalId:ID!): ID!
+    runReconciliation(type:String!,windowFrom:String!,windowTo:String!): ID!
+    openOperationalIncident(severity:String!,title:String!,evidence:String!): ID!
+    setIncidentStatus(incidentId:ID!,status:String!,reason:String!): Boolean!
+    generateComplianceReport(type:String!,periodStart:String!,periodEnd:String!): ID!
+    requestSettingChange(key:String!,value:String!,reason:String!): ID!
+    applyApprovedSetting(approvalId:ID!,key:String!,value:String!): ID!
+    bootstrapIndependentApprover(name:String!,email:String!,password:String!): ID!
+    requestRoleDefinition(name:String!,capabilities:String!,reason:String!): ID!
+    applyApprovedRoleDefinition(approvalId:ID!,name:String!,capabilities:String!): ID!
+    requestRoleGrant(userId:ID!,roleId:ID!,reason:String!): ID!
+    applyApprovedRoleGrant(approvalId:ID!,userId:ID!,roleId:ID!): ID!
+    requestRoleRevocation(userId:ID!,reason:String!): ID!
+    applyApprovedRoleRevocation(approvalId:ID!,userId:ID!,roleId:ID!): ID!
+    requestOperatorAdmission(name:String!,email:String!,roleId:ID!,reason:String!): ID!
+    applyApprovedOperatorAdmission(approvalId:ID!,name:String!,email:String!,roleId:ID!): ID!
+    requestSensitiveApproval(action:String!,payloadHash:String!,reason:String!): ID!
+    decideSensitiveApproval(approvalId:ID!,approve:Boolean!,reason:String!,payloadHash:String): Boolean!
+    dismissOperatorOnboarding: String!
+  }
+`;
+    sportsbookResolvers = {
+      Mutation: {
+        applySportsbookOnboarding: async (_root, args, context) => {
+          await requireUnscopedCapability(context, "canManageOnboarding");
+          if (typeof args.timezone !== "string" || !validTimeZone(args.timezone)) throw new Error("INVALID_TIMEZONE");
+          const fixture = buildOnboardingFixture(args);
+          assertOnboardingCatalog();
+          const applied = await serializable2(context.prisma, async (tx) => {
+            await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${context.session.itemId} FOR UPDATE`;
+            const actor = await tx.user.findUnique({ where: { id: context.session.itemId }, include: { role: true } });
+            if (!actor?.role?.canManageOnboarding || !actor.operatorMfaEnabled) throw new Error("Not found");
+            if (actor.role.tenantId && actor.role.tenantId !== actor.tenantId) throw new Error("ONBOARDING_ROLE_TENANT_MISMATCH");
+            const existingTenant = await tx.tenant.findUnique({ where: { slug: args.slug } });
+            if (actor.tenantId) {
+              if (!existingTenant || existingTenant.id !== actor.tenantId) throw new Error("ONBOARDING_TENANT_MISMATCH");
+            } else if (existingTenant) throw new Error("ONBOARDING_SLUG_UNAVAILABLE");
+            if (existingTenant) {
+              const operatorStage = await tx.onboardingProgress.findFirst({ where: { tenantId: existingTenant.id, stage: "OPERATOR" } }), manifest = operatorStage?.details?.manifest;
+              if (!manifest?.fixtureHash) throw new Error("ONBOARDING_SETUP_UNVERIFIABLE");
+              if (manifest.fixtureHash !== fixture.fixtureHash) throw new Error("ONBOARDING_CONFLICT");
+            }
+            if (existingTenant && (existingTenant.name !== args.operatorName || existingTenant.defaultTimezone !== args.timezone)) throw new Error("ONBOARDING_CONFLICT");
+            const tenant4 = existingTenant ?? await tx.tenant.create({ data: { name: args.operatorName, slug: args.slug, status: "ACTIVE", defaultTimezone: args.timezone } });
+            const existingBrand = await tx.brand.findFirst({ where: { tenantId: tenant4.id } });
+            if (existingBrand && (existingBrand.domain !== args.domain || existingBrand.name !== args.brandName)) throw new Error("ONBOARDING_CONFLICT");
+            const brand = existingBrand ?? await tx.brand.create({ data: { tenantId: tenant4.id, name: args.brandName, domain: args.domain, defaultLocale: "en", logoIcon: DEFAULT_STORE_LOGO_ICON, logoColor: DEFAULT_STORE_LOGO_COLOR, status: "ACTIVE" } });
+            const jurisdiction = await tx.jurisdiction.upsert({ where: { code: args.jurisdictionCode }, create: { code: args.jurisdictionCode, authority: "UNCONFIGURED", status: "PENDING" }, update: {} });
+            if (!await tx.operatorJurisdiction.findFirst({ where: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id } })) await tx.operatorJurisdiction.create({ data: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id, licenseReference: "EXTERNAL-GATE", policyVersion: "sandbox-v1", status: "PENDING" } });
+            const operatorJurisdiction = await tx.operatorJurisdiction.findFirst({ where: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id } });
+            const onboardingUser = await tx.user.update({ where: { id: context.session.itemId }, data: { tenantId: tenant4.id, onboardingStatus: "in_progress" } });
+            if (onboardingUser.roleId) await tx.role.updateMany({ where: { id: onboardingUser.roleId, OR: [{ tenantId: null }, { tenantId: tenant4.id }] }, data: { tenantId: tenant4.id } });
+            const legalEntity = await tx.legalEntity.findFirst({ where: { tenantId: tenant4.id, registrationReference: "EXTERNAL-GATE" } }) ?? await tx.legalEntity.create({ data: { tenantId: tenant4.id, name: `${args.operatorName} legal entity`, countryCode: "UNCONFIGURED", registrationReference: "EXTERNAL-GATE", status: "PENDING" } });
+            const currency = await tx.currencyDefinition.findUnique({ where: { code: args.currency } }) ?? await tx.currencyDefinition.create({ data: { code: args.currency, exponent: args.currencyExponent, name: `${args.currency} sandbox currency`, status: "ACTIVE" } });
+            if (Number(currency.exponent) !== Number(args.currencyExponent)) throw new Error("CURRENCY_EXPONENT_CONFLICT");
+            if (currency.status !== "ACTIVE") throw new Error("CURRENCY_NOT_ACTIVE");
+            if (!await tx.tenantCurrency.findFirst({ where: { tenantId: tenant4.id, currencyId: currency.id } })) await tx.tenantCurrency.create({ data: { tenantId: tenant4.id, currencyId: currency.id, depositsEnabled: true, withdrawalsEnabled: true, wageringEnabled: true, defaultForBrand: true, status: "ACTIVE" } });
+            if (!await tx.brandLocale.findFirst({ where: { tenantId: tenant4.id, brandId: brand.id, locale: "en-US" } })) await tx.brandLocale.create({ data: { tenantId: tenant4.id, brandId: brand.id, locale: "en-US", language: "en", timezone: args.timezone, termsVersion: "sandbox-full-v1", termsContentHash: evidenceHash({ type: "TERMS", version: "sandbox-full-v1" }), default: true, status: "ACTIVE" } });
+            if (!await tx.operatorChannel.findFirst({ where: { tenantId: tenant4.id, key: "sandbox-web" } })) await tx.operatorChannel.create({ data: { tenantId: tenant4.id, legalEntityId: legalEntity.id, operatorJurisdictionId: operatorJurisdiction.id, brandId: brand.id, key: "sandbox-web", type: "WEB", status: "PENDING", capabilities: { mode: "sandbox", productionBlocked: true } } });
+            for (const [key2, value, type] of [["currency", args.currency, "STRING"], ["currencyExponent", args.currencyExponent, "INTEGER"], ["houseRules", { straightFixedOdds: true, inPlay: true, parlay: true, system: true, roundRobin: true, teaser: true, eachWay: true, cashOut: true, partialAcceptance: true }, "JSON"], ["maxStakeMinor", "100000", "MONEY"], ["maxPayoutMinor", "1000000", "MONEY"], ["liveDelayMs", 3e3, "INTEGER"], ["minimumAge", 18, "INTEGER"], ["priceChangeConsent", ["EXACT", "ACCEPT_BETTER", "ACCEPT_WITHIN_TOLERANCE"], "JSON"]]) if (!await tx.configValue.findFirst({ where: { tenantId: tenant4.id, key: key2 } })) await tx.configValue.create({ data: { tenantId: tenant4.id, key: key2, value, valueType: type, scopeType: "TENANT", scopeId: tenant4.id, policyVersion: "sandbox-full-v1", effectiveFrom: /* @__PURE__ */ new Date() } });
+            for (const [key2, valueType, mergeStrategy, description] of [["maxStakeMinor", "MONEY", "MIN", "Maximum accepted stake"], ["maxPayoutMinor", "MONEY", "MIN", "Maximum contractual payout"], ["liveDelayMs", "INTEGER", "MAX", "Minimum live acceptance delay"], ["wagerStructures", "JSON", "DENY_WINS", "Permitted wager structures"], ["minimumAge", "INTEGER", "MAX", "Minimum customer age"]]) if (!await tx.configDefinition.findFirst({ where: { tenantId: tenant4.id, key: key2 } })) await tx.configDefinition.create({ data: { tenantId: tenant4.id, key: key2, valueType, mergeStrategy, allowedScopes: ["TENANT", "JURISDICTION", "BRAND"], validationSchema: { mode: "sandbox" }, secret: false, description } });
+            if (!await tx.jurisdictionPolicyVersion.findFirst({ where: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id, version: 1 } })) await tx.jurisdictionPolicyVersion.create({ data: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id, version: 1, authorityCitation: "UNCONFIGURED-EXTERNAL-GATE", policyDocument: { mode: "sandbox", productionActivation: false }, effectiveFrom: /* @__PURE__ */ new Date(), status: "DRAFT", evidenceHash: evidenceHash({ jurisdiction: args.jurisdictionCode, mode: "sandbox" }) } });
+            for (const rule of [{ name: "sandbox-comprehensive", sportKey: "", rules: { structures: ["STRAIGHT", "PARLAY", "SYSTEM", "ROUND_ROBIN", "TEASER", "EACH_WAY"], cashOut: true, deadHeat: true, push: true, void: true, partialAcceptance: true, taxPolicy: "NONE", currencyExponent: Number(args.currencyExponent) } }, { name: "teaser:6", sportKey: "football", rules: { points: "6", decimalOdds: "1.91", approvedFor: ["spread", "total"] } }]) if (!await tx.houseRuleVersion.findFirst({ where: { tenantId: tenant4.id, name: rule.name, version: 1 } })) await tx.houseRuleVersion.create({ data: { tenantId: tenant4.id, name: rule.name, version: 1, sportKey: rule.sportKey, marketDefinitionKey: "", rules: rule.rules, semanticHash: evidenceHash(rule), effectiveFrom: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
+            for (const flag of [{ key: "sandbox.full-wagering", description: "Local comprehensive wager structures" }, { key: "sandbox.cashout", description: "Local deterministic cash-out" }, { key: "sandbox.promotions", description: "Local restricted-value promotions" }]) if (!await tx.featureFlag.findFirst({ where: { tenantId: tenant4.id, key: flag.key, scopeType: "TENANT", scopeId: tenant4.id } })) await tx.featureFlag.create({ data: { tenantId: tenant4.id, key: flag.key, description: flag.description, enabled: true, scopeType: "TENANT", scopeId: tenant4.id, safeDefault: false, ownerId: context.session.itemId } });
+            for (const p2 of fixture.providers) if (!await tx.providerConnection.findFirst({ where: { tenantId: tenant4.id, adapterId: p2.adapterId } })) await tx.providerConnection.create({ data: { tenantId: tenant4.id, adapterId: p2.adapterId, adapterVersion: "1.0.0", configReference: `sandbox:${p2.kind}`, capabilities: { kind: p2.kind }, certificationStatus: "SANDBOX", status: "ACTIVE" } });
+            await ensureOnboardingCatalogRoots(tx, tenant4.id, args.timezone);
+            for (const definition of [{ key: "match-result", name: "Match result", family: "MATCH_RESULT" }, { key: "moneyline", name: "Moneyline", family: "MONEYLINE" }, { key: "spread", name: "Point spread", family: "SPREAD" }, { key: "total", name: "Total", family: "TOTAL" }]) if (!await tx.marketDefinition.findFirst({ where: { tenantId: tenant4.id, key: definition.key, version: 1 } })) await tx.marketDefinition.create({ data: { tenantId: tenant4.id, key: definition.key, name: definition.name, sportKey: "*", parametersSchema: { line: definition.key === "spread" || definition.key === "total" }, gradingRuleFamily: definition.family, allowedPhases: ["PREMATCH", "LIVE"], status: "ACTIVE", version: 1 } });
+            if (!await tx.limitProfile.findFirst({ where: { tenantId: tenant4.id, name: "Sandbox defaults" } })) await tx.limitProfile.create({ data: { tenantId: tenant4.id, name: "Sandbox defaults", version: 1, status: "ACTIVE", effectiveFrom: /* @__PURE__ */ new Date() } });
+            if (!await tx.safeguardingAccount.findFirst({ where: { tenantId: tenant4.id, accountReference: "sandbox-safeguarding" } })) await tx.safeguardingAccount.create({ data: { tenantId: tenant4.id, legalEntityId: legalEntity.id, accountReference: "sandbox-safeguarding", classification: "NOT_PROTECTED", currency: args.currency, status: "ACTIVE", disclosureVersion: "sandbox-only" } });
+            for (const policy of [{ recordClass: "AUDIT", days: 2555, mode: "PRESERVE" }, { recordClass: "CUSTOMER_SESSION", days: 30, mode: "DELETE" }, { recordClass: "GEO", days: 30, mode: "TOKENIZE" }]) if (!await tx.retentionPolicyVersion.findFirst({ where: { tenantId: tenant4.id, recordClass: policy.recordClass, version: 1 } })) await tx.retentionPolicyVersion.create({ data: { tenantId: tenant4.id, recordClass: policy.recordClass, version: 1, retentionDays: policy.days, archiveDays: 0, deletionMode: policy.mode, legalHoldWins: true, effectiveFrom: /* @__PURE__ */ new Date(), status: "ACTIVE", evidenceHash: evidenceHash(policy) } });
+            for (const stage of ["OPERATOR", "BRAND", "POLICY", "PROVIDERS", "CATALOG", "GOVERNANCE", "FINANCE", "PROMOTIONS", "OPERATIONS"]) {
+              const progress = await tx.onboardingProgress.findFirst({ where: { tenantId: tenant4.id, stage } });
+              if (stage === "PROMOTIONS") {
+                const transition = prepareSandboxPromotionProgress(progress, fixture.fixtureHash);
+                if (transition.kind === "CREATE") await tx.onboardingProgress.create({ data: { tenantId: tenant4.id, stage, status: "PENDING", evidenceHash: transition.evidenceHash, details: { mode: "sandbox", promotionProvisioning: "PENDING" } } });
+                if (transition.kind === "RESET_PENDING") {
+                  const reset = await tx.onboardingProgress.updateMany({ where: { id: progress.id, tenantId: tenant4.id, stage, status: "COMPLETE", evidenceHash: transition.previousEvidenceHash }, data: { status: "PENDING", evidenceHash: transition.evidenceHash, completedAt: null, details: { mode: "sandbox", promotionProvisioning: "PENDING" } } });
+                  if (reset.count !== 1) throw new Error("ONBOARDING_PROMOTIONS_PROGRESS_STALE");
+                }
+              } else if (!progress) await tx.onboardingProgress.create({ data: { tenantId: tenant4.id, stage, status: "COMPLETE", evidenceHash: evidenceHash({ fixtureHash: fixture.fixtureHash, stage }), completedAt: /* @__PURE__ */ new Date(), details: stage === "OPERATOR" ? { mode: "sandbox", manifest: { fixtureHash: fixture.fixtureHash, actorId: context.session.itemId, input: { slug: args.slug, operatorName: args.operatorName, brandName: args.brandName, domain: args.domain, currency: args.currency, currencyExponent: args.currencyExponent, jurisdictionCode: args.jurisdictionCode, timezone: args.timezone }, tenantId: tenant4.id, brandId: brand.id, currencyId: currency.id, jurisdictionId: jurisdiction.id } } : { mode: "sandbox" } } });
+            }
+            for (const stage of ["LICENSING", "CERTIFICATION"]) {
+              const progress = await tx.onboardingProgress.findFirst({ where: { tenantId: tenant4.id, stage } });
+              if (!progress) await tx.onboardingProgress.create({ data: { tenantId: tenant4.id, stage, status: "BLOCKED", evidenceHash: evidenceHash({ fixtureHash: fixture.fixtureHash, stage, external: true }), details: { externalGate: true } } });
+            }
+            await appendAudit(tx, tenant4.id, context.session.itemId, "operator.onboarded", "Tenant", tenant4.id, "SANDBOX_ONBOARDING", { fixtureHash: fixture.fixtureHash, brandId: brand.id });
+            return { tenantId: tenant4.id, brandId: brand.id };
+          });
+          await ensurePromotionsThenComplete(
+            () => ensureSandboxPromotions(context.prisma, applied.tenantId),
+            async () => {
+              const completeHash = evidenceHash({ fixtureHash: fixture.fixtureHash, stage: "PROMOTIONS" });
+              const pendingHash = evidenceHash({ fixtureHash: fixture.fixtureHash, stage: "PROMOTIONS", provisioning: "PENDING" });
+              const completed = await context.prisma.onboardingProgress.updateMany({ where: { tenantId: applied.tenantId, stage: "PROMOTIONS", status: "PENDING", evidenceHash: pendingHash }, data: { status: "COMPLETE", evidenceHash: completeHash, completedAt: /* @__PURE__ */ new Date(), details: { mode: "sandbox" } } });
+              if (completed.count === 1) return;
+              const existing = await context.prisma.onboardingProgress.findFirst({ where: { tenantId: applied.tenantId, stage: "PROMOTIONS", status: "COMPLETE", evidenceHash: completeHash }, select: { id: true } });
+              if (!existing) throw new Error("ONBOARDING_PROMOTIONS_PROGRESS_NOT_PENDING");
+            }
+          );
+          await ensureOnboardingCatalogEvents(context.prisma, applied.tenantId, context.session.itemId, appendAudit);
+          await context.prisma.user.updateMany({ where: { id: context.session.itemId, tenantId: applied.tenantId }, data: { onboardingStatus: "completed" } });
+          return { version: fixture.version, fixtureHash: fixture.fixtureHash, payload: JSON.stringify({ ...fixture, fullProduct: { tenantId: applied.tenantId, brandId: applied.brandId, structures: ["STRAIGHT", "PARLAY", "SYSTEM", "ROUND_ROBIN", "TEASER", "EACH_WAY"], cashOut: true, promotions: true, inPlay: true } }) };
+        },
+        createCatalogEvent: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canTrade");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canTrade");
+            const competition = await tx.competition.findFirst({ where: { id: a.competitionId, tenantId } });
+            if (!competition) throw new Error("Not found");
+            const startAt = resolveOperatorInstant(a.startAt, await tenantTimeZone(tx, tenantId), "START_TIME");
+            let selections;
+            try {
+              selections = JSON.parse(a.selections);
+            } catch {
+              throw new Error("INVALID_SELECTIONS");
+            }
+            if (!Array.isArray(selections) || selections.length < 2 || selections.some((x) => !String(x?.key ?? "").trim() || !String(x?.label ?? "").trim()) || new Set(selections.map((x) => String(x.key).trim())).size !== selections.length) throw new Error("INVALID_SELECTIONS");
+            const definition = await tx.marketDefinition.findFirst({ where: { tenantId, key: a.marketDefinition, status: "ACTIVE" }, orderBy: { version: "desc" } });
+            if (!definition) throw new Error("MARKET_DEFINITION_NOT_ACTIVE");
+            const duplicate = await tx.event.findFirst({ where: { tenantId, externalKey: a.externalKey } });
+            if (duplicate) throw new Error("EXTERNAL_KEY_EXISTS");
+            const event = await tx.event.create({ data: { tenantId, competitionId: competition.id, externalKey: a.externalKey, name: a.name, startAt, status: "SCHEDULED", version: 1 } });
+            const market = await tx.market.create({ data: { tenantId, eventId: event.id, definitionId: definition.id, definitionKey: definition.key, parameters: definition.name ? { name: definition.name } : {}, tradingMode: "PREMATCH", cashOutEnabled: true, status: "SUSPENDED", version: 1 } });
+            await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "MARKET", scopeId: market.id, fromStatus: AWAITING_PRICES, toStatus: "SUSPENDED", reason: "Awaiting prices", source: "CATALOG", actorId: context.session.itemId, effectiveAt: /* @__PURE__ */ new Date() } });
+            await tx.selection.createMany({ data: selections.map((selection) => ({ tenantId, marketId: market.id, key: String(selection.key), label: String(selection.label), status: "OPEN" })) });
+            await appendAudit(tx, tenantId, context.session.itemId, "catalog.event_created", "Event", event.id, "OPERATOR_ENTRY", { competitionId: competition.id, marketId: market.id, definitionId: definition.id, externalKey: a.externalKey, selections });
+            return event.id;
+          });
+        },
+        /** Trader pricing: one decimal price per selection of a market, sequenced and enveloped by the server. */
+        setMarketPrices: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canTrade");
+          let prices;
+          try {
+            prices = JSON.parse(a.prices);
+          } catch {
+            throw new Error("INVALID_PRICES");
+          }
+          if (!prices || typeof prices !== "object" || Array.isArray(prices)) throw new Error("INVALID_PRICES");
+          const entries = Object.entries(prices).map(([selectionId, odds]) => [selectionId, String(odds ?? "").trim()]).filter(([, odds]) => odds !== "");
+          if (!entries.length || entries.length > 50) throw new Error("INVALID_PRICES");
+          for (const [, odds] of entries) {
+            if (!/^\d{1,4}(\.\d{1,4})?$/.test(odds) || Number(odds) <= 1) throw new Error("INVALID_DECIMAL_ODDS");
+          }
+          const line = typeof a.line === "string" ? a.line.trim().slice(0, 32) : "";
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canTrade");
+            const market = await tx.market.findFirst({ where: { id: a.marketId, tenantId }, select: { id: true, status: true } });
+            const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-sports", certificationStatus: "SANDBOX", status: "ACTIVE" } });
+            if (!market || !provider) throw new Error("Not found");
+            if (!["OPEN", "SUSPENDED"].includes(market.status)) throw new Error("MARKET_NOT_TRADING");
+            const now = /* @__PURE__ */ new Date();
+            for (const [selectionId, decimalOdds] of entries) {
+              const selection = await tx.selection.findFirst({ where: { id: selectionId, tenantId, marketId: market.id }, select: { id: true } });
+              if (!selection) throw new Error("SELECTION_NOT_IN_MARKET");
+              const latest = await tx.priceSnapshot.findFirst({ where: { tenantId, selectionId }, orderBy: { receivedAt: "desc" }, select: { sequence: true } });
+              const sequence = String((Number.parseInt(latest?.sequence ?? "0", 10) || 0) + 1);
+              const payload = { source: "TRADER", marketId: market.id, selectionId, decimalOdds, line, sequence, actorId: context.session.itemId };
+              const envelope = await tx.rawEnvelope.create({ data: { tenantId, providerConnectionId: provider.id, direction: "INBOUND", externalId: `trader:${(0, import_node_crypto7.randomUUID)()}`, schemaVersion: "sandbox.v1", payload, payloadHash: evidenceHash(payload), receivedAt: now } });
+              await tx.priceSnapshot.create({ data: { tenantId, selectionId, providerConnectionId: provider.id, decimalOdds, line, sequence, effectiveAt: now, receivedAt: now, rawEnvelopeId: envelope.id, status: "OPEN" } });
+            }
+            await appendAudit(tx, tenantId, context.session.itemId, "market.priced", "Market", market.id, "TRADER_PRICE", { selections: entries.length });
+            return entries.length;
+          });
+        },
+        ingestSandboxPrice: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canTrade");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canTrade");
+            const selection = await tx.selection.findFirst({ where: { id: a.selectionId, tenantId } });
+            const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-sports", certificationStatus: "SANDBOX", status: "ACTIVE" } });
+            if (!selection || !provider) throw new Error("Not found");
+            const envelope = await tx.rawEnvelope.create({ data: { tenantId, providerConnectionId: provider.id, direction: "INBOUND", externalId: a.externalId, schemaVersion: "sandbox.v1", payload: a, payloadHash: evidenceHash(a), receivedAt: /* @__PURE__ */ new Date() } }).catch(async () => null);
+            await tx.priceSnapshot.create({ data: { tenantId, selectionId: a.selectionId, providerConnectionId: provider.id, decimalOdds: a.decimalOdds, line: a.line || "", sequence: a.sequence, effectiveAt: /* @__PURE__ */ new Date(), receivedAt: /* @__PURE__ */ new Date(), rawEnvelopeId: envelope?.id, status: "OPEN" } });
+            return true;
+          });
+        },
+        setMarketStatus: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canTrade");
+          if (!["OPEN", "SUSPENDED", "CLOSED"].includes(a.status)) throw new Error("INVALID_MARKET_STATUS");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canTrade");
+            const market = await tx.market.findFirst({ where: { id: a.marketId, tenantId }, include: { event: { select: { status: true } } } });
+            if (!market) throw new Error("Not found");
+            if (Number(market.version ?? 1) !== Number(a.expectedVersion) || market.status !== a.expectedStatus) throw new Error("STALE_MARKET_REVIEW_REFRESH_REQUIRED");
+            if (a.status === "OPEN" && market.status === "SUSPENDED") {
+              const changes = await tx.tradingStatusChange.findMany({ where: { tenantId, scopeType: "MARKET", scopeId: market.id }, select: { fromStatus: true, toStatus: true } });
+              const selections = await tx.selection.findMany({ where: { tenantId, marketId: market.id }, select: { id: true } });
+              let unpricedSelections = 0;
+              for (const selection of selections) {
+                if (!await tx.priceSnapshot.findFirst({ where: { tenantId, selectionId: selection.id, status: "OPEN" }, select: { id: true } })) unpricedSelections++;
+              }
+              assertMarketFirstOpenAllowed({ eventStatus: market.event?.status, createdAwaitingPrices: changes.some((change) => change.fromStatus === AWAITING_PRICES), everOpened: changes.some((change) => change.toStatus === "OPEN"), unpricedSelections, selections: selections.length });
+            } else if (a.status === "OPEN") assertMarketOpenAllowed(market.status, market.event?.status);
+            if (market.status === a.status) throw new Error(`MARKET_ALREADY_${a.status}`);
+            assertMarketTransition(market.status, a.status);
+            const updated = await tx.market.updateMany({ where: { id: market.id, tenantId, status: market.status, version: market.version }, data: { status: a.status, version: Number(market.version ?? 0) + 1 } });
+            if (updated.count !== 1) throw new Error("STALE_MARKET_STATE");
+            await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "MARKET", scopeId: market.id, fromStatus: market.status, toStatus: a.status, reason: a.reason, source: "OPERATOR", actorId: context.session.itemId, effectiveAt: /* @__PURE__ */ new Date() } });
+            await appendAudit(tx, tenantId, context.session.itemId, `market.${String(a.status).toLowerCase()}`, "Market", market.id, a.reason, { from: market.status, to: a.status });
+            return true;
+          });
+        },
+        ingestSandboxResult: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canTrade");
+          let payload;
+          try {
+            payload = JSON.parse(a.payload);
+          } catch {
+            throw new Error("INVALID_CANONICAL_RESULT");
+          }
+          const canonical2 = parseCanonicalSelectionFacts(payload, a.eventId);
+          const payloadHash = evidenceHash(payload);
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canTrade");
+            const event = await tx.event.findFirst({ where: { id: a.eventId, tenantId } });
+            const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-results", certificationStatus: "SANDBOX", status: "ACTIVE" } });
+            if (!event || !provider) throw new Error("Not found");
+            if (event.status === "CANCELLED" || new Date(event.startAt).getTime() > Date.now()) throw new Error("EVENT_NOT_STARTED");
+            for (const fact of canonical2.facts) {
+              const market = await tx.market.findFirst({ where: { id: fact.marketKey, tenantId, eventId: event.id } });
+              if (market?.status === "OPEN") throw new Error("MARKET_STILL_OPEN");
+              const selections = market ? await tx.selection.findMany({ where: { tenantId, marketId: market.id, key: fact.selectionKey }, take: 2 }) : [];
+              if (!market || selections.length !== 1) throw new Error("CANONICAL_RESULT_SUBJECT_SCOPE_MISMATCH");
+            }
+            const latest = await tx.resultVersion.findFirst({ where: { tenantId, eventId: event.id }, orderBy: { version: "desc" } });
+            const result = await tx.resultVersion.create({ data: { tenantId, eventId: event.id, providerConnectionId: provider.id, version: (latest?.version ?? 0) + 1, status: "PENDING", payload, payloadHash } });
+            await appendAudit(tx, tenantId, context.session.itemId, "result.entered", "ResultVersion", result.id, "PENDING_INDEPENDENT_APPROVAL", { eventId: event.id, payloadHash, version: result.version });
+            return result.id;
+          });
+        },
+        requestResultApproval: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canTrade");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canTrade");
+            const result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "PENDING" } });
+            if (!result) throw new Error("Not found");
+            const payloadHash = resultApprovalHash(result);
+            if (await tx.approvalRequest.findFirst({ where: { tenantId, action: "APPROVE_RESULT", payloadHash, status: { in: ["PENDING", "APPROVED"] } }, select: { id: true } })) throw new Error("APPROVAL_ALREADY_REQUESTED");
+            const event = await tx.event.findFirst({ where: { id: result.eventId, tenantId }, select: { name: true, startAt: true, status: true, competition: { select: { name: true } } } });
+            const approval = await tx.approvalRequest.create({ data: { tenantId, action: "APPROVE_RESULT", payloadHash, ...approvalReview({ action: "APPROVE_RESULT", resultVersionId: result.id, version: result.version, eventId: result.eventId, eventName: event?.name ?? null, competition: event?.competition?.name ?? null, eventStartAt: event?.startAt ?? null, eventStatus: event?.status ?? null, providerConnectionId: result.providerConnectionId, result: result.payload, resultPayloadHash: result.payloadHash }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+            await appendAudit(tx, tenantId, context.session.itemId, "result.approval_requested", "ResultVersion", result.id, a.reason, { approvalId: approval.id, payloadHash });
+            return approval.id;
+          });
+        },
+        // A pending version the operator will not apply leaves the queue as REJECTED; its open approval requests lapse with it.
+        withdrawResultVersion: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canTrade");
+          const reason = String(a.reason ?? "").trim();
+          if (!reason) throw new Error("REASON_REQUIRED");
+          return context.prisma.$transaction(async (tx) => {
+            const actorId = await assertCurrentActor(tx, context, tenantId, "canTrade");
+            const result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "PENDING" } });
+            if (!result) throw new Error("RESULT_NOT_PENDING");
+            const updated = await tx.resultVersion.updateMany({ where: { id: result.id, tenantId, status: "PENDING" }, data: { status: "REJECTED" } });
+            if (updated.count !== 1) throw new Error("RESULT_NOT_PENDING");
+            let payloadHash = null;
+            try {
+              payloadHash = resultApprovalHash(result);
+            } catch {
+            }
+            if (payloadHash) await tx.approvalRequest.updateMany({ where: { tenantId, action: "APPROVE_RESULT", payloadHash, status: "PENDING" }, data: { status: "EXPIRED", decidedAt: /* @__PURE__ */ new Date() } });
+            await appendAudit(tx, tenantId, actorId, "result.withdrawn", "ResultVersion", result.id, reason, { payloadHash });
+            return true;
+          });
+        },
+        approveResultVersion: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRisk");
+          const approved2 = await serializable2(context.prisma, async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageRisk");
+            let result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "PENDING" } });
+            if (!result) throw new Error("Not found");
+            await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${result.eventId} AND tenant = ${tenantId} FOR UPDATE`;
+            await tx.$queryRaw`SELECT id FROM "ResultVersion" WHERE id = ${result.id} AND tenant = ${tenantId} FOR UPDATE`;
+            await requireTenant({ ...context, prisma: tx }, "canManageRisk");
+            result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "PENDING" } });
+            if (!result) throw new Error("STALE_RESULT_STATE");
+            const resultEvent = await tx.event.findFirst({ where: { id: result.eventId, tenantId }, select: { startAt: true, status: true } });
+            if (!resultEvent || resultEvent.status === "CANCELLED" || new Date(resultEvent.startAt).getTime() > Date.now()) throw new Error("EVENT_NOT_STARTED");
+            const payloadHash = resultApprovalHash(result);
+            const approval = await tx.approvalRequest.findFirst({ where: { id: a.approvalId, tenantId, action: "APPROVE_RESULT", payloadHash, status: "APPROVED" } });
+            if (!approval || !approval.approverId || approval.approverId === approval.requesterId) throw new Error("DUAL_CONTROL_REQUIRED");
+            if (approval.expiresAt && new Date(approval.expiresAt) <= /* @__PURE__ */ new Date()) throw new Error("APPROVAL_EXPIRED");
+            await tx.resultVersion.updateMany({ where: { tenantId, eventId: result.eventId, status: "APPROVED" }, data: { status: "SUPERSEDED" } });
+            await tx.resultVersion.update({ where: { id: result.id }, data: { status: "APPROVED", approvedAt: /* @__PURE__ */ new Date() } });
+            await appendAudit(tx, tenantId, context.session.itemId, "result.approved", "ResultVersion", result.id, a.reason, { approvalId: approval.id, payloadHash });
+            return true;
+          });
+          try {
+            const { handleSettlementRequested: handleSettlementRequested2 } = await Promise.resolve().then(() => (init_settlement_request(), settlement_request_exports));
+            await handleSettlementRequested2(context.prisma, tenantId, { resultVersionId: a.resultVersionId }, async () => void 0);
+          } catch (error) {
+            console.error("settlement after result approval failed", error instanceof Error ? error.message : error);
+          }
+          return approved2;
+        },
+        suspendMarket: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canTrade");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canTrade");
+            const m = await tx.market.findFirst({ where: { id: a.marketId, tenantId } });
+            if (!m) throw new Error("Not found");
+            assertMarketTransition(m.status, "SUSPENDED");
+            if (m.status !== "SUSPENDED") {
+              const suspended = await tx.market.updateMany({ where: { id: m.id, tenantId, status: m.status, version: m.version }, data: { status: "SUSPENDED", version: { increment: 1 } } });
+              if (suspended.count !== 1) throw new Error("STALE_MARKET_STATE");
+            }
+            await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "MARKET", scopeId: m.id, fromStatus: m.status, toStatus: "SUSPENDED", reason: a.reason, source: "OPERATOR", actorId: context.session.itemId, effectiveAt: /* @__PURE__ */ new Date() } });
+            await appendAudit(tx, tenantId, context.session.itemId, "market.suspended", "Market", m.id, a.reason, { from: m.status, to: "SUSPENDED" });
+            return true;
+          });
+        },
+        gradeMarket: async (_r, _a, context) => {
+          await requireTenant(context, "canManageRisk");
+          throw new Error("SELECTION_RESULT_REQUIRED");
+        },
+        gradeMarketSelection: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRisk");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageRisk");
+            return gradeSelectionFromApprovedResult(tx, tenantId, context.session.itemId, a);
+          });
+        },
+        createRiskLimit: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRisk");
+          positiveMoney(a.maxStakeMinor, "MAX_STAKE");
+          positiveMoney(a.maxPayoutMinor, "MAX_PAYOUT");
+          positiveMoney(a.maxLiabilityMinor, "MAX_LIABILITY");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageRisk");
+            const profile = await tx.limitProfile.findFirst({ where: { id: a.profileId, tenantId, status: "ACTIVE" } });
+            if (!profile) throw new Error("Not found");
+            const scopeType = String(a.scopeType || ""), scopeId = String(a.scopeId || "").trim();
+            if (!["TENANT", "MARKET", "EVENT", "PLAYER"].includes(scopeType)) throw new Error("INVALID_LIMIT_SCOPE_TYPE");
+            if (scopeType === "TENANT") {
+              if (scopeId && scopeId !== tenantId) throw new Error("TENANT_SCOPE_TAKES_NO_TARGET");
+            } else {
+              if (!scopeId) throw new Error("LIMIT_SCOPE_TARGET_REQUIRED");
+              const target = scopeType === "MARKET" ? await tx.market.findFirst({ where: { id: scopeId, tenantId }, select: { id: true } }) : scopeType === "EVENT" ? await tx.event.findFirst({ where: { id: scopeId, tenantId }, select: { id: true } }) : await tx.player.findFirst({ where: { id: scopeId, tenantId }, select: { id: true } });
+              if (!target) throw new Error("LIMIT_SCOPE_TARGET_NOT_FOUND");
+            }
+            const currency = await tx.tenantCurrency.findFirst({ where: { tenantId, status: "ACTIVE", currency: { code: String(a.currency || "") } }, select: { id: true } });
+            if (!currency) throw new Error("LIMIT_CURRENCY_NOT_CONFIGURED");
+            const rule = await tx.limitRule.create({ data: { tenantId, profileId: profile.id, scopeType, scopeId: scopeType === "TENANT" ? "" : scopeId, maxStakeMinor: a.maxStakeMinor, maxPayoutMinor: a.maxPayoutMinor, maxLiabilityMinor: a.maxLiabilityMinor, currency: a.currency, priority: 100 } });
+            await appendAudit(tx, tenantId, context.session.itemId, "risk.limit_created", "LimitRule", rule.id, "OPERATOR_ACTION", { profileId: profile.id, scopeType: a.scopeType, scopeId: a.scopeId });
+            return rule.id;
+          });
+        },
+        openWagerInvestigation: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRisk");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageRisk");
+            const wager = await tx.wager.findFirst({ where: { id: a.wagerId, tenantId } });
+            if (!wager) throw new Error("Not found");
+            const dispute = await tx.dispute.create({ data: { tenantId, playerId: wager.playerId, wagerId: wager.id, category: a.category, status: "INVESTIGATING", evidence: { reason: a.reason, openedBy: context.session.itemId } } });
+            await tx.disputeEvent.create({ data: { tenantId, disputeId: dispute.id, type: "INVESTIGATION_OPENED", actorId: context.session.itemId, evidenceHash: evidenceHash({ wagerId: wager.id, reason: a.reason }), details: { reason: a.reason } } });
+            await appendAudit(tx, tenantId, context.session.itemId, "wager.investigation_opened", "Wager", wager.id, a.reason, { disputeId: dispute.id, category: a.category });
+            return dispute.id;
+          });
+        },
+        sandboxPayment: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageFinance");
+          if (!["DEPOSIT", "WITHDRAWAL"].includes(a.type)) throw new Error("INVALID_PAYMENT");
+          positiveMoney(String(a.amountMinor ?? ""), "PAYMENT_AMOUNT");
+          if (!/^[A-Za-z0-9:_-]{8,128}$/.test(String(a.idempotencyKey ?? ""))) throw new Error("INVALID_IDEMPOTENCY_KEY");
+          const actorId = context.session.itemId, deposit = a.type === "DEPOSIT", amount = BigInt(a.amountMinor);
+          const requestHash = evidenceHash({ action: "OPERATOR_SANDBOX_PAYMENT", tenantId, actorId, playerId: a.playerId, type: a.type, amountMinor: String(amount), currency: a.currency });
+          const prepared = await serializable2(context.prisma, async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageFinance");
+            const prior = await tx.paymentIntent.findFirst({ where: { tenantId, idempotencyKey: a.idempotencyKey }, include: { providerConnection: true } });
+            if (prior) {
+              if (prior.riskEvidence?.requestHash !== requestHash) throw new Error("IDEMPOTENCY_KEY_CONFLICT");
+              return { intent: prior, provider: prior.providerConnection, fresh: false };
+            }
+            const player = await tx.player.findFirst({ where: { id: a.playerId, tenantId } });
+            if (!player) throw new Error("Not found");
+            const enabled = (await tx.tenantCurrency.findMany({ where: { tenantId, status: "ACTIVE" }, include: { currency: true } })).find((row) => row.currency?.code === a.currency && row.currency?.status === "ACTIVE" && (deposit ? row.depositsEnabled : row.withdrawalsEnabled));
+            if (!enabled) throw new Error("PAYMENT_CURRENCY_UNAVAILABLE");
+            const accounts = await accountMap(tx, tenantId, a.playerId, a.currency);
+            const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-payments", status: "ACTIVE" }, orderBy: [{ failoverPriority: "asc" }, { createdAt: "asc" }, { id: "asc" }] });
+            if (!provider) throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
+            let holdId = null;
+            if (!deposit) {
+              const current = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
+              if (current) await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${current.id} FOR UPDATE`;
+              const projection = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
+              if (!projection || BigInt(projection.availableMinor) < amount) throw new Error("INSUFFICIENT_FUNDS");
+              holdId = (await tx.hold.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, purposeType: "WITHDRAWAL", purposeId: `operator:${a.idempotencyKey}`, amountMinor: String(amount), status: "ACTIVE", expiresAt: null, version: 1 } })).id;
+              await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, ...nextProjection(projection, reserveChange(amount)) } });
+            }
+            const intent = await tx.paymentIntent.create({ data: { tenantId, playerId: a.playerId, providerConnectionId: provider.id, holdId, type: a.type, amountMinor: String(amount), feeMinor: "0", currency: a.currency, idempotencyKey: a.idempotencyKey, status: "PROCESSING", riskEvidence: { mode: "SANDBOX", requestHash, actorId, provider: { connectionId: provider.id, adapterId: provider.adapterId, adapterVersion: provider.adapterVersion, configReference: provider.configReference, certificationStatus: provider.certificationStatus } } } });
+            await tx.paymentAttempt.create({ data: { tenantId, paymentIntentId: intent.id, attempt: 1, externalReference: "", status: "PENDING", reasonCode: "PREPARED" } });
+            await appendAudit(tx, tenantId, actorId, "payment.prepared", "PaymentIntent", intent.id, "SANDBOX_ADAPTER", { type: a.type, amountMinor: String(amount), currency: a.currency, holdId, providerConnectionId: provider.id });
+            return { intent, provider, fresh: true };
+          });
+          const settledStatus = (status3, id) => {
+            if (status3 === "SUCCEEDED") return id;
+            if (["PENDING", "PROCESSING", "UNKNOWN"].includes(status3 ?? "")) throw new Error(`PAYMENT_OUTCOME_UNKNOWN:${id}`);
+            throw new Error(`PAYMENT_${status3 ?? "FAILED"}:${id}`);
+          };
+          if (!["PENDING", "PROCESSING", "UNKNOWN"].includes(prepared.intent.status ?? "")) return settledStatus(prepared.intent.status, prepared.intent.id);
+          const outcome = await dispatchPinnedPayment(prepared.intent, prepared.provider, prepared.fresh);
+          const finalStatus = await serializable2(context.prisma, async (tx) => {
+            await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${prepared.intent.id} FOR UPDATE`;
+            const current = await tx.paymentIntent.findUnique({ where: { id: prepared.intent.id } });
+            if (!current) throw new Error("Not found");
+            if (!["PENDING", "PROCESSING", "UNKNOWN"].includes(current.status ?? "")) return current.status;
+            const accounts = await accountMap(tx, tenantId, current.playerId, current.currency), value = BigInt(current.amountMinor), isDeposit = current.type === "DEPOSIT", now = /* @__PURE__ */ new Date();
+            const lockProjection = async () => {
+              const latest = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
+              if (latest) await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${latest.id} FOR UPDATE`;
+              const locked = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
+              if (!locked) throw new Error("PAYMENT_LEDGER_UNAVAILABLE");
+              return locked;
+            };
+            let status3 = outcome.status;
+            if (status3 === "SUCCEEDED") {
+              const journal = await postJournal(tx, tenantId, { idempotencyKey: `payment:${current.idempotencyKey}`, type: current.type, entries: [{ accountId: accounts.PAYMENT_CLEARING.id, currency: current.currency, side: isDeposit ? "DEBIT" : "CREDIT", amount: value }, { accountId: accounts.PLAYER_CASH.id, currency: current.currency, side: isDeposit ? "CREDIT" : "DEBIT", amount: value }] }, current.id);
+              if (journal.replayed) throw new Error("JOURNAL_ALREADY_POSTED");
+              if (!isDeposit) {
+                const captured = await tx.hold.updateMany({ where: { id: current.holdId ?? "", tenantId, status: "ACTIVE" }, data: { status: "CAPTURED", version: { increment: 1 } } });
+                if (captured.count !== 1) throw new Error("WITHDRAWAL_HOLD_NOT_ACTIVE");
+              }
+              await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, ...nextProjection(await lockProjection(), isDeposit ? postedChange(value) : captureChange(value), now) } });
+            } else if (status3 === "FAILED") {
+              if (!isDeposit && current.holdId) {
+                const released = await tx.hold.updateMany({ where: { id: current.holdId, tenantId, status: "ACTIVE" }, data: { status: "RELEASED", version: { increment: 1 } } });
+                if (released.count === 1) await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, ...nextProjection(await lockProjection(), releaseChange(value), now) } });
+              }
+            } else status3 = "UNKNOWN";
+            await tx.paymentIntent.update({ where: { id: current.id }, data: { status: status3, completedAt: status3 === "UNKNOWN" ? null : now, ...outcome.externalRef ? { providerSessionReference: outcome.externalRef } : {} } });
+            const attempt = await tx.paymentAttempt.findFirst({ where: { tenantId, paymentIntentId: current.id }, orderBy: { attempt: "desc" } });
+            if (attempt) await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: status3, reasonCode: outcome.reasonCode, ...outcome.externalRef ? { externalReference: outcome.externalRef } : {} } });
+            await appendAudit(tx, tenantId, actorId, status3 === "SUCCEEDED" ? "payment.completed" : status3 === "FAILED" ? "payment.failed" : "payment.outcome_unknown", "PaymentIntent", current.id, "SANDBOX_ADAPTER", { type: current.type, amountMinor: current.amountMinor, currency: current.currency, externalReference: outcome.externalRef, reasonCode: outcome.reasonCode });
+            return status3;
+          });
+          return settledStatus(finalStatus, prepared.intent.id);
+        },
+        setResponsibleGamingLimit: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageCompliance");
+          if (!/^\d+$/.test(a.amountMinor) || BigInt(a.amountMinor) < 0n) throw new Error("INVALID_LIMIT");
+          if (!["DEPOSIT", "STAKE", "LOSS", "SESSION"].includes(a.type)) throw new Error("INVALID_LIMIT_TYPE");
+          if (!["DAILY", "WEEKLY", "MONTHLY"].includes(a.period)) throw new Error("INVALID_LIMIT_PERIOD");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
+            await requireScopedPlayer(tx, tenantId, a.playerId);
+            const unit = a.type === "SESSION" ? "MIN" : String(a.currency || "");
+            if (a.type === "SESSION") {
+              if (a.currency && a.currency !== "MIN") throw new Error("SESSION_LIMIT_IS_MINUTES");
+            } else if (!await tx.tenantCurrency.findFirst({ where: { tenantId, status: "ACTIVE", currency: { code: unit } }, select: { id: true } })) throw new Error("LIMIT_CURRENCY_NOT_CONFIGURED");
+            if (a.type === "SESSION" && (!/^\d{1,5}$/.test(a.amountMinor) || Number(a.amountMinor) < 1 || Number(a.amountMinor) > { DAILY: 1440, WEEKLY: 10080, MONTHLY: 43200 }[a.period])) throw new Error("INVALID_SESSION_LIMIT");
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`player-limit:${tenantId}:${a.playerId}`}))`;
+            const now = /* @__PURE__ */ new Date(), active = await tx.playerLimit.findFirst({ where: { tenantId, playerId: a.playerId, type: a.type, period: a.period, effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }, orderBy: { effectiveFrom: "desc" } }), increase = Boolean(active && BigInt(a.amountMinor) > BigInt(active.amountMinor)), effectiveFrom = increase ? new Date(now.getTime() + 24 * 36e5) : now;
+            await tx.playerLimit.updateMany({ where: { tenantId, playerId: a.playerId, type: a.type, period: a.period, effectiveFrom: { gt: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }, data: { effectiveTo: now } });
+            if (active) await tx.playerLimit.update({ where: { id: active.id }, data: { effectiveTo: effectiveFrom } });
+            const limit = await tx.playerLimit.create({ data: { tenantId, playerId: a.playerId, type: a.type, period: a.period, amountMinor: a.amountMinor, currency: unit, effectiveFrom } });
+            await appendAudit(tx, tenantId, context.session.itemId, "responsible_gaming.limit_set", "Player", a.playerId, increase ? "OPERATOR_ACTION_COOLING_OFF" : "OPERATOR_ACTION", { limitId: limit.id, type: a.type, period: a.period, amountMinor: a.amountMinor, currency: unit, effectiveFrom: effectiveFrom.toISOString() });
+            return limit.id;
+          }, { isolationLevel: "Serializable" });
+        },
+        selfExclude: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageCompliance");
+          if (!["OPERATOR", "ALL_WAGERING", "ALL_BRANDS"].includes(a.scope)) throw new Error("INVALID_EXCLUSION_SCOPE");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
+            await requireScopedPlayer(tx, tenantId, a.playerId);
+            const endsAt = a.endsAt ? resolveOperatorInstant(a.endsAt, await tenantTimeZone(tx, tenantId), "EXCLUSION_END") : null;
+            if (endsAt && endsAt.getTime() <= Date.now()) throw new Error("INVALID_EXCLUSION_END");
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`self-exclusion:${tenantId}:${a.playerId}`}))`;
+            const now = /* @__PURE__ */ new Date(), active = await tx.selfExclusion.findFirst({ where: { tenantId, playerId: a.playerId, status: "ACTIVE", startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gt: now } }] }, orderBy: { startsAt: "desc" } });
+            if (active) {
+              const extendsProtection = endsAt === null ? active.endsAt !== null : active.endsAt !== null && endsAt.getTime() > active.endsAt.getTime();
+              if (!extendsProtection) return active.id;
+              await tx.selfExclusion.update({ where: { id: active.id }, data: { endsAt } });
+              await appendAudit(tx, tenantId, context.session.itemId, "responsible_gaming.self_exclusion_extended", "Player", a.playerId, "OPERATOR_ACTION", { exclusionId: active.id, previousEndsAt: active.endsAt?.toISOString() ?? null, endsAt: endsAt?.toISOString() ?? null });
+              return active.id;
+            }
+            const exclusion = await tx.selfExclusion.create({ data: { tenantId, playerId: a.playerId, scope: a.scope, startsAt: now, endsAt, status: "ACTIVE", source: "OPERATOR" } });
+            await appendAudit(tx, tenantId, context.session.itemId, "responsible_gaming.self_excluded", "Player", a.playerId, "OPERATOR_ACTION", { exclusionId: exclusion.id, scope: a.scope, endsAt: endsAt?.toISOString() ?? null });
+            return exclusion.id;
+          }, { isolationLevel: "Serializable" });
+        },
+        openVerificationCase: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageCompliance");
+          if (!["KYC", "AGE", "ADDRESS"].includes(a.type)) throw new Error("INVALID_VERIFICATION_TYPE");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
+            await requireScopedPlayer(tx, tenantId, a.playerId);
+            const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-kyc", status: "ACTIVE" } });
+            if (!provider) throw new Error("KYC_PROVIDER_UNAVAILABLE");
+            if (await tx.verificationCase.findFirst({ where: { tenantId, playerId: a.playerId, type: a.type, status: "PENDING" }, select: { id: true } })) throw new Error("VERIFICATION_ALREADY_OPEN");
+            const verification = await tx.verificationCase.create({ data: { tenantId, playerId: a.playerId, providerConnectionId: provider.id, type: a.type, status: "PENDING", evidenceReference: a.evidenceReference } });
+            await tx.player.update({ where: { id: a.playerId }, data: { kycStatus: "PENDING" } });
+            await appendAudit(tx, tenantId, context.session.itemId, "verification.opened", "Player", a.playerId, "COMPLIANCE_REVIEW", { caseId: verification.id, type: a.type });
+            return verification.id;
+          });
+        },
+        decideVerificationCase: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageCompliance");
+          if (!["APPROVED", "REJECTED"].includes(a.decision)) throw new Error("INVALID_DECISION");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
+            const verification = await tx.verificationCase.findFirst({ where: { id: a.caseId, tenantId, status: "PENDING" } });
+            if (!verification?.playerId) throw new Error("Not found");
+            const decidedCase = await tx.verificationCase.updateMany({ where: { id: verification.id, tenantId, status: "PENDING" }, data: { status: a.decision } });
+            if (decidedCase.count !== 1) throw new Error("VERIFICATION_ALREADY_DECIDED");
+            await tx.verificationCheck.create({ data: { tenantId, verificationCaseId: verification.id, attempt: 1, decision: a.decision === "APPROVED" ? "PASS" : "FAIL", reasonCode: a.reason } });
+            if (verification.type === "KYC" || verification.type === "AGE" && a.decision === "REJECTED") {
+              const otherPending = a.decision === "APPROVED" && await tx.verificationCase.findFirst({ where: { tenantId, playerId: verification.playerId, status: "PENDING", id: { not: verification.id }, type: { in: ["KYC", "AGE"] } }, select: { id: true } });
+              if (!otherPending) await tx.player.update({ where: { id: verification.playerId }, data: { kycStatus: a.decision } });
+            }
+            await appendAudit(tx, tenantId, context.session.itemId, "verification.decided", "VerificationCase", verification.id, a.reason, { decision: a.decision, playerId: verification.playerId });
+            return true;
+          });
+        },
+        reviewAMLCase: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageCompliance");
+          if (!["OPEN", "REVIEW", "CLOSED"].includes(a.status) || !["LOW", "MEDIUM", "HIGH"].includes(a.riskBand)) throw new Error("INVALID_AML_STATE");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
+            await requireScopedPlayer(tx, tenantId, a.playerId);
+            const existing = await tx.aMLCase.findFirst({ where: { tenantId, playerId: a.playerId, status: { not: "CLOSED" } }, orderBy: { createdAt: "desc" } });
+            const aml = existing ? await tx.aMLCase.update({ where: { id: existing.id }, data: { status: a.status, riskBand: a.riskBand, ownerId: context.session.itemId, restrictedEvidence: { reason: a.reason } } }) : await tx.aMLCase.create({ data: { tenantId, playerId: a.playerId, status: a.status, riskBand: a.riskBand, ownerId: context.session.itemId, restrictedEvidence: { reason: a.reason } } });
+            await tx.player.update({ where: { id: a.playerId }, data: { riskBand: a.riskBand } });
+            await appendAudit(tx, tenantId, context.session.itemId, "aml.case_updated", "AMLCase", aml.id, a.reason, { status: a.status, riskBand: a.riskBand, playerId: a.playerId });
+            return aml.id;
+          });
+        },
+        settleWager: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRisk");
+          return serializable2(context.prisma, async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageRisk");
+            const fullParts = await tx.wagerPart.findMany({ where: { tenantId, wagerId: a.wagerId }, take: 1 });
+            if (fullParts.length) throw new Error("FULL_ENGINE_SETTLEMENT_REQUIRED");
+            const old = await tx.settlement.findFirst({ where: { tenantId, wagerId: a.wagerId, inputHash: a.idempotencyKey } });
+            if (old) return old.id;
+            await lockWagerForSettlement(tx, tenantId, a.wagerId);
+            const retry = await tx.settlement.findFirst({ where: { tenantId, wagerId: a.wagerId, inputHash: a.idempotencyKey } });
+            if (retry) return retry.id;
+            const current = await tx.settlement.findFirst({ where: { tenantId, wagerId: a.wagerId }, orderBy: { version: "desc" } });
+            if (current) throw new Error("WAGER_ALREADY_SETTLED");
+            const wager = await tx.wager.findFirst({ where: { id: a.wagerId, tenantId }, include: { from_WagerLeg_wager: true } });
+            if (!wager) throw new Error("Not found");
+            const result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "APPROVED" } });
+            if (!result || !wager.from_WagerLeg_wager.some((leg) => leg.eventKey === result.eventId)) throw new Error("UNAPPROVED_OR_MISMATCHED_RESULT");
+            const legIds = wager.from_WagerLeg_wager.map((leg) => leg.id);
+            const grades = await tx.legGrade.findMany({ where: { tenantId, wagerLegId: { in: legIds }, marketGrade: { resultVersionId: result.id } }, include: { marketGrade: true } });
+            if (grades.length !== legIds.length || grades.some((grade2) => grade2.outcome !== a.outcome)) throw new Error("MISSING_OR_MISMATCHED_GRADE");
+            const grade = grades[0];
+            const factorNumerator = grade.factorNumerator ? BigInt(grade.factorNumerator) : void 0, factorDenominator = grade.factorDenominator ? BigInt(grade.factorDenominator) : void 0;
+            const payout = settlementAmount(BigInt(wager.stakeMinor), decimalOddsFromAmounts(BigInt(wager.potentialReturnMinor), BigInt(wager.stakeMinor)), { outcome: grade.outcome, factorNumerator, factorDenominator });
+            const accounts = await accountMap(tx, tenantId, wager.playerId, wager.currency);
+            const journal = settlementJournal({ idempotencyKey: `settlement:${a.idempotencyKey}`, stake: BigInt(wager.stakeMinor), payout, currency: wager.currency, pendingAccountId: accounts.WAGERS_PENDING.id, cashAccountId: accounts.PLAYER_CASH.id, revenueAccountId: accounts.GAMING_REVENUE.id, winningsExpenseAccountId: accounts.WINNINGS_EXPENSE.id });
+            const posted = await postJournal(tx, tenantId, journal, wager.id);
+            const balance = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
+            const nextBalance = BigInt(balance?.postedMinor ?? "0") + payout;
+            await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, postedMinor: String(nextBalance), pendingMinor: balance?.pendingMinor ?? "0", availableMinor: String(BigInt(balance?.availableMinor ?? "0") + (nextBalance - BigInt(balance?.postedMinor ?? "0"))), version: (balance?.version ?? 0) + 1, asOf: /* @__PURE__ */ new Date() } });
+            const s = await tx.settlement.create({ data: { tenantId, wagerId: wager.id, resultVersionId: a.resultVersionId, version: 1, outcome: a.outcome, payoutMinor: String(payout), inputHash: a.idempotencyKey, journalTransactionId: posted.id } });
+            await tx.hold.updateMany({ where: { tenantId, purposeType: "WAGER", purposeId: wager.id, status: "ACTIVE" }, data: { status: "CAPTURED", version: { increment: 1 } } });
+            await tx.wager.update({ where: { id: wager.id }, data: { status: "SETTLED" } });
+            await appendAudit(tx, tenantId, context.session.itemId, "wager.settled", "Wager", wager.id, "APPROVED_RESULT", { settlementId: s.id, resultVersionId: result.id, payoutMinor: String(payout) });
+            return s.id;
+          });
+        },
+        requestResettlementApproval: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRisk");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageRisk");
+            const settlement = await tx.settlement.findFirst({ where: { id: a.settlementId, tenantId }, include: { resultVersion: true } });
+            const result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "APPROVED" } });
+            if (!settlement?.wagerId || !settlement.resultVersion || !result) throw new Error("Not found");
+            if (await tx.wagerPart.findFirst({ where: { tenantId, wagerId: settlement.wagerId } })) throw new Error("FULL_ENGINE_SETTLEMENT_REQUIRED");
+            await lockWagerForSettlement(tx, tenantId, settlement.wagerId);
+            await assertCurrentSettlement(tx, tenantId, settlement.wagerId, settlement.id);
+            if (result.eventId !== settlement.resultVersion.eventId || Number(result.version) <= Number(settlement.resultVersion.version)) throw new Error("OUT_OF_ORDER_RESULT_CORRECTION");
+            const action = `RESETTLE_WAGER:${settlement.id}:${result.id}:${a.outcome}:${a.factorNumerator || "-"}:${a.factorDenominator || "-"}`;
+            const payloadHash = evidenceHash({ action: "RESETTLE_WAGER", settlementId: settlement.id, resultVersionId: result.id, outcome: a.outcome, factorNumerator: a.factorNumerator ?? null, factorDenominator: a.factorDenominator ?? null });
+            const approval = await tx.approvalRequest.create({ data: { tenantId, action, payloadHash, requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+            await appendAudit(tx, tenantId, context.session.itemId, "resettlement.approval_requested", "Settlement", settlement.id, a.reason, { approvalId: approval.id, payloadHash });
+            return approval.id;
+          });
+        },
+        resettleWager: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRisk");
+          return serializable2(context.prisma, async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageRisk");
+            const payloadHash = evidenceHash({ action: "RESETTLE_WAGER", settlementId: a.settlementId, resultVersionId: a.resultVersionId, outcome: a.outcome, factorNumerator: a.factorNumerator ?? null, factorDenominator: a.factorDenominator ?? null });
+            const action = `RESETTLE_WAGER:${a.settlementId}:${a.resultVersionId}:${a.outcome}:${a.factorNumerator || "-"}:${a.factorDenominator || "-"}`;
+            const approval = await tx.approvalRequest.findFirst({ where: { id: a.approvalId, tenantId, action, payloadHash, status: "APPROVED" } });
+            if (!approval || !approval.approverId || approval.approverId === approval.requesterId) throw new Error("DUAL_CONTROL_REQUIRED");
+            const old = await tx.settlement.findFirst({ where: { id: a.settlementId, tenantId }, include: { wager: true, resultVersion: true, journalTransaction: { include: { from_JournalEntry_transaction: true } } } });
+            if (!old?.journalTransaction || !old.wager || !old.resultVersion) throw new Error("Not found");
+            if (await tx.wagerPart.findFirst({ where: { tenantId, wagerId: old.wagerId } })) throw new Error("FULL_ENGINE_SETTLEMENT_REQUIRED");
+            await lockWagerForSettlement(tx, tenantId, old.wagerId);
+            const prior = await tx.settlement.findFirst({ where: { tenantId, wagerId: old.wagerId, inputHash: a.idempotencyKey } });
+            if (prior) return prior.id;
+            await assertCurrentSettlement(tx, tenantId, old.wagerId, old.id);
+            const nextResult = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "APPROVED" } });
+            if (!nextResult || nextResult.eventId !== old.resultVersion.eventId || Number(nextResult.version) <= Number(old.resultVersion.version)) throw new Error("OUT_OF_ORDER_RESULT_CORRECTION");
+            const original = { idempotencyKey: old.journalTransaction.idempotencyKey, type: old.journalTransaction.type, entries: old.journalTransaction.from_JournalEntry_transaction.map((e) => ({ accountId: e.accountId, currency: e.currency, side: e.side, amount: BigInt(e.amountMinor) })) };
+            await postJournal(tx, tenantId, reverseJournal(original, `resettle-reversal:${a.idempotencyKey}`), old.wagerId);
+            const accounts = await accountMap(tx, tenantId, old.wager.playerId, old.wager.currency);
+            const legs = await tx.wagerLeg.findMany({ where: { tenantId, wagerId: old.wagerId } }), grades = await tx.legGrade.findMany({ where: { tenantId, wagerLegId: { in: legs.map((leg) => leg.id) }, marketGrade: { resultVersionId: a.resultVersionId } } });
+            if (!legs.length || grades.length !== legs.length || grades.some((grade2) => grade2.outcome !== a.outcome)) throw new Error("MISSING_OR_MISMATCHED_GRADE");
+            const grade = grades[0], factorNumerator = grade.factorNumerator ? BigInt(grade.factorNumerator) : void 0, factorDenominator = grade.factorDenominator ? BigInt(grade.factorDenominator) : void 0;
+            const payout = settlementAmount(BigInt(old.wager.stakeMinor), decimalOddsFromAmounts(BigInt(old.wager.potentialReturnMinor), BigInt(old.wager.stakeMinor)), { outcome: grade.outcome, factorNumerator, factorDenominator });
+            const replacement = settlementJournal({ idempotencyKey: `resettle-replacement:${a.idempotencyKey}`, stake: BigInt(old.wager.stakeMinor), payout, currency: old.wager.currency, pendingAccountId: accounts.WAGERS_PENDING.id, cashAccountId: accounts.PLAYER_CASH.id, revenueAccountId: accounts.GAMING_REVENUE.id, winningsExpenseAccountId: accounts.WINNINGS_EXPENSE.id });
+            const posted = await postJournal(tx, tenantId, replacement, old.wagerId);
+            const balance = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
+            const corrected = BigInt(balance?.postedMinor ?? "0") - BigInt(old.payoutMinor) + payout;
+            if (corrected < 0n) throw new Error("RESETTLEMENT_REQUIRES_RECEIVABLE_REVIEW");
+            await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, postedMinor: String(corrected), pendingMinor: balance?.pendingMinor ?? "0", availableMinor: String(BigInt(balance?.availableMinor ?? "0") + (corrected - BigInt(balance?.postedMinor ?? "0"))), version: (balance?.version ?? 0) + 1, asOf: /* @__PURE__ */ new Date() } });
+            const correctedSettlement = await tx.settlement.create({ data: { tenantId, wagerId: old.wagerId, resultVersionId: a.resultVersionId, version: old.version + 1, outcome: a.outcome, payoutMinor: String(payout), inputHash: a.idempotencyKey, journalTransactionId: posted.id, reversalOfId: old.id } });
+            await appendAudit(tx, tenantId, context.session.itemId, "wager.resettled", "Wager", old.wagerId, "DUAL_APPROVED", { approvalId: approval.id, settlementId: correctedSettlement.id, payloadHash });
+            return correctedSettlement.id;
+          });
+        },
+        runReconciliation: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageFinance");
+          const zone = await tenantTimeZone(context.prisma, tenantId), windowFrom = resolveOperatorInstant(a.windowFrom, zone, "RECONCILIATION_WINDOW"), windowTo = resolveOperatorInstant(a.windowTo, zone, "RECONCILIATION_WINDOW");
+          if (windowFrom >= windowTo) throw new Error("INVALID_RECONCILIATION_WINDOW");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageFinance");
+            const entries = await tx.journalEntry.findMany({ where: { tenantId, transaction: { effectiveAt: { gte: windowFrom, lte: windowTo } } } }), analysis = analyzeJournalBalances(entries), difference = analysis.absoluteDifferenceMinor;
+            const inputHash = evidenceHash({ type: a.type, windowFrom: windowFrom.toISOString(), windowTo: windowTo.toISOString(), entryCount: entries.length, unbalanced: analysis.unbalanced.map((item) => ({ transactionId: item.transactionId, currency: item.currency, debit: String(item.debitMinor), credit: String(item.creditMinor), difference: String(item.differenceMinor) })) });
+            const run = await tx.reconciliationRun.create({ data: { tenantId, type: a.type, windowFrom, windowTo, status: "COMPLETED", inputHash, differenceMinor: String(difference) } });
+            if (analysis.unbalanced.length) await tx.reconciliationItem.createMany({ data: analysis.unbalanced.map((item) => ({ tenantId, runId: run.id, internalReference: `journal:${item.transactionId}`, providerReference: "internal-ledger-control", differenceMinor: String(item.differenceMinor), currency: item.currency, status: "OPEN" })) });
+            await appendAudit(tx, tenantId, context.session.itemId, "reconciliation.completed", "ReconciliationRun", run.id, "OPERATOR_ACTION", { inputHash, differenceMinor: String(difference) });
+            return run.id;
+          });
+        },
+        openOperationalIncident: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageIntegrations");
+          if (!["SEV1", "SEV2", "SEV3", "SEV4"].includes(a.severity)) throw new Error("INVALID_SEVERITY");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
+            const incident = await tx.incident.create({ data: { tenantId, severity: a.severity, title: a.title, status: "OPEN", commanderId: context.session.itemId, evidence: parseObject(a.evidence, "EVIDENCE") } });
+            await appendAudit(tx, tenantId, context.session.itemId, "incident.created", "Incident", incident.id, "OPERATOR_ACTION", { severity: a.severity, title: a.title });
+            return incident.id;
+          });
+        },
+        setIncidentStatus: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageIntegrations");
+          if (!["OPEN", "MITIGATING", "RESOLVED"].includes(a.status)) throw new Error("INVALID_INCIDENT_STATUS");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
+            const incident = await tx.incident.findFirst({ where: { id: a.incidentId, tenantId } });
+            if (!incident) throw new Error("Not found");
+            await tx.incident.update({ where: { id: incident.id }, data: { status: a.status, resolvedAt: a.status === "RESOLVED" ? /* @__PURE__ */ new Date() : null } });
+            await appendAudit(tx, tenantId, context.session.itemId, "incident.status_changed", "Incident", incident.id, a.reason, { from: incident.status, to: a.status });
+            return true;
+          });
+        },
+        generateComplianceReport: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageCompliance");
+          const zone = await tenantTimeZone(context.prisma, tenantId), periodStart2 = resolveOperatorInstant(a.periodStart, zone, "REPORT_PERIOD"), periodEnd = resolveOperatorInstant(a.periodEnd, zone, "REPORT_PERIOD");
+          if (periodStart2 >= periodEnd) throw new Error("INVALID_REPORT_PERIOD");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
+            const [wagers, audits, payments] = await Promise.all([tx.wager.count({ where: { tenantId, createdAt: { gte: periodStart2, lte: periodEnd } } }), tx.auditEvent.count({ where: { tenantId, createdAt: { gte: periodStart2, lte: periodEnd } } }), tx.paymentIntent.count({ where: { tenantId, createdAt: { gte: periodStart2, lte: periodEnd } } })]);
+            const version = await tx.complianceReport.count({ where: { tenantId, type: a.type } }) + 1;
+            const artifactHash = evidenceHash({ type: a.type, periodStart: periodStart2.toISOString(), periodEnd: periodEnd.toISOString(), wagers, audits, payments, version });
+            const report = await tx.complianceReport.create({ data: { tenantId, type: a.type, periodStart: periodStart2, periodEnd, version, artifactHash, artifactReference: "", status: "DRAFT" } });
+            await appendAudit(tx, tenantId, context.session.itemId, "report.draft_recorded", "ComplianceReport", report.id, "OPERATOR_ACTION", { artifactHash, type: a.type, counts: { wagers, audits, payments }, artifact: "NOT_GENERATED" });
+            return report.id;
+          });
+        },
+        requestSettingChange: async (_r, a, context) => {
+          const tenantId = await requireTenant(context);
+          if (!/^[A-Za-z][A-Za-z0-9_.-]{1,63}$/.test(a.key)) throw new Error("INVALID_SETTING_KEY");
+          const payloadHash = evidenceHash({ action: "SETTING_CHANGE", key: a.key, value: a.value });
+          const action = `SETTING_CHANGE:${a.key}:${Buffer.from(a.value).toString("base64url")}`;
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
+            const normalized = await normalizeTenantSetting(tx, tenantId, a.key, a.value), current = await tx.configValue.findFirst({ where: { tenantId, key: a.key, scopeType: "TENANT", scopeId: tenantId, effectiveTo: null }, orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }] });
+            const approval = await tx.approvalRequest.create({ data: { tenantId, action, payloadHash, ...approvalReview({ action: "SETTING_CHANGE", key: a.key, value: a.value, normalizedValue: normalized.value, valueType: normalized.valueType, scopeType: "TENANT", scopeId: tenantId, before: current ? { id: current.id, value: current.value, policyVersion: current.policyVersion } : null }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+            await appendAudit(tx, tenantId, context.session.itemId, "setting.change_requested", "ApprovalRequest", approval.id, a.reason, { key: a.key, payloadHash });
+            return approval.id;
+          });
+        },
+        applyApprovedSetting: async (_r, a, context) => {
+          const tenantId = await requireTenant(context);
+          const payloadHash = evidenceHash({ action: "SETTING_CHANGE", key: a.key, value: a.value });
+          return context.prisma.$transaction(async (tx) => {
+            const action = `SETTING_CHANGE:${a.key}:${Buffer.from(a.value).toString("base64url")}`;
+            const approval = await consumeApproval(tx, context, { tenantId, capability: "canManageSportsbook", approvalId: a.approvalId, action, payloadHash });
+            if (approval.replay) throw new Error("APPROVAL_ALREADY_CONSUMED");
+            const normalized = await normalizeTenantSetting(tx, tenantId, a.key, a.value);
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`config:${tenantId}:${a.key}`}))`;
+            const now = /* @__PURE__ */ new Date();
+            await tx.configValue.updateMany({ where: { tenantId, key: a.key, scopeType: "TENANT", scopeId: tenantId, effectiveTo: null }, data: { effectiveTo: now } });
+            const value = normalized.value;
+            const setting = await tx.configValue.create({ data: { tenantId, key: a.key, value, valueType: normalized.valueType, scopeType: "TENANT", scopeId: tenantId, policyVersion: `approved:${approval.id}`, effectiveFrom: /* @__PURE__ */ new Date() } });
+            await appendAudit(tx, tenantId, context.session.itemId, "setting.changed", "ConfigValue", setting.id, "DUAL_APPROVED", { approvalId: approval.id, key: a.key, payloadHash });
+            return setting.id;
+          });
+        },
+        bootstrapIndependentApprover: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRoles");
+          if (!/^\S+@\S+\.\S+$/.test(a.email) || String(a.password).length < 12) throw new Error("INVALID_APPROVER");
+          return context.transaction(async (txContext) => {
+            await txContext.prisma.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`approver-bootstrap:${tenantId}`}))`;
+            await assertCurrentActor(txContext.prisma, context, tenantId, "canManageRoles");
+            const existing = await txContext.prisma.user.count({ where: { tenantId, role: { canApproveSensitiveActions: true } } });
+            if (existing) throw new Error("APPROVER_ALREADY_BOOTSTRAPPED");
+            let role = await txContext.prisma.role.findFirst({ where: { tenantId, name: "Independent Approver" } });
+            if (!role) role = await txContext.sudo().query.Role.createOne({ data: { tenant: { connect: { id: tenantId } }, name: "Independent Approver", canAccessDashboard: true, canApproveSensitiveActions: true, canReadAudit: true }, query: "id name" });
+            const user = await txContext.sudo().query.User.createOne({ data: { tenant: { connect: { id: tenantId } }, role: { connect: { id: role.id } }, name: a.name, email: a.email, password: a.password }, query: "id email" });
+            await txContext.prisma.roleGrant.create({ data: { tenantId, userId: user.id, roleId: role.id, scope: { tenantId, bootstrap: true }, effectiveFrom: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
+            await appendAudit(txContext.prisma, tenantId, context.session.itemId, "approver.bootstrapped", "User", user.id, "ONE_TIME_DUAL_CONTROL_BOOTSTRAP", { roleId: role.id, emailHash: evidenceHash(a.email.toLowerCase()) });
+            return user.id;
+          });
+        },
+        requestRoleDefinition: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRoles"), capabilities = parseRoleCapabilities(a.capabilities), payloadHash = evidenceHash({ action: "ROLE_DEFINITION", name: a.name, capabilities }), action = `ROLE_DEFINITION:${Buffer.from(JSON.stringify({ name: a.name, capabilities })).toString("base64url")}`;
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageRoles");
+            const approval = await tx.approvalRequest.create({ data: { tenantId, action, payloadHash, ...approvalReview({ action: "ROLE_DEFINITION", name: a.name, capabilities }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+            await appendAudit(tx, tenantId, context.session.itemId, "role.definition_requested", "Tenant", tenantId, a.reason, { approvalId: approval.id, name: a.name, capabilities, payloadHash });
+            return approval.id;
+          });
+        },
+        applyApprovedRoleDefinition: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRoles"), capabilities = parseRoleCapabilities(a.capabilities), payloadHash = evidenceHash({ action: "ROLE_DEFINITION", name: a.name, capabilities });
+          return context.prisma.$transaction(async (tx) => {
+            const action = `ROLE_DEFINITION:${Buffer.from(JSON.stringify({ name: a.name, capabilities })).toString("base64url")}`;
+            const approval = await consumeApproval(tx, context, { tenantId, capability: "canManageRoles", approvalId: a.approvalId, action, payloadHash });
+            if (approval.replay) throw new Error("APPROVAL_ALREADY_CONSUMED");
+            const existing = await tx.role.findFirst({ where: { tenantId, name: a.name } });
+            if (existing) throw new Error("ROLE_EXISTS");
+            const role = await tx.role.create({ data: { tenantId, name: a.name, ...capabilities } });
+            await appendAudit(tx, tenantId, context.session.itemId, "role.defined", "Role", role.id, "DUAL_APPROVED", { approvalId: approval.id, name: a.name, capabilities });
+            return role.id;
+          });
+        },
+        requestRoleGrant: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRoles");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageRoles");
+            const user = await tx.user.findFirst({ where: { id: a.userId, tenantId }, include: { role: true } }), role = await tx.role.findFirst({ where: { id: a.roleId, tenantId } });
+            if (!user || !role) throw new Error("Not found");
+            const action = `ROLE_GRANT:${user.id}:${role.id}`;
+            const payloadHash = evidenceHash({ action: "ROLE_GRANT", userId: user.id, roleId: role.id });
+            const { id: _roleId, tenantId: _roleTenant, createdAt: _rc, updatedAt: _ru, ...roleCapabilities } = role;
+            const approval = await tx.approvalRequest.create({ data: { tenantId, action, payloadHash, ...approvalReview({ action: "ROLE_GRANT", userId: user.id, userName: user.name, userEmail: user.email, roleId: role.id, roleName: role.name, capabilities: roleCapabilities, replacesRoleId: user.roleId ?? null, replacesRoleName: user.role?.name ?? null }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+            await appendAudit(tx, tenantId, context.session.itemId, "role.grant_requested", "User", user.id, a.reason, { approvalId: approval.id, roleId: role.id, payloadHash });
+            return approval.id;
+          });
+        },
+        applyApprovedRoleGrant: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRoles");
+          const payloadHash = evidenceHash({ action: "ROLE_GRANT", userId: a.userId, roleId: a.roleId });
+          return context.prisma.$transaction(async (tx) => {
+            const action = `ROLE_GRANT:${a.userId}:${a.roleId}`;
+            const approval = await consumeApproval(tx, context, { tenantId, capability: "canManageRoles", approvalId: a.approvalId, action, payloadHash });
+            if (approval.replay) throw new Error("APPROVAL_ALREADY_CONSUMED");
+            await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${a.userId} AND tenant = ${tenantId} FOR UPDATE`;
+            const user = await tx.user.findFirst({ where: { id: a.userId, tenantId } }), role = await tx.role.findFirst({ where: { id: a.roleId, tenantId } });
+            if (!user || !role) throw new Error("Not found");
+            const now = /* @__PURE__ */ new Date();
+            const superseded = await tx.roleGrant.updateMany({ where: { tenantId, userId: user.id, status: "ACTIVE" }, data: { status: "REVOKED", effectiveTo: now } });
+            await tx.user.update({ where: { id: user.id }, data: { roleId: role.id } });
+            const grant = await tx.roleGrant.create({ data: { tenantId, userId: user.id, roleId: role.id, scope: { tenantId, approvalId: approval.id, replacesRoleId: user.roleId ?? null }, effectiveFrom: now, status: "ACTIVE" } });
+            await appendAudit(tx, tenantId, context.session.itemId, "role.granted", "User", user.id, "DUAL_APPROVED", { approvalId: approval.id, roleId: role.id, grantId: grant.id, previousRoleId: user.roleId ?? null, supersededGrants: superseded.count });
+            return grant.id;
+          });
+        },
+        requestRoleRevocation: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRoles");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageRoles");
+            const user = await tx.user.findFirst({ where: { id: a.userId, tenantId }, include: { role: true } });
+            if (!user?.roleId) throw new Error("Not found");
+            const action = `ROLE_REVOKE:${user.id}:${user.roleId}`, payloadHash = evidenceHash({ action: "ROLE_REVOKE", userId: user.id, roleId: user.roleId });
+            const approval = await tx.approvalRequest.create({ data: { tenantId, action, payloadHash, ...approvalReview({ action: "ROLE_REVOKE", userId: user.id, userName: user.name, userEmail: user.email, roleId: user.roleId, roleName: user.role?.name ?? null }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+            await appendAudit(tx, tenantId, context.session.itemId, "role.revocation_requested", "User", user.id, a.reason, { approvalId: approval.id, roleId: user.roleId, payloadHash });
+            return approval.id;
+          });
+        },
+        applyApprovedRoleRevocation: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRoles");
+          const action = `ROLE_REVOKE:${a.userId}:${a.roleId}`, payloadHash = evidenceHash({ action: "ROLE_REVOKE", userId: a.userId, roleId: a.roleId });
+          return context.prisma.$transaction(async (tx) => {
+            const approval = await consumeApproval(tx, context, { tenantId, capability: "canManageRoles", approvalId: a.approvalId, action, payloadHash });
+            if (approval.replay) throw new Error("APPROVAL_ALREADY_CONSUMED");
+            await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${a.userId} AND tenant = ${tenantId} FOR UPDATE`;
+            const user = await tx.user.findFirst({ where: { id: a.userId, tenantId } });
+            if (!user) throw new Error("Not found");
+            if (user.roleId !== a.roleId) throw new Error("ROLE_ASSIGNMENT_CHANGED");
+            const now = /* @__PURE__ */ new Date(), revoked = await tx.roleGrant.updateMany({ where: { tenantId, userId: user.id, status: "ACTIVE" }, data: { status: "REVOKED", effectiveTo: now } });
+            await tx.user.update({ where: { id: user.id }, data: { roleId: null } });
+            await appendAudit(tx, tenantId, context.session.itemId, "role.revoked", "User", user.id, "DUAL_APPROVED", { approvalId: approval.id, roleId: a.roleId, revokedGrants: revoked.count });
+            return user.id;
+          });
+        },
+        requestOperatorAdmission: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManagePeople"), email = String(a.email ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim();
+          if (!/^\S+@\S+\.\S+$/.test(email) || name.length < 2) throw new Error("INVALID_OPERATOR_ADMISSION");
+          return context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManagePeople");
+            const role = await tx.role.findFirst({ where: { id: a.roleId, tenantId } });
+            if (!role) throw new Error("Not found");
+            if (await tx.user.findUnique({ where: { email } })) throw new Error("OPERATOR_EMAIL_UNAVAILABLE");
+            const emailHash = evidenceHash(email), action = `OPERATOR_ADMISSION:${emailHash}:${role.id}`, payloadHash = evidenceHash({ action: "OPERATOR_ADMISSION", name, email, roleId: role.id });
+            const approval = await tx.approvalRequest.create({ data: { tenantId, action, payloadHash, ...approvalReview({ action: "OPERATOR_ADMISSION", name, email, roleId: role.id, roleName: role.name }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+            await appendAudit(tx, tenantId, context.session.itemId, "operator.admission_requested", "ApprovalRequest", approval.id, a.reason, { roleId: role.id, emailHash, payloadHash });
+            return approval.id;
+          });
+        },
+        applyApprovedOperatorAdmission: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManagePeople"), email = String(a.email ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim(), emailHash = evidenceHash(email), action = `OPERATOR_ADMISSION:${emailHash}:${a.roleId}`, payloadHash = evidenceHash({ action: "OPERATOR_ADMISSION", name, email, roleId: a.roleId });
+          const token = (0, import_node_crypto8.randomBytes)(32).toString("base64url");
+          const userId = await context.transaction(async (txContext) => {
+            const approval = await consumeApproval(txContext.prisma, context, { tenantId, capability: "canManagePeople", approvalId: a.approvalId, action, payloadHash });
+            if (approval.replay) throw new Error("APPROVAL_ALREADY_CONSUMED");
+            const role = await txContext.prisma.role.findFirst({ where: { id: a.roleId, tenantId } });
+            if (!role) throw new Error("Not found");
+            if (await txContext.prisma.user.findUnique({ where: { email } })) throw new Error("OPERATOR_EMAIL_UNAVAILABLE");
+            const user = await txContext.sudo().query.User.createOne({ data: { tenant: { connect: { id: tenantId } }, role: { connect: { id: role.id } }, name, email, password: (0, import_node_crypto8.randomBytes)(32).toString("base64url") }, query: "id" });
+            await txContext.prisma.user.update({ where: { id: user.id }, data: { passwordResetToken: evidenceHash(token), passwordResetIssuedAt: /* @__PURE__ */ new Date(), passwordResetRedeemedAt: null } });
+            await txContext.prisma.roleGrant.create({ data: { tenantId, userId: user.id, roleId: role.id, scope: { tenantId, approvalId: approval.id, admission: true }, effectiveFrom: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
+            await appendAudit(txContext.prisma, tenantId, context.session.itemId, "operator.admitted", "User", user.id, "DUAL_APPROVED", { approvalId: approval.id, roleId: role.id, emailHash });
+            return user.id;
+          });
+          await sendPasswordResetEmail(token, email);
+          return userId;
+        },
+        requestSensitiveApproval: async (_r, a, context) => {
+          const tenantId = await requireTenant(context);
+          if (!/^[a-f0-9]{64}$/i.test(a.payloadHash)) throw new Error("INVALID_PAYLOAD_HASH");
+          return (await context.prisma.$transaction(async (tx) => {
+            await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
+            return tx.approvalRequest.create({ data: { tenantId, action: a.action, payloadHash: a.payloadHash, ...approvalReview({ action: a.action, payloadHash: a.payloadHash, bodyAvailable: false }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+          })).id;
+        },
+        decideSensitiveApproval: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canApproveSensitiveActions");
+          const outcome = await serializable2(context.prisma, async (tx) => {
+            const actorId = await assertCurrentActor(tx, context, tenantId, "canApproveSensitiveActions");
+            const approval = await tx.approvalRequest.findFirst({ where: { id: a.approvalId, tenantId } });
+            if (!approval) throw new Error("Not found");
+            const decision = a.approve ? "APPROVED" : "REJECTED";
+            if (approval.status !== "PENDING") {
+              if (approval.approverId === actorId && approval.status === decision && (!a.payloadHash || a.payloadHash === approval.payloadHash)) return { decided: true };
+              throw new Error("APPROVAL_ALREADY_DECIDED");
+            }
+            if (approval.requesterId === actorId) throw new Error("DUAL_CONTROL_REQUIRED");
+            if (a.payloadHash && a.payloadHash !== approval.payloadHash) throw new Error("APPROVAL_PAYLOAD_CHANGED");
+            const now = /* @__PURE__ */ new Date();
+            if (approval.expiresAt && new Date(approval.expiresAt) <= now) {
+              await tx.approvalRequest.updateMany({ where: { id: approval.id, tenantId, status: "PENDING" }, data: { status: "EXPIRED" } });
+              return { expired: true };
+            }
+            const updated = await tx.approvalRequest.updateMany({ where: { id: approval.id, tenantId, status: "PENDING", payloadHash: approval.payloadHash, requesterId: { not: actorId } }, data: { approverId: actorId, status: decision, reason: a.reason, decidedAt: now, ...approval.expiresAt ? {} : { expiresAt: new Date(now.getTime() + APPROVAL_TTL_MS) } } });
+            if (updated.count !== 1) throw new Error("APPROVAL_ALREADY_DECIDED");
+            await appendAudit(tx, tenantId, actorId, a.approve ? "approval.approved" : "approval.rejected", "ApprovalRequest", approval.id, a.reason, { action: approval.action, payloadHash: approval.payloadHash });
+            if (!a.approve && approval.action === "APPROVE_RESULT") await rejectApprovedResultVersion(tx, tenantId, actorId, approval, a.reason);
+            return { decided: true };
+          });
+          if (outcome.expired) throw new Error("APPROVAL_EXPIRED");
+          return true;
+        },
+        dismissOperatorOnboarding: async (_r, _a, context) => {
+          const userId = context.session?.itemId;
+          if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
+          await context.prisma.user.updateMany({ where: { id: userId, onboardingStatus: { in: ["not_started", "in_progress"] } }, data: { onboardingStatus: "dismissed" } });
+          const user = await context.prisma.user.findUnique({ where: { id: userId }, select: { onboardingStatus: true } });
+          return String(user?.onboardingStatus ?? "not_started");
+        },
+        previewSportsbookOnboarding: async (_root, args, context) => {
+          await requireUnscopedCapability(context, "canManageOnboarding");
+          const fixture = buildOnboardingFixture(args);
+          return { version: fixture.version, fixtureHash: fixture.fixtureHash, payload: JSON.stringify(fixture) };
+        },
+        acceptStraightWager: async (_root, args, context) => {
+          const tenantId = await requireTenant(context);
+          if (!context.trustedTenantId) throw new Error("CUSTOMER_SESSION_REQUIRED");
+          if (!/^[A-Za-z0-9:_-]{8,128}$/.test(args.idempotencyKey)) throw new Error("INVALID_IDEMPOTENCY_KEY");
+          const customerActor = context.customerActor;
+          return serializable2(context.prisma, async (tx) => {
+            if (customerActor) {
+              if (customerActor.tenantId !== tenantId) throw new Error("Not found");
+              await assertCurrentCustomerActor(tx, customerActor, true);
+            }
+            const customerCommand = context.customerCommand;
+            if (customerCommand) {
+              await tx.$queryRaw`SELECT id FROM "CustomerCommand" WHERE id = ${customerCommand.id} AND tenant = ${tenantId} FOR UPDATE`;
+            }
+            const prior = await tx.wager.findFirst({ where: { tenantId, idempotencyKey: args.idempotencyKey, ...customerActor ? { playerId: customerActor.playerId } : {} } });
+            if (prior) return { accepted: prior.status !== "REJECTED", wagerId: prior.id, rejectionCode: prior.status === "REJECTED" ? "PREVIOUSLY_REJECTED" : null, termsHash: prior.termsHash, potentialReturnMinor: prior.potentialReturnMinor };
+            if (customerCommand) {
+              const owned = await tx.customerCommand.findFirst({ where: { id: customerCommand.id, tenantId, type: "WAGER", ...customerActor ? { playerId: customerActor.playerId } : {} } });
+              if (!owned) throw new Error("Not found");
+              if (owned.status !== "IN_PROGRESS") throw new Error("CUSTOMER_COMMAND_ALREADY_COMPLETED");
+            }
+            const quote = await tx.quote.findFirst({ where: { id: args.quoteId, tenantId, ...customerActor ? { playerId: customerActor.playerId } : {} }, include: { player: true, priceSnapshot: true, selection: { include: { market: { include: { event: true } } } } } });
+            if (!quote) throw new Error("Not found");
+            const now = /* @__PURE__ */ new Date();
+            const [currentTenant, latestPrice] = await Promise.all([
+              tx.tenant.findFirst({ where: { id: tenantId, status: "ACTIVE" } }),
+              tx.priceSnapshot.findFirst({ where: { tenantId, selectionId: quote.selectionId }, orderBy: { receivedAt: "desc" } })
+            ]);
+            const eventTradable = Boolean(quote.selection?.market?.event && isEventAcceptingBets(quote.selection.market.event, now));
+            const priceCurrent = Boolean(latestPrice && latestPrice.status === "OPEN" && (latestPrice.id === quote.priceSnapshotId || latestPrice.decimalOdds === quote.decimalOdds && String(latestPrice.line ?? "") === String(quote.priceSnapshot?.line ?? "")));
+            const [geoApproved, kycApproved, provenance] = await Promise.all([
+              currentGeoApproved(tx, tenantId, quote.playerId, now),
+              currentKycApproved(tx, tenantId, quote.player, now),
+              currentWagerProvenance(tx, tenantId)
+            ]);
+            const [exclusion, restriction, geo, account, responsibleLimit] = await Promise.all([
+              tx.selfExclusion.findFirst({ where: { tenantId, playerId: quote.playerId, status: "ACTIVE", startsAt: { lte: /* @__PURE__ */ new Date() }, OR: [{ endsAt: null }, { endsAt: { gt: /* @__PURE__ */ new Date() } }] } }),
+              tx.accountRestriction.findFirst({ where: { tenantId, playerId: quote.playerId, status: "ACTIVE", capability: "WAGER" } }),
+              Promise.resolve(geoApproved),
+              tx.ledgerAccount.findFirst({ where: { tenantId, playerId: quote.playerId, key: "PLAYER_CASH", currency: quote.currency, status: "ACTIVE" }, include: {} }),
+              stakeLimitFacts(tx, tenantId, quote.playerId, now, quote.currency)
+            ]);
+            const fullLimitViolation = await wagerLimitViolation(tx, tenantId, quote.playerId, BigInt(quote.stakeMinor), now, customerActor?.sessionId);
+            let projection = account ? await tx.balanceProjection.findFirst({ where: { tenantId, accountId: account.id }, orderBy: { version: "desc" } }) : null;
+            if (projection) {
+              await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${projection.id} FOR UPDATE`;
+              projection = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: account.id }, orderBy: { version: "desc" } });
+            }
+            let decision = evaluateAcceptance({ id: quote.id, tenantId, playerId: quote.playerId, selectionId: quote.selectionId, snapshotId: quote.priceSnapshotId, decimalOdds: quote.decimalOdds, stake: BigInt(quote.stakeMinor), currency: quote.currency, expiresAt: quote.expiresAt, policyVersion: quote.policyVersion, rulesHash: quote.termsHash }, { now, tenantActive: Boolean(currentTenant), playerActive: quote.player.status === "ACTIVE", kycApproved, geoApproved: Boolean(geo), selfExcluded: Boolean(exclusion || restriction), wageredInPeriod: fullLimitViolation ? 1n : responsibleLimit?.wageredInPeriod ?? 0n, periodLimit: fullLimitViolation ? 0n : responsibleLimit?.periodLimit, marketOpen: eventTradable && quote.selection.market.status === "OPEN" && quote.selection.status === "OPEN", priceReceivedAt: quote.priceSnapshot.receivedAt, maxPriceAgeMs: maxPriceAgeMs(isLivePricing(quote.selection?.market?.event?.status, quote.selection?.market?.tradingMode)), available: BigInt(projection?.availableMinor ?? "0"), currentLiability: 0n, maxLiability: BigInt(process.env.SANDBOX_MAX_LIABILITY_MINOR ?? "100000000") });
+            if (decision.accepted) {
+              const extra = !priceCurrent ? "PRICE_CHANGED" : (await riskLimitViolation(tx, { tenantId, playerId: quote.playerId, currency: quote.currency, stakeMinor: BigInt(quote.stakeMinor), potentialReturnMinor: decision.potentialReturn, allocations: [{ marketId: quote.selection.marketId, eventId: quote.selection.market.eventId ?? null, stakeMinor: BigInt(quote.stakeMinor), liabilityMinor: decision.liability }], now }))?.code;
+              if (extra) decision = { ...decision, accepted: false, rejectionCode: extra, gates: [...decision.gates, { gate: extra === "PRICE_CHANGED" ? "currentPrice" : "riskLimits", passed: false, code: extra }] };
+            }
+            const wager = await tx.wager.create({ data: { tenantId, playerId: quote.playerId, quoteId: quote.id, ...decision.accepted ? provenance : {}, idempotencyKey: args.idempotencyKey, stakeMinor: quote.stakeMinor, potentialReturnMinor: String(decision.potentialReturn), currency: quote.currency, termsHash: decision.termsHash, status: decision.accepted ? "ACCEPTED" : "REJECTED", acceptedAt: decision.accepted ? /* @__PURE__ */ new Date() : null } });
+            await tx.acceptanceDecision.create({ data: { tenantId, wagerId: wager.id, quoteId: quote.id, accepted: decision.accepted, rejectionCode: decision.rejectionCode, gateResults: [...decision.gates, { gate: "provenance", passed: true, ...provenance }], inputHash: decision.termsHash } });
+            if (decision.accepted) await tx.wagerLeg.create({ data: { tenantId, wagerId: wager.id, eventKey: quote.selection.market.eventId, marketKey: quote.selection.marketId, selectionKey: quote.selectionId, snapshotId: quote.priceSnapshotId, decimalOdds: quote.decimalOdds, line: quote.priceSnapshot.line, ruleVersion: quote.policyVersion } });
+            if (decision.accepted && account && projection) {
+              const accounts = await accountMap(tx, tenantId, quote.playerId, quote.currency), stake = BigInt(quote.stakeMinor);
+              await postJournal(tx, tenantId, { idempotencyKey: `stake:${args.idempotencyKey}`, type: "WAGER_STAKE", entries: [{ accountId: accounts.PLAYER_CASH.id, currency: quote.currency, side: "DEBIT", amount: stake }, { accountId: accounts.WAGERS_PENDING.id, currency: quote.currency, side: "CREDIT", amount: stake }] }, wager.id);
+              await tx.hold.create({ data: { tenantId, accountId: account.id, purposeType: "WAGER", purposeId: wager.id, amountMinor: quote.stakeMinor, status: "CAPTURED", version: 1 } });
+              const next = BigInt(projection.postedMinor) - stake;
+              await tx.balanceProjection.create({ data: { tenantId, accountId: account.id, postedMinor: String(next), pendingMinor: projection.pendingMinor, availableMinor: String(BigInt(projection.availableMinor) - stake), version: projection.version + 1, asOf: /* @__PURE__ */ new Date() } });
+              const exposure = await tx.exposurePosition.findFirst({ where: { tenantId, scopeType: "MARKET", scopeId: quote.selection.marketId, currency: quote.currency } });
+              if (exposure) await tx.exposurePosition.update({ where: { id: exposure.id }, data: { stakeMinor: String(BigInt(exposure.stakeMinor) + stake), liabilityMinor: String(BigInt(exposure.liabilityMinor) + decision.liability), version: { increment: 1 }, asOf: /* @__PURE__ */ new Date() } });
+              else await tx.exposurePosition.create({ data: { tenantId, scopeType: "MARKET", scopeId: quote.selection.marketId, currency: quote.currency, stakeMinor: quote.stakeMinor, liabilityMinor: String(decision.liability), version: 1, asOf: /* @__PURE__ */ new Date() } });
+              await tx.wagerExposureAllocation.create({ data: { tenantId, wagerId: wager.id, marketId: quote.selection.marketId, stakeMinor: quote.stakeMinor, liabilityMinor: String(decision.liability), remainingStakeMinor: quote.stakeMinor, remainingLiabilityMinor: String(decision.liability), version: 1, status: "OPEN" } });
+            }
+            await appendAudit(tx, tenantId, context.session?.itemId ?? context.trustedActorId ?? quote.playerId, decision.accepted ? "wager.accepted" : "wager.rejected", "Wager", wager.id, decision.rejectionCode ?? "ALL_GATES_PASSED", { termsHash: decision.termsHash, quoteId: quote.id, gateResults: decision.gates });
+            if (customerCommand) await finishCustomerCommand(tx, customerCommand.id, decision.accepted ? "SUCCEEDED" : "REJECTED", { state: decision.accepted ? "ACCEPTED" : "REJECTED", accepted: decision.accepted, duplicate: customerCommand.duplicate, wagerId: wager.id, receiptId: wager.id, rejectionCode: decision.rejectionCode ?? null, termsHash: decision.termsHash, potentialReturnMinor: String(decision.potentialReturn) });
+            return { accepted: decision.accepted, wagerId: wager.id, rejectionCode: decision.rejectionCode, termsHash: decision.termsHash, potentialReturnMinor: String(decision.potentialReturn) };
+          });
+        }
+      }
+    };
+  }
+});
+
+// keystone.ts
+var keystone_exports = {};
+__export(keystone_exports, {
+  default: () => keystone_default2
+});
+module.exports = __toCommonJS(keystone_exports);
+
+// features/keystone/index.ts
+var import_auth4 = require("@keystone-6/auth");
+var import_core7 = require("@keystone-6/core");
+var import_config = require("dotenv/config");
+
+// features/keystone/models/User.ts
+var import_core = require("@keystone-6/core");
+var import_access = require("@keystone-6/core/access");
+var import_fields2 = require("@keystone-6/core/fields");
 
 // features/keystone/access.ts
+init_session_assurance();
 function isSignedIn({ session }) {
   return Boolean(session);
 }
@@ -278,7 +3570,6 @@ __export(Sportsbook_exports, {
   AuditEvent: () => AuditEvent,
   Brand: () => Brand,
   Competition: () => Competition,
-  DeadLetter: () => DeadLetter,
   Event: () => Event,
   Hold: () => Hold,
   InboxMessage: () => InboxMessage,
@@ -288,7 +3579,7 @@ __export(Sportsbook_exports, {
   LedgerAccount: () => LedgerAccount,
   Market: () => Market,
   OperatorJurisdiction: () => OperatorJurisdiction,
-  OutboxMessage: () => OutboxMessage,
+  OperatorLicence: () => OperatorLicence,
   Player: () => Player,
   PlayerLimit: () => PlayerLimit,
   PriceSnapshot: () => PriceSnapshot,
@@ -307,15 +3598,7 @@ __export(Sportsbook_exports, {
 var import_core3 = require("@keystone-6/core");
 var import_access5 = require("@keystone-6/core/access");
 var import_fields4 = require("@keystone-6/core/fields");
-
-// features/platform/store-settings/lib/store-logo.ts
-var DEFAULT_STORE_LOGO_ICON = '<svg fill="none" height="100%" viewBox="0 0 36 48" width="100%" xmlns="http://www.w3.org/2000/svg"><g fill="#155eef"><path d="m0 7.5h28.8c2.5202 0 3.7804 0 4.743.49047.8467.43143 1.5351 1.11984 1.9665 1.96657.4905.96256.4905 2.22276.4905 4.74296v1.8h-28.8c-2.52024 0-3.78035 0-4.74296-.4905-.84673-.4314-1.535139-1.1198-1.966569-1.9665-.490471-.9626-.490471-2.2228-.490471-4.743z"/><path d="m0 28.5h28.8c2.5202 0 3.7804 0 4.743-.4905.8467-.4314 1.5351-1.1198 1.9665-1.9665.4905-.9626.4905-2.2228.4905-4.743v-1.8h-28.8c-2.52024 0-3.78035 0-4.74296.4905-.84673.4314-1.535139 1.1198-1.966569 1.9665-.490471.9626-.490471 2.2228-.490471 4.743z"/><path d="m14 31.5h14.8c2.5202 0 3.7804 0 4.743.4905.8467.4314 1.5351 1.1198 1.9665 1.9665.4905.9626.4905 2.2228.4905 4.743v1.8h-14.8c-2.5202 0-3.7804 0-4.743-.4905-.8467-.4314-1.5351-1.1198-1.9665-1.9665-.4905-.9626-.4905-2.2228-.4905-4.743z"/></g></svg>';
-var DEFAULT_STORE_LOGO_COLOR = "0";
-function normalizeStoreLogoColor(value) {
-  const numeric = Number.parseFloat(String(value ?? DEFAULT_STORE_LOGO_COLOR));
-  if (!Number.isFinite(numeric)) return DEFAULT_STORE_LOGO_COLOR;
-  return String((numeric % 360 + 360) % 360);
-}
+init_store_logo();
 
 // features/keystone/utils/storeLogo.ts
 var ALLOWED_ELEMENTS = /* @__PURE__ */ new Set([
@@ -434,6 +3717,7 @@ var Brand = list3({ access: tenantAccess, fields: { tenant: tenant(), name: requ
 } } }), status: status(["ACTIVE", "INACTIVE"]), ...trackingFields } });
 var Jurisdiction = list3({ access: { operation: { query: currentCapability("canManageSportsbook"), create: import_access5.denyAll, update: import_access5.denyAll, delete: import_access5.denyAll } }, fields: { code: (0, import_fields4.text)({ isIndexed: "unique" }), authority: requiredText(), status: status(["PENDING", "ACTIVE", "INACTIVE"]), ...trackingFields } });
 var OperatorJurisdiction = list3({ access: tenantAccess, fields: { tenant: tenant(), jurisdiction: (0, import_fields4.relationship)({ ref: "Jurisdiction" }), licenseReference: requiredText(), policyVersion: requiredText(), effectiveFrom: (0, import_fields4.timestamp)(), effectiveTo: (0, import_fields4.timestamp)(), status: status(["PENDING", "ACTIVE", "SUSPENDED"]), ...trackingFields } });
+var OperatorLicence = list3({ access: scopedAccess("canManageCompliance"), fields: { tenant: tenant(), jurisdiction: (0, import_fields4.relationship)({ ref: "Jurisdiction" }), licenceNumber: requiredText(), regulator: requiredText(), expiresAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), permittedRegions: (0, import_fields4.json)({ defaultValue: [] }), status: status(["ACTIVE", "SUSPENDED"]), ...trackingFields } });
 var Player = list3({ access: scopedAccess("canManageCompliance"), fields: { tenant: tenant(), brand: (0, import_fields4.relationship)({ ref: "Brand" }), subject: requiredText(), status: status(["PENDING", "ACTIVE", "SUSPENDED", "CLOSED"]), kycStatus: status(["REQUIRED", "PENDING", "APPROVED", "REJECTED"]), locale: requiredText(), timezone: (0, import_fields4.text)(), preferredOddsFormat: status(["DECIMAL", "AMERICAN", "FRACTIONAL"]), marketingAllowed: (0, import_fields4.checkbox)({ defaultValue: false }), riskBand: status(["LOW", "MEDIUM", "HIGH"]), ...trackingFields } });
 var PlayerLimit = list3({ access: scopedAccess("canManageCompliance"), fields: { tenant: tenant(), player: (0, import_fields4.relationship)({ ref: "Player" }), type: status(["DEPOSIT", "STAKE", "LOSS", "SESSION"]), period: status(["DAILY", "WEEKLY", "MONTHLY"]), amountMinor: requiredText(), currency: requiredText(), effectiveFrom: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), effectiveTo: (0, import_fields4.timestamp)(), ...trackingFields } });
 var SelfExclusion = list3({ access: scopedAccess("canManageCompliance"), fields: { tenant: tenant(), player: (0, import_fields4.relationship)({ ref: "Player" }), scope: requiredText(), startsAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), endsAt: (0, import_fields4.timestamp)(), status: status(["ACTIVE", "EXPIRED", "REVOKED"]), source: requiredText(), ...trackingFields } });
@@ -456,8 +3740,6 @@ var Hold = list3({ access: scopedAccess("canManageFinance"), fields: { tenant: t
 var ProviderConnection = list3({ access: scopedAccess("canManageIntegrations"), fields: { tenant: tenant(), legalEntity: (0, import_fields4.relationship)({ ref: "LegalEntity" }), jurisdiction: (0, import_fields4.relationship)({ ref: "Jurisdiction" }), adapterId: requiredText(), adapterVersion: requiredText(), configReference: requiredText(), secretReference: (0, import_fields4.text)(), dataResidencyRegion: (0, import_fields4.text)(), failoverPriority: (0, import_fields4.integer)({ defaultValue: 100 }), capabilities: (0, import_fields4.json)(), certificationStatus: status(["SANDBOX", "PENDING", "CERTIFIED", "SUSPENDED"]), status: status(["ACTIVE", "DEGRADED", "DISABLED"]), ...trackingFields } });
 var RawEnvelope = list3({ access: scopedAccess("canManageIntegrations"), fields: { tenant: tenant(), providerConnection: (0, import_fields4.relationship)({ ref: "ProviderConnection" }), direction: status(["INBOUND", "OUTBOUND"]), externalId: requiredText(), schemaVersion: requiredText(), installationRevision: (0, import_fields4.text)(), payload: (0, import_fields4.json)(), payloadHash: requiredText(), receivedAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), ...trackingFields } });
 var InboxMessage = list3({ access: scopedAccess("canManageIntegrations"), fields: { tenant: tenant(), rawEnvelope: (0, import_fields4.relationship)({ ref: "RawEnvelope" }), messageKey: requiredText(), type: requiredText(), status: status(["PENDING", "PROCESSING", "COMPLETED", "DEAD"]), attempts: (0, import_fields4.integer)({ defaultValue: 0 }), availableAt: (0, import_fields4.timestamp)(), leaseUntil: (0, import_fields4.timestamp)(), leaseOwner: (0, import_fields4.text)(), lastError: (0, import_fields4.text)(), ...trackingFields } });
-var OutboxMessage = list3({ access: scopedAccess("canManageIntegrations"), fields: { tenant: tenant(), aggregateType: requiredText(), aggregateId: requiredText(), eventType: requiredText(), payload: (0, import_fields4.json)(), status: status(["PENDING", "PROCESSING", "COMPLETED", "DEAD"]), attempts: (0, import_fields4.integer)({ defaultValue: 0 }), maxAttempts: (0, import_fields4.integer)({ defaultValue: 10 }), availableAt: (0, import_fields4.timestamp)(), leaseUntil: (0, import_fields4.timestamp)(), leaseOwner: (0, import_fields4.text)(), lastError: (0, import_fields4.text)(), ...trackingFields } });
-var DeadLetter = list3({ access: scopedAccess("canManageIntegrations"), fields: { tenant: tenant(), sourceType: requiredText(), sourceId: requiredText(), reason: requiredText(), attempts: (0, import_fields4.integer)(), payloadReference: (0, import_fields4.text)(), resolvedAt: (0, import_fields4.timestamp)(), ...trackingFields } });
 var AuditEvent = list3({ access: scopedAccess("canReadAudit"), fields: { tenant: tenant(), actorId: requiredText(), action: requiredText(), targetType: requiredText(), targetId: requiredText(), reason: (0, import_fields4.text)(), payloadHash: requiredText(), previousHash: (0, import_fields4.text)(), hash: requiredText(), ...trackingFields } });
 
 // features/keystone/models/SportsbookP0.ts
@@ -511,7 +3793,7 @@ var import_access7 = require("@keystone-6/core/access");
 var import_fields5 = require("@keystone-6/core/fields");
 var list4 = (config2) => (0, import_core4.list)({ ...config2, ui: { hideNavigation: true, hideCreate: true, hideDelete: true, ...config2.ui }, graphql: { ...config2.graphql, maxTake: 100 } });
 var t = () => (0, import_fields5.text)({ validation: { isRequired: true } });
-var rel = (ref) => (0, import_fields5.relationship)({ ref });
+var rel = (ref2) => (0, import_fields5.relationship)({ ref: ref2 });
 var tenant2 = () => (0, import_fields5.relationship)({ ref: "Tenant", access: { create: import_access7.denyAll, update: import_access7.denyAll } });
 var st = (v) => (0, import_fields5.select)({ type: "enum", options: v.map((value) => ({ label: value, value })), defaultValue: v[0] });
 var scopedAccess2 = (capability) => ({ operation: { query: currentCapability(capability), create: import_access7.denyAll, update: import_access7.denyAll, delete: import_access7.denyAll }, filter: { query: currentTenantScope } });
@@ -536,7 +3818,7 @@ var TradingStatusChange = f({ scopeType: t(), scopeId: t(), fromStatus: t(), toS
 var LimitProfile = f({ name: t(), version: (0, import_fields5.integer)(), status: st(["DRAFT", "ACTIVE", "RETIRED"]), effectiveFrom: (0, import_fields5.timestamp)(), effectiveTo: (0, import_fields5.timestamp)() }, scopedAccess2("canManageRisk"));
 var LimitRule = f({ profile: rel("LimitProfile"), scopeType: t(), scopeId: (0, import_fields5.text)(), maxStakeMinor: (0, import_fields5.text)(), maxPayoutMinor: (0, import_fields5.text)(), maxLiabilityMinor: (0, import_fields5.text)(), currency: t(), priority: (0, import_fields5.integer)() }, scopedAccess2("canManageRisk"));
 var ExposurePosition = f({ scopeType: t(), scopeId: t(), currency: t(), stakeMinor: t(), liabilityMinor: t(), version: (0, import_fields5.integer)(), asOf: (0, import_fields5.timestamp)() }, scopedAccess2("canManageRisk"));
-var BetSlip = f({ player: rel("Player"), currency: t(), status: st(["OPEN", "QUOTED", "EXPIRED", "ACCEPTED"]), expiresAt: (0, import_fields5.timestamp)(), version: (0, import_fields5.integer)() }, scopedAccess2("canManageRisk"));
+var BetSlip = f({ player: rel("Player"), currency: t(), status: st(["OPEN", "QUOTED", "EXPIRED", "ACCEPTED"]), expiresAt: (0, import_fields5.timestamp)(), version: (0, import_fields5.integer)(), quoteKey: (0, import_fields5.text)() }, scopedAccess2("canManageRisk"));
 var BetSlipItem = f({ betSlip: rel("BetSlip"), selection: rel("Selection"), priceSnapshot: rel("PriceSnapshot"), requestedOdds: t(), line: (0, import_fields5.text)() }, scopedAccess2("canManageRisk"));
 var WagerStatusEvent = f({ wager: rel("Wager"), fromStatus: (0, import_fields5.text)(), toStatus: t(), reasonCode: t(), actorId: (0, import_fields5.text)(), effectiveAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageRisk"));
 var MarketGrade = f({ market: rel("Market"), resultVersion: rel("ResultVersion"), ruleVersion: t(), outcome: t(), factorNumerator: (0, import_fields5.text)(), factorDenominator: (0, import_fields5.text)(), trace: (0, import_fields5.json)(), inputHash: t() }, scopedAccess2("canManageRisk"));
@@ -584,9 +3866,9 @@ var requiredText2 = (isIndexed) => (0, import_fields6.text)({
   validation: { isRequired: true },
   ...isIndexed ? { isIndexed } : {}
 });
-var internalList = (fields, graphql5 = {}) => list5({
+var internalList = (fields, graphql6 = {}) => list5({
   access: internalAccess,
-  graphql: { omit: true, ...graphql5 },
+  graphql: { omit: true, ...graphql6 },
   ui: { hideNavigation: true, hideCreate: true, hideDelete: true },
   fields: {
     ...fields,
@@ -716,7 +3998,6 @@ __export(SportsbookFull_exports, {
   RetentionPolicyVersion: () => RetentionPolicyVersion,
   SafeguardingAccount: () => SafeguardingAccount,
   SafeguardingReconciliation: () => SafeguardingReconciliation,
-  ScheduledJob: () => ScheduledJob,
   ScreeningHit: () => ScreeningHit,
   Season: () => Season,
   SettlementLine: () => SettlementLine,
@@ -731,8 +4012,7 @@ __export(SportsbookFull_exports, {
   WagerExposureAllocation: () => WagerExposureAllocation,
   WagerPart: () => WagerPart,
   WebhookDelivery: () => WebhookDelivery,
-  WebhookEndpoint: () => WebhookEndpoint,
-  WorkerHeartbeat: () => WorkerHeartbeat
+  WebhookEndpoint: () => WebhookEndpoint
 });
 var import_core6 = require("@keystone-6/core");
 var import_access10 = require("@keystone-6/core/access");
@@ -741,8 +4021,8 @@ var list6 = (config2) => (0, import_core6.list)({ ...config2, ui: { hideNavigati
 var requiredText3 = () => (0, import_fields7.text)({ validation: { isRequired: true } });
 var optionalText = () => (0, import_fields7.text)();
 var requiredTime = () => (0, import_fields7.timestamp)({ validation: { isRequired: true } });
-var relation = (ref) => (0, import_fields7.relationship)({ ref, many: false, validation: { isRequired: true } });
-var optionalRelation = (ref) => (0, import_fields7.relationship)({ ref, many: false });
+var relation = (ref2) => (0, import_fields7.relationship)({ ref: ref2, many: false, validation: { isRequired: true } });
+var optionalRelation = (ref2) => (0, import_fields7.relationship)({ ref: ref2, many: false });
 var tenant3 = () => (0, import_fields7.relationship)({ ref: "Tenant", many: false, validation: { isRequired: true }, access: { create: import_access10.denyAll, update: import_access10.denyAll } });
 var status2 = (values, defaultValue = values[0]) => (0, import_fields7.select)({ type: "enum", options: values.map((value) => ({ label: value, value })), defaultValue });
 var scopedAccess3 = (capability) => ({ operation: { query: currentCapability(capability), create: import_access10.denyAll, update: import_access10.denyAll, delete: import_access10.denyAll }, filter: { query: currentTenantScope } });
@@ -877,13 +4157,11 @@ var AccountClosure = scoped("canManageCompliance", { player: relation("Player"),
 var SupportCase = scoped("canManageCompliance", { player: relation("Player"), wager: optionalRelation("Wager"), paymentIntent: optionalRelation("PaymentIntent"), dispute: optionalRelation("Dispute"), category: status2(["ACCOUNT", "WAGER", "PAYMENT", "RESPONSIBLE_GAMING", "PRIVACY", "TECHNICAL"]), priority: status2(["LOW", "NORMAL", "HIGH", "URGENT"]), status: status2(["OPEN", "TRIAGED", "WAITING_CUSTOMER", "WAITING_OPERATOR", "RESOLVED", "CLOSED"]), subject: requiredText3(), ownerId: optionalText(), openedAt: requiredTime(), resolvedAt: (0, import_fields7.timestamp)(), slaDueAt: requiredTime() });
 var SupportCaseEvent = scoped("canManageCompliance", { supportCase: relation("SupportCase"), type: status2(["OPENED", "NOTE", "CUSTOMER_MESSAGE", "OPERATOR_MESSAGE", "ESCALATED", "LINKED", "RESOLVED", "REOPENED"]), actorType: status2(["PLAYER", "STAFF", "SYSTEM", "PROVIDER"]), actorId: requiredText3(), body: requiredText3(), evidenceHash: requiredText3(), visibility: status2(["CUSTOMER", "INTERNAL", "RESTRICTED"]) });
 var IntegrityCase = scoped("canManageCompliance", { player: optionalRelation("Player"), event: optionalRelation("Event"), wager: optionalRelation("Wager"), providerConnection: optionalRelation("ProviderConnection"), type: status2(["SUSPICIOUS_BETTING", "COLLUSION", "INSIDER", "RESULT_DISAGREEMENT", "PROHIBITED_PARTICIPANT"]), status: status2(["OPEN", "INVESTIGATING", "REPORTED", "CLEARED", "CLOSED"]), severity: status2(["LOW", "MEDIUM", "HIGH", "CRITICAL"]), restrictedEvidence: (0, import_fields7.json)(), ownerId: optionalText(), reportedAt: (0, import_fields7.timestamp)(), closedAt: (0, import_fields7.timestamp)() });
-var WorkerHeartbeat = internal({ workerId: (0, import_fields7.text)({ validation: { isRequired: true }, isIndexed: "unique" }), status: status2(["STARTING", "READY", "STOPPING", "STOPPED"]), startedAt: requiredTime(), heartbeatAt: requiredTime(), stoppedAt: (0, import_fields7.timestamp)(), buildVersion: requiredText3() });
 var WebhookEndpoint = scoped("canManageIntegrations", { name: requiredText3(), url: requiredText3(), secretReference: requiredText3(), eventTypes: (0, import_fields7.json)(), status: status2(["PENDING", "ACTIVE", "DEGRADED", "DISABLED"]), failureCount: (0, import_fields7.integer)({ defaultValue: 0 }), disabledAt: (0, import_fields7.timestamp)(), approvalRequest: optionalRelation("ApprovalRequest") });
-var WebhookDelivery = scoped("canManageIntegrations", { endpoint: relation("WebhookEndpoint"), outboxMessage: optionalRelation("OutboxMessage"), deliveryId: requiredText3(), eventType: requiredText3(), eventVersion: requiredText3(), payloadHash: requiredText3(), signatureKeyId: requiredText3(), status: status2(["PENDING", "PROCESSING", "DELIVERED", "FAILED", "DEAD"]), attempts: (0, import_fields7.integer)({ defaultValue: 0 }), availableAt: requiredTime(), deliveredAt: (0, import_fields7.timestamp)(), lastResponseCode: (0, import_fields7.integer)(), lastError: optionalText() });
+var WebhookDelivery = scoped("canManageIntegrations", { endpoint: relation("WebhookEndpoint"), deliveryId: requiredText3(), eventType: requiredText3(), eventVersion: requiredText3(), payloadHash: requiredText3(), signatureKeyId: requiredText3(), status: status2(["PENDING", "PROCESSING", "DELIVERED", "FAILED", "DEAD"]), attempts: (0, import_fields7.integer)({ defaultValue: 0 }), availableAt: requiredTime(), deliveredAt: (0, import_fields7.timestamp)(), lastResponseCode: (0, import_fields7.integer)(), lastError: optionalText() });
 var IntegrationDeliveryAttempt = scoped("canManageIntegrations", { delivery: relation("WebhookDelivery"), attempt: (0, import_fields7.integer)({ validation: { isRequired: true } }), requestedAt: requiredTime(), completedAt: (0, import_fields7.timestamp)(), responseCode: (0, import_fields7.integer)(), latencyMs: (0, import_fields7.integer)(), responseHash: optionalText(), errorClass: optionalText() });
 var ProviderHealthSample = scoped("canManageIntegrations", { providerConnection: relation("ProviderConnection"), capability: requiredText3(), status: status2(["HEALTHY", "DEGRADED", "DOWN"]), latencyMs: (0, import_fields7.integer)(), errorRateBasisPoints: (0, import_fields7.integer)(), sequenceLag: (0, import_fields7.integer)(), oldestWebhookAgeMs: (0, import_fields7.integer)(), reconciliationDifferenceMinor: optionalText(), checkedAt: requiredTime(), details: (0, import_fields7.json)() });
 var AdapterCertificationRun = scoped("canManageIntegrations", { providerConnection: relation("ProviderConnection"), adapterId: requiredText3(), adapterVersion: requiredText3(), suiteVersion: requiredText3(), scenarios: (0, import_fields7.json)(), passed: (0, import_fields7.integer)({ defaultValue: 0 }), failed: (0, import_fields7.integer)({ defaultValue: 0 }), status: status2(["PENDING", "RUNNING", "PASSED", "FAILED"]), inputHash: requiredText3(), artifactReference: optionalText(), startedAt: requiredTime(), completedAt: (0, import_fields7.timestamp)() });
-var ScheduledJob = scoped("canManageIntegrations", { type: status2(["RECONCILIATION", "REPORT", "NOTIFICATION", "RETENTION", "EXPIRY", "PROVIDER_HEALTH", "FEED_RECOVERY"]), scopeType: requiredText3(), scopeId: requiredText3(), payload: (0, import_fields7.json)(), status: status2(["SCHEDULED", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"]), dueAt: requiredTime(), leaseUntil: (0, import_fields7.timestamp)(), leaseOwner: optionalText(), attempts: (0, import_fields7.integer)({ defaultValue: 0 }), maxAttempts: (0, import_fields7.integer)({ defaultValue: 10 }), idempotencyKey: requiredText3(), lastError: optionalText() });
 var Notification = scoped("canManageIntegrations", { player: optionalRelation("Player"), user: optionalRelation("User"), channel: status2(["EMAIL", "SMS", "PUSH", "IN_APP", "WEBHOOK"]), templateKey: requiredText3(), templateVersion: requiredText3(), locale: requiredText3(), payload: (0, import_fields7.json)(), status: status2(["PENDING", "SENT", "DELIVERED", "FAILED", "SUPPRESSED"]), consentEvidenceHash: optionalText(), providerConnection: optionalRelation("ProviderConnection"), externalReference: optionalText(), sentAt: (0, import_fields7.timestamp)() });
 var RetentionPolicyVersion = scoped("canManageCompliance", { recordClass: requiredText3(), jurisdiction: optionalRelation("Jurisdiction"), version: (0, import_fields7.integer)({ validation: { isRequired: true } }), retentionDays: (0, import_fields7.integer)({ validation: { isRequired: true } }), archiveDays: (0, import_fields7.integer)(), deletionMode: status2(["DELETE", "TOKENIZE", "CRYPTO_SHRED", "PRESERVE"]), legalHoldWins: (0, import_fields7.checkbox)({ defaultValue: true }), effectiveFrom: requiredTime(), effectiveTo: (0, import_fields7.timestamp)(), status: status2(["DRAFT", "ACTIVE", "RETIRED"]), evidenceHash: requiredText3() });
 var RetentionExecution = scoped("canManageCompliance", { policyVersion: relation("RetentionPolicyVersion"), windowFrom: requiredTime(), windowTo: requiredTime(), candidateCount: (0, import_fields7.integer)({ defaultValue: 0 }), heldCount: (0, import_fields7.integer)({ defaultValue: 0 }), archivedCount: (0, import_fields7.integer)({ defaultValue: 0 }), deletedCount: (0, import_fields7.integer)({ defaultValue: 0 }), status: status2(["DRY_RUN", "PENDING_APPROVAL", "APPROVED", "COMPLETED", "FAILED"]), dryRunHash: requiredText3(), approvalRequest: optionalRelation("ApprovalRequest"), artifactReference: optionalText(), completedAt: (0, import_fields7.timestamp)() });
@@ -902,6 +4180,140 @@ var models = {
   ...SportsbookFull_exports
 };
 
+// features/keystone/ui-create-access.ts
+function createRule(access) {
+  if (typeof access === "function") return access;
+  const operation = access?.operation;
+  if (typeof operation === "function") return operation;
+  if (typeof operation?.create === "function") return operation.create;
+  return void 0;
+}
+async function createAllowed(listKey, list7, args) {
+  const rule = createRule(list7.access);
+  if (!rule) return true;
+  try {
+    return Boolean(await rule({ session: args.session, context: args.context, listKey, operation: "create" }));
+  } catch {
+    return false;
+  }
+}
+function withCreateAwareUi(lists) {
+  const out = {};
+  for (const [listKey, list7] of Object.entries(lists)) {
+    if (list7.ui?.hideCreate !== void 0 || !createRule(list7.access)) {
+      out[listKey] = list7;
+      continue;
+    }
+    out[listKey] = {
+      ...list7,
+      ui: {
+        ...list7.ui,
+        hideCreate: async (args) => !await createAllowed(listKey, list7, args)
+      }
+    };
+  }
+  return out;
+}
+function updateOperationRule(access) {
+  if (typeof access === "function") return access;
+  const rules2 = access?.operation;
+  if (typeof rules2 === "function") return rules2;
+  if (typeof rules2?.update === "function") return rules2.update;
+  return void 0;
+}
+function updateFilterRule(access) {
+  const filter = access?.filter;
+  return typeof filter?.update === "function" ? filter.update : void 0;
+}
+var itemModeCache = /* @__PURE__ */ new WeakMap();
+async function itemUpdateAllowed(listKey, list7, args) {
+  const operation = updateOperationRule(list7.access);
+  if (operation) {
+    try {
+      if (!await operation({ session: args.session, context: args.context, listKey, operation: "update" })) return false;
+    } catch {
+      return false;
+    }
+  }
+  const filterRule = updateFilterRule(list7.access);
+  if (!filterRule || args.item?.id == null) return true;
+  try {
+    const filter = await filterRule({ session: args.session, context: args.context, listKey, operation: "update" });
+    if (filter === true) return true;
+    if (filter === false) return false;
+    if (!filter || typeof filter !== "object") return true;
+    const count = await args.context.sudo().db[listKey].count({ where: { AND: [{ id: { equals: String(args.item.id) } }, filter] } });
+    return count > 0;
+  } catch {
+    return true;
+  }
+}
+function withItemViewAwareUi(lists) {
+  const out = {};
+  for (const [listKey, list7] of Object.entries(lists)) {
+    const itemView = list7.ui?.itemView ?? {};
+    if (itemView.defaultFieldMode !== void 0 || !updateOperationRule(list7.access) && !updateFilterRule(list7.access)) {
+      out[listKey] = list7;
+      continue;
+    }
+    out[listKey] = {
+      ...list7,
+      ui: {
+        ...list7.ui,
+        itemView: {
+          ...itemView,
+          // Called once per field; one decision per request and item.
+          defaultFieldMode: (args) => {
+            const decide = () => itemUpdateAllowed(listKey, list7, args).then((ok) => ok ? "edit" : "read");
+            if (!args.context || typeof args.context !== "object") return decide();
+            const key2 = JSON.stringify([listKey, String(args.item?.id), String(args.session?.itemId ?? ""), String(args.session?.listKey ?? "")]);
+            const scope = args.context;
+            let cache = itemModeCache.get(scope);
+            if (!cache) itemModeCache.set(scope, cache = /* @__PURE__ */ new Map());
+            let decision = cache.get(key2);
+            if (!decision) cache.set(key2, decision = decide());
+            return decision;
+          }
+        }
+      }
+    };
+  }
+  return out;
+}
+function deleteRule(access) {
+  if (typeof access === "function") return access;
+  const operation = access?.operation;
+  if (typeof operation === "function") return operation;
+  if (typeof operation?.delete === "function") return operation.delete;
+  return void 0;
+}
+async function deleteAllowed(listKey, list7, args) {
+  const rule = deleteRule(list7.access);
+  if (!rule) return true;
+  try {
+    return Boolean(await rule({ session: args.session, context: args.context, listKey, operation: "delete" }));
+  } catch {
+    return false;
+  }
+}
+function withDeleteAwareUi(lists) {
+  const out = {};
+  for (const [listKey, list7] of Object.entries(lists)) {
+    if (list7.ui?.hideDelete !== void 0 || !deleteRule(list7.access)) {
+      out[listKey] = list7;
+      continue;
+    }
+    out[listKey] = {
+      ...list7,
+      ui: {
+        ...list7.ui,
+        hideDelete: async (args) => !await deleteAllowed(listKey, list7, args)
+      }
+    };
+  }
+  return out;
+}
+
 // features/keystone/index.ts
 var import_session = require("@keystone-6/core/session");
 
@@ -919,689 +4331,14 @@ async function redirectToInit(root, args, context) {
 var redirectToInit_default = redirectToInit;
 
 // features/keystone/mutations/sportsbook-full.ts
-var import_node_crypto9 = require("node:crypto");
+var import_node_crypto11 = require("node:crypto");
+init_engine();
+init_ledger();
+init_combination();
+init_sandbox();
+init_sportsbook();
 
-// features/sportsbook/domain/engine.ts
-var import_node_crypto2 = require("node:crypto");
-var canonical = (value) => {
-  if (typeof value === "bigint") return `"${value}"`;
-  if (value instanceof Date) return JSON.stringify(value.toISOString());
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
-  return JSON.stringify(value);
-};
-var evidenceHash = (value) => (0, import_node_crypto2.createHash)("sha256").update(canonical(value)).digest("hex");
-function potentialReturn(stake, decimalOdds) {
-  if (!/^\d+(\.\d+)?$/.test(decimalOdds)) throw new Error("INVALID_ODDS");
-  const [whole, fraction = ""] = decimalOdds.split(".");
-  const scale = 10n ** BigInt(fraction.length);
-  const numerator = BigInt(whole) * scale + BigInt(fraction || "0");
-  if (numerator < scale) throw new Error("ODDS_BELOW_ONE");
-  return stake * numerator / scale;
-}
-function evaluateAcceptance(quote, facts) {
-  const checks = [
-    ["tenant", facts.tenantActive, "TENANT_INACTIVE"],
-    ["player", facts.playerActive, "PLAYER_INACTIVE"],
-    ["kyc", facts.kycApproved, "KYC_REQUIRED"],
-    ["geo", facts.geoApproved, "GEO_REQUIRED"],
-    ["selfExclusion", !facts.selfExcluded, "SELF_EXCLUDED"],
-    ["responsibleGamingLimit", facts.periodLimit === void 0 || facts.wageredInPeriod + quote.stake <= facts.periodLimit, "LIMIT_EXCEEDED"],
-    ["quoteExpiry", facts.now.getTime() < quote.expiresAt.getTime(), "QUOTE_EXPIRED"],
-    ["market", facts.marketOpen, "MARKET_CLOSED"],
-    ["priceFreshness", facts.now.getTime() - facts.priceReceivedAt.getTime() <= facts.maxPriceAgeMs, "STALE_PRICE"],
-    ["funds", facts.available >= quote.stake, "INSUFFICIENT_FUNDS"]
-  ];
-  const returns = potentialReturn(quote.stake, quote.decimalOdds);
-  const liability = returns - quote.stake;
-  checks.push(["liability", facts.currentLiability + liability <= facts.maxLiability, "LIABILITY_EXCEEDED"]);
-  const gates = checks.map(([gate, passed, code]) => ({ gate, passed, ...passed ? {} : { code } }));
-  const rejectionCode = gates.find((g) => !g.passed)?.code;
-  return { accepted: !rejectionCode, gates, rejectionCode, potentialReturn: returns, liability, termsHash: evidenceHash(quote) };
-}
-function settlementAmount(stake, decimalOdds, grade) {
-  switch (grade.outcome) {
-    case "LOSS":
-      return 0n;
-    case "PUSH":
-    case "VOID":
-      return stake;
-    case "WIN":
-      return potentialReturn(stake, decimalOdds);
-    case "DEAD_HEAT": {
-      const n = grade.factorNumerator ?? 1n;
-      const d = grade.factorDenominator ?? 2n;
-      if (n < 0n || d <= 0n || n > d) throw new Error("INVALID_DEAD_HEAT_FACTOR");
-      return stake + (potentialReturn(stake, decimalOdds) - stake) * n / d;
-    }
-  }
-}
-
-// features/sportsbook/domain/ledger.ts
-function validateJournal(journal) {
-  if (!journal.idempotencyKey || journal.entries.length < 2) throw new Error("INVALID_JOURNAL");
-  const currencies = new Set(journal.entries.map((e) => e.currency));
-  if (currencies.size !== 1) throw new Error("CROSS_CURRENCY_JOURNAL");
-  if (journal.entries.some((e) => e.amount <= 0n)) throw new Error("NON_POSITIVE_ENTRY");
-  const debit = journal.entries.filter((e) => e.side === "DEBIT").reduce((n, e) => n + e.amount, 0n);
-  const credit = journal.entries.filter((e) => e.side === "CREDIT").reduce((n, e) => n + e.amount, 0n);
-  if (debit !== credit) throw new Error("UNBALANCED_JOURNAL");
-}
-function settlementJournal(input) {
-  const { stake, payout, currency } = input;
-  const entries = [{ accountId: input.pendingAccountId, currency, side: "DEBIT", amount: stake }];
-  if (payout === 0n) entries.push({ accountId: input.revenueAccountId, currency, side: "CREDIT", amount: stake });
-  else {
-    if (payout > stake) entries.push({ accountId: input.winningsExpenseAccountId, currency, side: "DEBIT", amount: payout - stake });
-    if (payout < stake) entries.push({ accountId: input.revenueAccountId, currency, side: "CREDIT", amount: stake - payout });
-    entries.push({ accountId: input.cashAccountId, currency, side: "CREDIT", amount: payout });
-  }
-  const journal = { idempotencyKey: input.idempotencyKey, type: "WAGER_SETTLEMENT", entries };
-  validateJournal(journal);
-  return journal;
-}
-function reverseJournal(original, idempotencyKey) {
-  const reversal = { idempotencyKey, type: `REVERSAL_${original.type}`, reversalOf: original.idempotencyKey, entries: original.entries.map((e) => ({ ...e, side: e.side === "DEBIT" ? "CREDIT" : "DEBIT" })) };
-  validateJournal(reversal);
-  return reversal;
-}
-
-// features/sportsbook/domain/combination.ts
-function gcd(a, b) {
-  while (b) [a, b] = [b, a % b];
-  return a < 0n ? -a : a;
-}
-function rational(numerator, denominator) {
-  if (denominator <= 0n) throw new Error("INVALID_DENOMINATOR");
-  const divisor = gcd(numerator, denominator);
-  return { numerator: numerator / divisor, denominator: denominator / divisor };
-}
-function multiply(a, b) {
-  return rational(a.numerator * b.numerator, a.denominator * b.denominator);
-}
-function add(a, b) {
-  return rational(a.numerator * b.denominator + b.numerator * a.denominator, a.denominator * b.denominator);
-}
-function subtract(a, b) {
-  return add(a, rational(-b.numerator, b.denominator));
-}
-function parseExactDecimal(value) {
-  if (!/^\d+(\.\d{1,9})?$/.test(value)) throw new Error("INVALID_ODDS");
-  const [whole, fraction = ""] = value.split(".");
-  const denominator = 10n ** BigInt(fraction.length);
-  const result = rational(BigInt(whole) * denominator + BigInt(fraction || "0"), denominator);
-  if (result.numerator < result.denominator) throw new Error("ODDS_BELOW_ONE");
-  return result;
-}
-function rationalToDecimal(value, scale = 6) {
-  const factor = 10n ** BigInt(scale);
-  const scaled = value.numerator * factor / value.denominator;
-  const whole = scaled / factor;
-  const fraction = String(scaled % factor).padStart(scale, "0").replace(/0+$/, "");
-  return fraction ? `${whole}.${fraction}` : String(whole);
-}
-function combinationGradeMultiplier(decimalOdds, outcome, factorNumerator = 1n, factorDenominator = 2n) {
-  const odds = parseExactDecimal(decimalOdds);
-  if (outcome === "LOSS") return rational(0n, 1n);
-  if (outcome === "PUSH" || outcome === "VOID") return rational(1n, 1n);
-  if (outcome === "WIN") return odds;
-  if (factorNumerator < 0n || factorDenominator <= 0n || factorNumerator > factorDenominator) throw new Error("INVALID_DEAD_HEAT_FACTOR");
-  return add(rational(1n, 1n), multiply(subtract(odds, rational(1n, 1n)), rational(factorNumerator, factorDenominator)));
-}
-function settleCombinationPart(input) {
-  const multiplier = input.legs.reduce((current, leg) => multiply(current, combinationGradeMultiplier(leg.decimalOdds, leg.outcome, leg.factorNumerator, leg.factorDenominator)), rational(1n, 1n));
-  const allWin = input.legs.length > 0 && input.legs.every((leg) => leg.outcome === "WIN");
-  const gross = allWin && input.acceptedPotentialReturnMinor !== void 0 ? input.acceptedPotentialReturnMinor : input.stakeMinor * multiplier.numerator / multiplier.denominator;
-  const payoutMinor = input.stakeReturned === false ? gross > input.stakeMinor ? gross - input.stakeMinor : 0n : gross;
-  return { payoutMinor, multiplier: rationalToDecimal(multiplier), inputHash: evidenceHash({ stakeMinor: input.stakeMinor, legs: input.legs, stakeReturned: input.stakeReturned ?? true }) };
-}
-
-// features/sportsbook/adapters/sandbox.ts
-var import_node_crypto3 = require("node:crypto");
-var SandboxAdapter = class {
-  constructor(kind, webhookSecret = "sandbox-only") {
-    this.kind = kind;
-    this.webhookSecret = webhookSecret;
-    this.results = /* @__PURE__ */ new Map();
-    this.fingerprints = /* @__PURE__ */ new Map();
-  }
-  manifest() {
-    return { id: `sandbox-${this.kind}`, version: "1.0.0", schemas: ["sandbox.v1"] };
-  }
-  async capabilities() {
-    return { supported: [this.kind, "query", "webhook", "reconcile"], unsupported: ["production-certified"] };
-  }
-  async validateConfig(configRef) {
-    return { valid: configRef.startsWith("sandbox:"), errors: configRef.startsWith("sandbox:") ? [] : ["Sandbox config must start with sandbox:"] };
-  }
-  async execute(_ctx, command, idempotencyKey) {
-    const fingerprint = JSON.stringify([command.type, command.externalRef ?? null, command.payload ?? null]);
-    const prior = this.results.get(idempotencyKey);
-    if (prior) {
-      if (this.fingerprints.get(idempotencyKey) !== fingerprint) throw new Error("ADAPTER_IDEMPOTENCY_CONFLICT");
-      return prior;
-    }
-    const result = { status: command.type === "simulate_pending" ? "PENDING" : command.type === "simulate_failure" ? "FAILED" : "SUCCEEDED", externalRef: command.externalRef ?? `${this.kind}-${idempotencyKey}`, payload: command.payload };
-    this.results.set(idempotencyKey, result);
-    this.fingerprints.set(idempotencyKey, fingerprint);
-    this.results.set(result.externalRef, result);
-    return result;
-  }
-  /** Process-local memory only: a miss (e.g. after restart) is not evidence of non-effect, so it reports PENDING. */
-  async query(_ctx, externalRef) {
-    return this.results.get(externalRef) ?? { status: "PENDING", externalRef };
-  }
-  /** `binding` (e.g. tenant + installation id) is covered by the MAC so signed bytes cannot be replayed against another installation. */
-  sign(raw, timestamp7, binding) {
-    const mac = (0, import_node_crypto3.createHmac)("sha256", this.webhookSecret).update(timestamp7).update(".");
-    if (binding !== void 0) mac.update(binding).update(".");
-    return mac.update(raw).digest("hex");
-  }
-  verifyWebhook(raw, headers, binding) {
-    const timestamp7 = headers.get("x-sandbox-timestamp") ?? "";
-    const supplied = headers.get("x-sandbox-signature") ?? "";
-    const expected = this.sign(raw, timestamp7, binding);
-    if (!supplied || supplied.length !== expected.length || !(0, import_node_crypto3.timingSafeEqual)(Buffer.from(supplied), Buffer.from(expected))) return { valid: false, reason: "INVALID_SIGNATURE" };
-    try {
-      return { valid: true, event: JSON.parse(Buffer.from(raw).toString()) };
-    } catch {
-      return { valid: false, reason: "INVALID_JSON" };
-    }
-  }
-  normalize(event) {
-    return [{ id: event.id, type: event.type, occurredAt: event.occurredAt, payload: event.payload, source: { adapterId: this.manifest().id, version: "1.0.0", externalId: event.id } }];
-  }
-  async health() {
-    return { ok: true, latencyMs: 0, details: "sandbox" };
-  }
-  async *reconcile() {
-    for (const result of new Set(this.results.values())) yield result;
-  }
-};
-var sandboxAdapters = Object.fromEntries(["sports", "results", "kyc", "aml", "geo", "payments", "messaging", "analytics", "tax", "reporting", "integrity", "affiliates", "pam"].map((kind) => [kind, new SandboxAdapter(kind)]));
-function installedSandboxAdapter(connection) {
-  const kind = String(connection.capabilities?.kind ?? "");
-  const adapter = sandboxAdapters[kind];
-  if (!adapter || connection.adapterId !== adapter.manifest().id || connection.certificationStatus !== "SANDBOX" || !String(connection.configReference ?? "").startsWith("sandbox:")) return null;
-  return adapter;
-}
-
-// features/keystone/mutations/sportsbook.ts
-var import_node_crypto5 = require("node:crypto");
-
-// features/sportsbook/domain/onboarding.ts
-function buildOnboardingFixture(input) {
-  if (!/^[a-z0-9-]+$/.test(input.slug) || !/^[A-Z]{3}$/.test(input.currency) || input.currencyExponent < 0 || input.currencyExponent > 6) throw new Error("INVALID_ONBOARDING_INPUT");
-  const seed = `sportsbook:${input.slug}:v1`;
-  const id = (kind) => `${kind}_${evidenceHash(`${seed}:${kind}`).slice(0, 20)}`;
-  return { version: "1", fixtureHash: evidenceHash(input), tenant: { id: id("tenant"), name: input.operatorName, slug: input.slug, status: "ACTIVE", defaultTimezone: input.timezone }, brand: { id: id("brand"), name: input.brandName, domain: input.domain, defaultLocale: "en", status: "ACTIVE" }, jurisdiction: { id: id("jurisdiction"), code: input.jurisdictionCode, status: "PENDING" }, currency: { code: input.currency, exponent: input.currencyExponent }, providers: ["sports", "results", "kyc", "aml", "geo", "payments", "messaging", "analytics", "tax", "reporting", "integrity", "affiliates", "pam"].map((kind) => ({ id: id(`provider-${kind}`), kind, adapterId: `sandbox-${kind}`, certificationStatus: "SANDBOX" })), starterCatalog: { sport: { id: id("sport"), key: "football", name: "Football" }, competition: { id: id("competition"), key: "sandbox-league", name: "Sandbox League" } }, externalGates: ["licence approval", "jurisdiction policy approval", "provider certification", "finance chart approval"] };
-}
-function prepareSandboxPromotionProgress(progress, fixtureHash) {
-  const completeEvidenceHash = evidenceHash({ fixtureHash, stage: "PROMOTIONS" });
-  const pendingEvidenceHash = evidenceHash({ fixtureHash, stage: "PROMOTIONS", provisioning: "PENDING" });
-  if (!progress) return { kind: "CREATE", evidenceHash: pendingEvidenceHash };
-  if (progress.status === "PENDING" && progress.evidenceHash === pendingEvidenceHash) return { kind: "KEEP_PENDING" };
-  if (progress.status === "COMPLETE" && progress.evidenceHash === completeEvidenceHash) {
-    return { kind: "RESET_PENDING", previousEvidenceHash: completeEvidenceHash, evidenceHash: pendingEvidenceHash };
-  }
-  throw new Error("ONBOARDING_PROMOTIONS_PROGRESS_CONFLICT");
-}
-async function ensurePromotionsThenComplete(ensurePromotions, completeProgress) {
-  await ensurePromotions();
-  await completeProgress();
-}
-
-// features/keystone/utils/paymentProviderAdapter.ts
-async function executePaymentProvider(provider, command, idempotencyKey) {
-  if (provider.status !== "ACTIVE") throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
-  if (provider.adapterId !== "sandbox-payments" || provider.certificationStatus !== "SANDBOX") throw new Error("PAYMENT_ADAPTER_UNSUPPORTED");
-  const configuration = await sandboxAdapters.payments.validateConfig(provider.configReference);
-  if (!configuration.valid) throw new Error("PAYMENT_ADAPTER_INVALID_CONFIG");
-  return sandboxAdapters.payments.execute({}, command, idempotencyKey);
-}
-
-// features/sportsbook/customer/auth.ts
-var import_node_crypto4 = require("node:crypto");
-
-// features/sportsbook/customer/errors.ts
-var CustomerError = class extends Error {
-  constructor(code, status3, details) {
-    super(code);
-    this.code = code;
-    this.status = status3;
-    this.details = details;
-    this.name = "CustomerError";
-  }
-};
-
-// features/sportsbook/customer/currency.ts
-async function resolveTenantCurrency(prisma, tenantId, operation) {
-  const rows = await prisma.tenantCurrency.findMany({ where: { tenantId, status: "ACTIVE" }, include: { currency: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 100 });
-  const usable = rows.filter((row) => row.currency?.status === "ACTIVE" && typeof row.currency.code === "string" && row.currency.code.length > 0 && Number.isInteger(row.currency.exponent) && row.currency.exponent >= 0 && row.currency.exponent <= 6);
-  const defaults = usable.filter((row) => row.defaultForBrand);
-  if (defaults.length > 1) throw new CustomerError("CURRENCY_CONFIGURATION_AMBIGUOUS", 409);
-  const selected = defaults[0] ?? (usable.length === 1 ? usable[0] : null);
-  if (!selected) throw new CustomerError(usable.length > 1 ? "CURRENCY_CONFIGURATION_AMBIGUOUS" : "CURRENCY_UNAVAILABLE", 409);
-  if (operation) {
-    const enabled = operation === "DEPOSIT" ? selected.depositsEnabled : operation === "WITHDRAWAL" ? selected.withdrawalsEnabled : selected.wageringEnabled;
-    if (!enabled) throw new CustomerError(`${operation}_CURRENCY_DISABLED`, 409);
-  }
-  return { code: selected.currency.code, exponent: selected.currency.exponent, depositsEnabled: Boolean(selected.depositsEnabled), withdrawalsEnabled: Boolean(selected.withdrawalsEnabled), wageringEnabled: Boolean(selected.wageringEnabled) };
-}
-
-// features/keystone/tenant-scope.ts
-var import_node_async_hooks = require("node:async_hooks");
-var tenantStorage = new import_node_async_hooks.AsyncLocalStorage();
-var modelOperations = /* @__PURE__ */ new Set(["aggregate", "count", "create", "createMany", "delete", "deleteMany", "findFirst", "findFirstOrThrow", "findMany", "findUnique", "findUniqueOrThrow", "groupBy", "update", "updateMany", "upsert"]);
-var rawOperations = /* @__PURE__ */ new Set(["$executeRaw", "$executeRawUnsafe", "$queryRaw", "$queryRawUnsafe"]);
-function runWithTenantScope(tenantId, work) {
-  return tenantStorage.run(tenantId, work);
-}
-async function setLocalTenant(tx, tenantId) {
-  await tx.$queryRaw`SELECT set_config('app.tenant_id', ${tenantId ?? ""}, true)`;
-}
-function tenantScopedPrisma(client) {
-  const base = client;
-  const withLocalTenant = async (tenantId, work) => base.$transaction(async (tx) => {
-    await setLocalTenant(tx, tenantId);
-    return work(tx);
-  });
-  return new Proxy(base, {
-    get(target, property, receiver) {
-      if (property === "$transaction") {
-        return (work, options) => {
-          const tenantId = tenantStorage.getStore();
-          if (tenantId === void 0) return target.$transaction.call(target, work, options);
-          if (Array.isArray(work)) {
-            const setTenant = target.$queryRaw`SELECT set_config('app.tenant_id', ${tenantId ?? ""}, true)`;
-            return target.$transaction.call(target, [setTenant, ...work], options).then((results) => results.slice(1));
-          }
-          return target.$transaction.call(target, async (tx) => {
-            await setLocalTenant(tx, tenantId);
-            return work(tx);
-          }, options);
-        };
-      }
-      if (typeof property === "string" && rawOperations.has(property)) {
-        return (...args) => {
-          const tenantId = tenantStorage.getStore();
-          if (tenantId === void 0) return target[property](...args);
-          return withLocalTenant(tenantId, (tx) => tx[property](...args));
-        };
-      }
-      const value = Reflect.get(target, property, receiver);
-      if (typeof property === "string" && value && typeof value === "object" && [...modelOperations].some((operation) => typeof value[operation] === "function")) {
-        return new Proxy(value, {
-          get(delegate, operation, delegateReceiver) {
-            const method = Reflect.get(delegate, operation, delegateReceiver);
-            if (typeof operation !== "string" || !modelOperations.has(operation) || typeof method !== "function") return method;
-            return (...args) => {
-              const tenantId = tenantStorage.getStore();
-              if (tenantId === void 0) return method.apply(delegate, args);
-              return withLocalTenant(tenantId, (tx) => tx[property][operation](...args));
-            };
-          }
-        });
-      }
-      return typeof value === "function" ? value.bind(target) : value;
-    }
-  });
-}
-
-// features/keystone/identity-bootstrap.ts
-async function bootstrapOperatorIdentity(prisma, userId) {
-  if (!userId) return null;
-  return runWithTenantScope(null, () => prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT set_config('app.bootstrap_user_id', ${userId}, true)`;
-    const rows = await tx.$queryRaw`SELECT tenant, "passwordResetRedeemedAt" FROM "User" WHERE id = ${userId} LIMIT 1`;
-    const row = rows[0];
-    return row ? { tenantId: row.tenant ?? null, passwordResetRedeemedAt: row.passwordResetRedeemedAt ?? null } : null;
-  }));
-}
-
-// features/sportsbook/customer/auth.ts
-var CUSTOMER_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
-var SERVICING_STATUSES = /* @__PURE__ */ new Set(["ACTIVE", "SUSPENDED", "CLOSED"]);
-function validatedSession(session, now, servicing = false) {
-  if (!session?.tenant || !session.player || !session.tenantId || !session.playerId || session.tenantId !== session.tenant.id || session.playerId !== session.player.id || session.player.tenantId !== session.tenantId || session.revokedAt || !(session.expiresAt instanceof Date) || !Number.isFinite(session.expiresAt.getTime()) || session.expiresAt <= now || (servicing ? !SERVICING_STATUSES.has(session.tenant.status ?? "") : session.tenant.status !== "ACTIVE") || (servicing ? !SERVICING_STATUSES.has(session.player.status ?? "") : session.player.status !== "ACTIVE")) throw new CustomerError("AUTHENTICATION_REQUIRED", 401);
-  return { ...session, tenant: session.tenant, player: session.player };
-}
-async function assertCurrentCustomerActor(prisma, actor, lock = false, now = /* @__PURE__ */ new Date(), servicing = false) {
-  if (!actor.sessionId || !actor.tenantId || !actor.playerId) throw new CustomerError("AUTHENTICATION_REQUIRED", 401);
-  if (lock) {
-    await prisma.$queryRaw`SELECT set_config('app.tenant_id', ${actor.tenantId}, true)`;
-    await prisma.$queryRaw`SELECT id FROM "Tenant" WHERE id = ${actor.tenantId} FOR SHARE`;
-    await prisma.$queryRaw`SELECT id FROM "Player" WHERE id = ${actor.playerId} AND tenant = ${actor.tenantId} FOR SHARE`;
-    await prisma.$queryRaw`SELECT id FROM "CustomerSession" WHERE id = ${actor.sessionId} AND tenant = ${actor.tenantId} AND player = ${actor.playerId} FOR SHARE`;
-  }
-  const session = validatedSession(await prisma.customerSession.findUnique({ where: { id: actor.sessionId }, include: { tenant: true, player: true } }), now, servicing);
-  if (session.id !== actor.sessionId || session.tenantId !== actor.tenantId || session.playerId !== actor.playerId || actor.assuranceLevel && actor.assuranceLevel !== (session.assuranceLevel ?? "GUEST")) {
-    throw new CustomerError("AUTHENTICATION_REQUIRED", 401);
-  }
-  const currency = await resolveTenantCurrency(prisma, session.tenant.id);
-  if (actor.currency && currency.code !== actor.currency) throw new CustomerError("CUSTOMER_CURRENCY_CHANGED", 409);
-}
-
-// features/sportsbook/domain/transaction.ts
-function isRetryableTransactionError(error) {
-  const value = error;
-  const detail = `${value?.name ?? ""} ${value?.message ?? ""} ${String(value?.cause ?? "")}`;
-  return ["P2034", "P2002", "40001", "40P01"].includes(value?.code ?? "") || /TransactionWriteConflict|write conflict|deadlock|serialization/i.test(detail);
-}
-var transactionBackoff = (attempt) => new Promise((resolve) => setTimeout(resolve, Math.min(15 * 2 ** attempt, 300)));
-
-// features/sportsbook/domain/balance.ts
-function nextProjection(current, change, now = /* @__PURE__ */ new Date()) {
-  const postedDelta = change.postedDelta ?? 0n;
-  const availableDelta = change.availableDelta ?? postedDelta;
-  const posted = BigInt(current.postedMinor) + postedDelta;
-  const available = BigInt(current.availableMinor) + availableDelta;
-  if (available > posted) throw new Error("BALANCE_PROJECTION_INVARIANT");
-  return {
-    postedMinor: String(posted),
-    pendingMinor: current.pendingMinor,
-    availableMinor: String(available),
-    version: Number(current.version ?? 0) + 1,
-    asOf: now
-  };
-}
-var postedChange = (delta) => ({ postedDelta: delta, availableDelta: delta });
-var reserveChange = (amount) => ({ postedDelta: 0n, availableDelta: -amount });
-var releaseChange = (amount) => ({ postedDelta: 0n, availableDelta: amount });
-var captureChange = (amount) => ({ postedDelta: -amount, availableDelta: 0n });
-
-// features/sportsbook/customer/idempotency.ts
-async function finishCustomerCommand(prisma, commandId, status3, result) {
-  const updated = await prisma.customerCommand.updateMany({ where: { id: commandId, status: "IN_PROGRESS" }, data: { status: status3, result } });
-  return updated.count === 1;
-}
-
-// features/sportsbook/customer/funding.ts
-var PRE_DISPATCH_REFUSALS = /* @__PURE__ */ new Set(["PAYMENT_PROVIDER_UNAVAILABLE", "PAYMENT_ADAPTER_UNSUPPORTED", "PAYMENT_ADAPTER_INVALID_CONFIG"]);
-async function dispatchPinnedPayment(intent, provider, fresh) {
-  if (!provider) return { status: "UNKNOWN", externalRef: "", reasonCode: "PROVIDER_INSTALLATION_MISSING" };
-  const snapshot = intent.riskEvidence?.provider;
-  if (snapshot && (snapshot.adapterId !== provider.adapterId || snapshot.adapterVersion !== provider.adapterVersion || snapshot.configReference !== provider.configReference)) {
-    return { status: "UNKNOWN", externalRef: "", reasonCode: "PROVIDER_CONFIGURATION_CHANGED" };
-  }
-  try {
-    const result = await executePaymentProvider(provider, { type: intent.type === "DEPOSIT" ? "deposit" : "withdrawal", payload: { amountMinor: intent.amountMinor, currency: intent.currency } }, `${provider.id}:${intent.idempotencyKey}`);
-    if (result.status === "SUCCEEDED") return { status: "SUCCEEDED", externalRef: result.externalRef, reasonCode: "" };
-    if (result.status === "FAILED") return { status: "FAILED", externalRef: result.externalRef, reasonCode: "PROVIDER_DECLINED" };
-    return { status: "UNKNOWN", externalRef: result.externalRef, reasonCode: "PROVIDER_PENDING" };
-  } catch (error) {
-    const code = error instanceof Error ? error.message : "";
-    if (fresh && PRE_DISPATCH_REFUSALS.has(code)) return { status: "FAILED", externalRef: "", reasonCode: code };
-    return { status: "UNKNOWN", externalRef: "", reasonCode: PRE_DISPATCH_REFUSALS.has(code) ? code : "PROVIDER_OUTCOME_UNKNOWN" };
-  }
-}
-
-// features/sportsbook/customer/promotions.ts
-var serializable = async (prisma, work) => {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await prisma.$transaction(work, { isolationLevel: "Serializable" });
-    } catch (error) {
-      if (attempt >= 7 || !isRetryableTransactionError(error)) throw error;
-      await transactionBackoff(attempt);
-    }
-  }
-};
-var promotionFixtures = [
-  { key: "sandbox-free-bet", name: "First play free bet", description: "A $5 restricted free bet. Stake is not returned on a win.", type: "FREE_BET", budgetMinor: "500000", economics: { amountMinor: "500", stakeReturned: false }, requirements: { minimumOdds: "1.50", validStructures: ["STRAIGHT", "PARLAY"] } },
-  { key: "sandbox-odds-boost", name: "Weekend odds boost", description: "A 10% profit boost capped at $10 for eligible pre-match wagers.", type: "ODDS_BOOST", budgetMinor: "100000", economics: { boostBasisPoints: 1e3, maxBoostMinor: "1000" }, requirements: { minimumOdds: "1.80", validStructures: ["STRAIGHT", "PARLAY"] } },
-  { key: "sandbox-deposit-match", name: "Deposit match sandbox", description: "A $10 restricted bonus wallet award with 3\xD7 wagering evidence.", type: "DEPOSIT_MATCH", budgetMinor: "500000", economics: { amountMinor: "1000", stakeReturned: true }, requirements: { wageringMultiple: 3, validStructures: ["STRAIGHT", "PARLAY", "SYSTEM"] } }
-];
-async function ensureSandboxPromotions(prisma, tenantId) {
-  const now = /* @__PURE__ */ new Date();
-  const currency = (await resolveTenantCurrency(prisma, tenantId)).code;
-  await serializable(prisma, async (tx) => {
-    for (const fixture of promotionFixtures) {
-      let promotion = await tx.promotion.findFirst({ where: { tenantId, key: fixture.key } });
-      if (!promotion) {
-        const termsHash = evidenceHash({ key: fixture.key, economics: fixture.economics, requirements: fixture.requirements, version: "sandbox-full-v1" });
-        promotion = await tx.promotion.create({ data: { tenantId, key: fixture.key, name: fixture.name, description: fixture.description, type: fixture.type, status: "ACTIVE", startsAt: new Date(now.getTime() - 864e5), endsAt: new Date(now.getTime() + 30 * 864e5), budgetMinor: fixture.budgetMinor, currency, termsVersion: "sandbox-full-v1", termsHash } });
-        const rule = await tx.promotionRuleVersion.create({ data: { tenantId, promotionId: promotion.id, version: 1, eligibility: { kyc: "APPROVED", onePerPlayer: true }, economics: fixture.economics, wageringRequirements: fixture.requirements, abuseControls: { duplicateAccount: "DENY", linkedPaymentMethod: "REVIEW", maxAwardsPerPlayer: 1 }, contributionRules: { sportsbook: 100 }, status: "ACTIVE", effectiveFrom: now, evidenceHash: termsHash } });
-        await tx.campaignBudget.create({ data: { tenantId, promotionId: promotion.id, allocatedMinor: fixture.budgetMinor, awardedMinor: "0", redeemedMinor: "0", forfeitedMinor: "0", currency, version: 1, status: "ACTIVE" } });
-        await tx.outboxMessage.create({ data: { tenantId, aggregateType: "PROMOTION", aggregateId: promotion.id, eventType: "promotion.activated.v1", payload: { promotionId: promotion.id, ruleVersionId: rule.id, termsHash }, status: "PENDING", attempts: 0, maxAttempts: 10, availableAt: now } });
-      }
-    }
-  });
-}
-
-// features/sportsbook/customer/limit-enforcement.ts
-var periodStart = (period, now) => new Date(now.getTime() - (period === "DAILY" ? 1 : period === "WEEKLY" ? 7 : 30) * 864e5);
-var integerMinor = (value) => typeof value === "string" && /^-?\d+$/.test(value) ? BigInt(value) : null;
-async function wagerLimitViolation(tx, tenantId, playerId, stakeMinor, now = /* @__PURE__ */ new Date(), sessionId, currency) {
-  const wagerCurrency = currency ?? (await resolveTenantCurrency(tx, tenantId)).code;
-  const limits = await tx.playerLimit.findMany({ where: { tenantId, playerId, type: { in: ["STAKE", "LOSS", "SESSION"] }, effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }, orderBy: { effectiveFrom: "desc" } });
-  for (const limit of limits) {
-    const maximum = integerMinor(limit.amountMinor), from = periodStart(limit.period ?? "DAILY", now);
-    if (maximum === null || maximum < 0n) return { code: "LIMIT_UNAVAILABLE", limitId: limit.id, maximum: 0n, used: 0n };
-    if (limit.type !== "SESSION" && limit.currency && limit.currency !== wagerCurrency) continue;
-    if (limit.type === "STAKE") {
-      const wagers = await tx.wager.findMany({ where: { tenantId, playerId, currency: wagerCurrency, status: { not: "REJECTED" }, createdAt: { gte: from } }, select: { stakeMinor: true } }), used = wagers.reduce((sum, item) => sum + (integerMinor(item.stakeMinor) ?? 0n), 0n);
-      if (used + stakeMinor > maximum) return { code: "STAKE_LIMIT_EXCEEDED", limitId: limit.id, maximum, used };
-    }
-    if (limit.type === "LOSS") {
-      const wagers = await tx.wager.findMany({ where: { tenantId, playerId, currency: wagerCurrency, status: { in: ["SETTLED", "CASHED_OUT"] }, createdAt: { gte: from } }, select: { id: true, stakeMinor: true, status: true } }), ids = wagers.map((item) => item.id);
-      const [settlements, cashouts] = await Promise.all([tx.settlement.findMany({ where: { tenantId, wagerId: { in: ids } }, orderBy: [{ wagerId: "asc" }, { version: "desc" }] }), tx.cashOutAcceptance.findMany({ where: { tenantId, wagerId: { in: ids }, status: "ACCEPTED", reversalOfId: null }, select: { wagerId: true, amountMinor: true, currency: true } })]);
-      const latest = /* @__PURE__ */ new Map();
-      for (const settlement of settlements) if (settlement.wagerId && !latest.has(settlement.wagerId)) latest.set(settlement.wagerId, settlement);
-      const cashedOut = /* @__PURE__ */ new Map();
-      for (const row of cashouts) {
-        const amount = integerMinor(row.amountMinor);
-        if (amount === null || row.currency && row.currency !== wagerCurrency) return { code: "LOSS_LIMIT_EVIDENCE_UNAVAILABLE", limitId: limit.id, maximum, used: 0n };
-        cashedOut.set(row.wagerId, (cashedOut.get(row.wagerId) ?? 0n) + amount);
-      }
-      let net = 0n;
-      for (const wager of wagers) {
-        const stake = integerMinor(wager.stakeMinor), settlement = latest.get(wager.id), payout = settlement ? integerMinor(settlement.payoutMinor) : 0n;
-        if (stake === null || payout === null || wager.status === "SETTLED" && !settlement) return { code: "LOSS_LIMIT_EVIDENCE_UNAVAILABLE", limitId: limit.id, maximum, used: net };
-        net += stake - payout - (cashedOut.get(wager.id) ?? 0n);
-      }
-      if (net >= maximum) return { code: "LOSS_LIMIT_REACHED", limitId: limit.id, maximum, used: net };
-    }
-    if (limit.type === "SESSION") {
-      const session = sessionId ? await tx.customerSession.findFirst({ where: { id: sessionId, tenantId, playerId } }) : await tx.customerSession.findFirst({ where: { tenantId, playerId, revokedAt: null, expiresAt: { gt: now } }, orderBy: { createdAt: "asc" } });
-      if (session) {
-        const minutes = BigInt(Math.floor((now.getTime() - session.createdAt.getTime()) / 6e4));
-        if (minutes >= maximum) return { code: "SESSION_LIMIT_REACHED", limitId: limit.id, maximum, used: minutes };
-      }
-    }
-  }
-  return null;
-}
-
-// features/sportsbook/customer/acceptance-gates.ts
-var GEO_DECISION_MAX_AGE_MS = 864e5;
-async function currentGeoApproved(tx, tenantId, playerId, now) {
-  const latest = await tx.geoCheck.findFirst({
-    where: { tenantId, checkedAt: { not: null, lte: now }, geoSession: { tenantId, playerId } },
-    include: { geoSession: true },
-    orderBy: [{ checkedAt: "desc" }, { createdAt: "desc" }]
-  });
-  if (!latest || latest.decision !== "ALLOW" || !latest.checkedAt) return false;
-  if (now.getTime() - latest.checkedAt.getTime() > GEO_DECISION_MAX_AGE_MS) return false;
-  const session = latest.geoSession;
-  return Boolean(session && session.status === "ACTIVE" && (!session.expiresAt || session.expiresAt > now));
-}
-async function currentKycApproved(tx, tenantId, player, now) {
-  if (player.kycStatus !== "APPROVED") return false;
-  const latest = await tx.verificationCase.findFirst({ where: { tenantId, playerId: player.id, type: "KYC" }, orderBy: { createdAt: "desc" } });
-  return Boolean(latest && latest.status === "APPROVED" && (!latest.expiresAt || latest.expiresAt > now));
-}
-async function currentWagerProvenance(tx, tenantId) {
-  const channel = await tx.operatorChannel.findFirst({
-    where: { tenantId, type: "WEB", status: { in: ["ACTIVE", "PENDING"] } },
-    orderBy: [{ status: "asc" }, { createdAt: "asc" }]
-  });
-  return {
-    channelId: channel?.id ?? null,
-    brandId: channel?.brandId ?? null,
-    legalEntityId: channel?.legalEntityId ?? null,
-    operatorJurisdictionId: channel?.operatorJurisdictionId ?? null
-  };
-}
-var money = (value) => value && /^\d+$/.test(value) ? BigInt(value) : null;
-async function riskLimitViolation(tx, input) {
-  const { tenantId, playerId, currency, now } = input;
-  const rules2 = await tx.limitRule.findMany({
-    where: { tenantId, currency, profile: { tenantId, status: "ACTIVE", OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: now } }], AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }] } },
-    orderBy: [{ priority: "desc" }, { createdAt: "asc" }]
-  });
-  const marketIds = new Set(input.allocations.map((item) => item.marketId));
-  const eventIds = new Set(input.allocations.flatMap((item) => item.eventId ? [item.eventId] : []));
-  const newLiability = input.allocations.reduce((sum, item) => sum + item.liabilityMinor, 0n);
-  for (const rule of rules2) {
-    const scope = String(rule.scopeType || "").toUpperCase();
-    const scopeId = String(rule.scopeId || "");
-    const applies = scope === "TENANT" ? !scopeId || scopeId === tenantId : scope === "PLAYER" ? scopeId === playerId : scope === "EVENT" ? eventIds.has(scopeId) : scope === "MARKET" ? marketIds.has(scopeId) : false;
-    if (!applies) continue;
-    const maxStake = money(rule.maxStakeMinor), maxPayout = money(rule.maxPayoutMinor), maxLiability = money(rule.maxLiabilityMinor);
-    if (maxStake !== null && input.stakeMinor > maxStake) return { code: "LIMIT_RULE_EXCEEDED", limitRuleId: rule.id };
-    if (maxPayout !== null && input.potentialReturnMinor > maxPayout) return { code: "LIMIT_RULE_EXCEEDED", limitRuleId: rule.id };
-    if (maxLiability === null) continue;
-    let added = 0n;
-    let where;
-    if (scope === "MARKET") {
-      added = input.allocations.filter((item) => item.marketId === scopeId).reduce((sum, item) => sum + item.liabilityMinor, 0n);
-      where = { marketId: scopeId };
-    } else if (scope === "EVENT") {
-      const markets = await tx.market.findMany({ where: { tenantId, eventId: scopeId }, select: { id: true } });
-      const ids = markets.map((item) => item.id);
-      added = input.allocations.filter((item) => item.eventId === scopeId).reduce((sum, item) => sum + item.liabilityMinor, 0n);
-      where = { marketId: { in: ids } };
-    } else if (scope === "PLAYER") {
-      added = newLiability;
-      where = { wager: { playerId } };
-    } else {
-      added = newLiability;
-      where = {};
-    }
-    const open = await tx.wagerExposureAllocation.findMany({ where: { tenantId, status: { not: "CLOSED" }, wager: { currency }, ...where }, select: { remainingLiabilityMinor: true } });
-    const current = open.reduce((sum, item) => sum + (money(item.remainingLiabilityMinor) ?? 0n), 0n);
-    if (current + added > maxLiability) return { code: "LIABILITY_LIMIT_EXCEEDED", limitRuleId: rule.id };
-  }
-  return null;
-}
-
-// features/sportsbook/domain/result-facts.ts
-var MAX_CANONICAL_SELECTION_FACTS = 1024;
-var MAX_KEY_LENGTH = 128;
-var MAX_FACTOR_DIGITS = 18;
-var outcomes = /* @__PURE__ */ new Set(["WIN", "LOSS", "PUSH", "VOID", "DEAD_HEAT"]);
-function parseCanonicalSelectionFacts(payload, expectedEventId) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("INVALID_CANONICAL_RESULT");
-  const body = payload;
-  if (body.schemaVersion !== "openfront.selection-results.v1" || typeof body.eventId !== "string" || !body.eventId.trim()) throw new Error("INVALID_CANONICAL_RESULT");
-  if (body.eventId.length > MAX_KEY_LENGTH || body.eventId.includes("\0")) throw new Error("INVALID_CANONICAL_RESULT");
-  if (expectedEventId && body.eventId !== expectedEventId) throw new Error("RESULT_EVENT_MISMATCH");
-  if (!Array.isArray(body.selections) || body.selections.length === 0) throw new Error("CANONICAL_SELECTION_FACTS_REQUIRED");
-  if (body.selections.length > MAX_CANONICAL_SELECTION_FACTS) throw new Error("CANONICAL_SELECTION_FACTS_LIMIT_EXCEEDED");
-  const seen = /* @__PURE__ */ new Set();
-  const facts = body.selections.map((value) => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("INVALID_CANONICAL_SELECTION_FACT");
-    const row = value;
-    if (typeof row.marketKey !== "string" || !row.marketKey.trim() || typeof row.selectionKey !== "string" || !row.selectionKey.trim() || typeof row.outcome !== "string" || !outcomes.has(row.outcome)) {
-      throw new Error("INVALID_CANONICAL_SELECTION_FACT");
-    }
-    if (row.marketKey.length > MAX_KEY_LENGTH || row.selectionKey.length > MAX_KEY_LENGTH || row.marketKey.includes("\0") || row.selectionKey.includes("\0")) throw new Error("INVALID_CANONICAL_SELECTION_FACT");
-    const identity = `${row.marketKey}\0${row.selectionKey}`;
-    if (seen.has(identity)) throw new Error("DUPLICATE_CANONICAL_SELECTION_FACT");
-    seen.add(identity);
-    const factorNumerator = row.factorNumerator;
-    const factorDenominator = row.factorDenominator;
-    if (row.outcome === "DEAD_HEAT") {
-      if (typeof factorNumerator !== "string" || typeof factorDenominator !== "string" || factorNumerator.length > MAX_FACTOR_DIGITS || factorDenominator.length > MAX_FACTOR_DIGITS || !/^\d+$/.test(factorNumerator) || !/^\d+$/.test(factorDenominator) || BigInt(factorNumerator) <= 0n || BigInt(factorDenominator) <= 0n || BigInt(factorNumerator) > BigInt(factorDenominator)) {
-        throw new Error("INVALID_DEAD_HEAT_FACTOR");
-      }
-    } else if (factorNumerator !== void 0 || factorDenominator !== void 0) {
-      throw new Error("UNEXPECTED_SELECTION_FACTOR");
-    }
-    return {
-      marketKey: row.marketKey,
-      selectionKey: row.selectionKey,
-      outcome: row.outcome,
-      ...typeof factorNumerator === "string" ? { factorNumerator } : {},
-      ...typeof factorDenominator === "string" ? { factorDenominator } : {}
-    };
-  });
-  return { eventId: body.eventId, facts };
-}
-function resolveCanonicalSelectionFact(payload, eventId, marketKey, selectionKey) {
-  const { facts } = parseCanonicalSelectionFacts(payload, eventId);
-  return facts.find((fact) => fact.marketKey === marketKey && fact.selectionKey === selectionKey) ?? null;
-}
-
-// features/sportsbook/domain/ledger-reconciliation.ts
-function analyzeJournalBalances(entries) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const entry of entries) {
-    const key2 = `${entry.transactionId}\0${entry.currency}`;
-    const group = groups.get(key2) ?? { transactionId: entry.transactionId, currency: entry.currency, debitMinor: 0n, creditMinor: 0n };
-    const amount = BigInt(entry.amountMinor);
-    if (amount < 0n || !["DEBIT", "CREDIT"].includes(entry.side)) throw new Error("INVALID_JOURNAL_ENTRY");
-    if (entry.side === "DEBIT") group.debitMinor += amount;
-    else group.creditMinor += amount;
-    groups.set(key2, group);
-  }
-  const transactions = [...groups.values()].map((group) => ({ ...group, differenceMinor: group.debitMinor - group.creditMinor }));
-  const unbalanced = transactions.filter((item) => item.differenceMinor !== 0n);
-  const absoluteDifferenceMinor = unbalanced.reduce((sum, item) => sum + (item.differenceMinor < 0n ? -item.differenceMinor : item.differenceMinor), 0n);
-  return { transactions, unbalanced, absoluteDifferenceMinor };
-}
-
-// features/sportsbook/domain/trading-eligibility.ts
-function isEventTradingEligible(status3) {
-  return status3 === "SCHEDULED" || status3 === "LIVE";
-}
-function assertEventTradingTransition(currentStatus, nextStatus) {
-  if (isEventTradingEligible(nextStatus) && !isEventTradingEligible(currentStatus)) {
-    throw new Error("TRADING_REOPENING_REQUIRES_REVIEWED_POLICY");
-  }
-}
-function assertMarketOpenAllowed(marketStatus, eventStatus) {
-  if (!isEventTradingEligible(eventStatus)) throw new Error("PARENT_EVENT_NOT_TRADING_ELIGIBLE");
-  if (marketStatus !== "OPEN") throw new Error("MARKET_REOPENING_REQUIRES_REVIEWED_POLICY");
-}
-function assertEventAllowsNewMarket(eventStatus) {
-  if (!isEventTradingEligible(eventStatus)) throw new Error("PARENT_EVENT_NOT_TRADING_ELIGIBLE");
-}
-var AWAITING_PRICES = "AWAITING_PRICES";
-function assertMarketFirstOpenAllowed(input) {
-  if (!isEventTradingEligible(input.eventStatus)) throw new Error("PARENT_EVENT_NOT_TRADING_ELIGIBLE");
-  if (!input.createdAwaitingPrices || input.everOpened) throw new Error("MARKET_REOPENING_REQUIRES_REVIEWED_POLICY");
-  if (input.selections === 0 || input.unpricedSelections > 0) throw new Error("MARKET_NOT_FULLY_PRICED");
-}
-
-// features/sportsbook/domain/house-rules.ts
-var specific = (key2) => Boolean(key2 && key2 !== "*");
-async function activeHouseRule(tx, tenantId, market, now) {
-  const event = await tx.event.findFirst({ where: { id: market.eventId ?? "", tenantId }, include: { competition: { include: { sport: true } } } });
-  const sportKey = event?.competition?.sport?.key ?? "";
-  const candidates = await tx.houseRuleVersion.findMany({ where: { tenantId, status: "ACTIVE", effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] } });
-  const eligible = candidates.filter((rule) => (!specific(rule.sportKey) || rule.sportKey === sportKey) && (!specific(rule.marketDefinitionKey) || rule.marketDefinitionKey === market.definitionKey));
-  eligible.sort((left, right) => Number(specific(right.marketDefinitionKey)) - Number(specific(left.marketDefinitionKey)) || Number(specific(right.sportKey)) - Number(specific(left.sportKey)) || Number(right.version) - Number(left.version));
-  if (eligible.length > 1) {
-    const [left, right] = eligible;
-    if (specific(left.marketDefinitionKey) === specific(right.marketDefinitionKey) && specific(left.sportKey) === specific(right.sportKey) && left.version === right.version) throw new Error("AMBIGUOUS_HOUSE_RULE");
-  }
-  return eligible[0] ?? null;
-}
-async function approvedHouseRuleEvidence(tx, tenantId, rule) {
-  if (rule.tenantId !== tenantId || !rule.approvalRequestId || rule.semanticHash !== evidenceHash({ action: "HOUSE_RULE", name: rule.name, sportKey: rule.sportKey, marketDefinitionKey: rule.marketDefinitionKey, rules: rule.rules, effectiveFrom: rule.effectiveFrom })) return null;
-  const approval = await tx.approvalRequest.findFirst({ where: { id: rule.approvalRequestId, tenantId, action: `HOUSE_RULE:${rule.name}`, payloadHash: rule.semanticHash, status: "APPROVED" } });
-  return approval?.approverId && approval.requesterId !== approval.approverId ? approval : null;
-}
-
-// features/sportsbook/domain/result-approval.ts
-function resultApprovalHash(result) {
-  if (!result.tenantId || !result.eventId || !result.providerConnectionId || evidenceHash(result.payload) !== result.payloadHash) throw new Error("RESULT_CONTENT_EVIDENCE_MISMATCH");
-  return evidenceHash({ action: "APPROVE_RESULT", tenantId: result.tenantId, resultVersionId: result.id, eventId: result.eventId, providerConnectionId: result.providerConnectionId, version: result.version, payloadHash: result.payloadHash });
-}
-
-// features/sportsbook/workers/artifact-delivery-contract.ts
+// features/sportsbook/domain/artifact-delivery-contract.ts
 var unavailableArtifactEvents = /* @__PURE__ */ new Set(["report.generate", "export.requested.v1"]);
 function assertArtifactDeliveryHasHandler(eventType) {
   if (typeof eventType !== "string" || unavailableArtifactEvents.has(eventType)) {
@@ -1609,1448 +4346,14 @@ function assertArtifactDeliveryHasHandler(eventType) {
   }
 }
 
-// features/sportsbook/workers/recovery-event-contract.ts
-var unhandledRecoveryEvents = /* @__PURE__ */ new Set(["recovery.requested", "recovery.requested.v1"]);
-function assertRecoveryEventHasHandler(eventType) {
-  if (typeof eventType === "string" && unhandledRecoveryEvents.has(eventType)) {
-    throw new Error(`RECOVERY_HANDLER_NOT_IMPLEMENTED:${eventType}`);
-  }
-}
-
-// features/sportsbook/workers/scheduled-job-contract.ts
-var handledScheduledJobTypes = [
-  "PROVIDER_HEALTH",
-  "NOTIFICATION",
-  "EXPIRY",
-  "RECONCILIATION"
-];
-var handledScheduledJobTypeSet = new Set(handledScheduledJobTypes);
-function assertScheduledJobHasHandler(type) {
-  if (typeof type !== "string" || !handledScheduledJobTypeSet.has(type)) {
-    throw new Error(`UNSUPPORTED_SCHEDULED_JOB:${String(type)}`);
-  }
-}
-
-// features/sportsbook/workers/settlement-request-contract.ts
-function assertSettlementRequestHasHandler(eventType) {
-  if (eventType === "settlement.requested") {
-    throw new Error("SETTLEMENT_EXECUTION_NOT_IMPLEMENTED");
-  }
-}
-
-// features/sportsbook/workers/replay-contract.ts
-var reasonOf = (error) => error instanceof Error ? error.message : "UNSUPPORTED";
-function outboxEventUnavailableReason(eventType) {
-  try {
-    assertRecoveryEventHasHandler(eventType);
-    assertSettlementRequestHasHandler(eventType);
-    assertArtifactDeliveryHasHandler(eventType);
-    return null;
-  } catch (error) {
-    return reasonOf(error);
-  }
-}
-function scheduledJobUnavailableReason(type) {
-  try {
-    assertScheduledJobHasHandler(type);
-    return null;
-  } catch (error) {
-    return reasonOf(error);
-  }
-}
-function replayUnavailableReason(source) {
-  if (!source) return "SOURCE_NOT_FOUND";
-  if (source.kind === "OUTBOX") return source.status === "DEAD" ? outboxEventUnavailableReason(source.eventType) : `OUTBOX_NOT_DEAD:${String(source.status)}`;
-  if (source.kind === "INBOX") return source.status === "DEAD" ? null : `INBOX_NOT_DEAD:${String(source.status)}`;
-  if (source.kind === "SCHEDULED_JOB") return source.status === "FAILED" ? scheduledJobUnavailableReason(source.jobType) : `SCHEDULED_JOB_NOT_FAILED:${String(source.status)}`;
-  return `REPLAY_UNSUPPORTED_SOURCE:${source.kind}`;
-}
-var replaySourceModel = (kind) => kind === "OUTBOX" ? "outboxMessage" : kind === "INBOX" ? "inboxMessage" : kind === "SCHEDULED_JOB" ? "scheduledJob" : null;
-
-// features/keystone/mutations/sportsbook.ts
-var import_node_crypto6 = require("node:crypto");
-
-// features/keystone/lib/mail.ts
-var import_nodemailer = require("nodemailer");
-function getBaseUrlForEmails() {
-  if (process.env.SMTP_STORE_LINK) {
-    return process.env.SMTP_STORE_LINK;
-  }
-  console.warn("SMTP_STORE_LINK not set. Please add SMTP_STORE_LINK to your environment variables for email links to work properly.");
-  return "";
-}
-var transport = (0, import_nodemailer.createTransport)({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT ?? 587),
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD
-  },
-  disableFileAccess: true,
-  disableUrlAccess: true
-});
-function passwordResetEmail({ url }) {
-  const backgroundColor = "#f9f9f9";
-  const textColor = "#444444";
-  const mainBackgroundColor = "#ffffff";
-  const buttonBackgroundColor = "#346df1";
-  const buttonBorderColor = "#346df1";
-  const buttonTextColor = "#ffffff";
-  return `
-    <body style="background: ${backgroundColor};">
-      <table width="100%" border="0" cellspacing="20" cellpadding="0" style="background: ${mainBackgroundColor}; max-width: 600px; margin: auto; border-radius: 10px;">
-        <tr>
-          <td align="center" style="padding: 10px 0px 0px 0px; font-size: 18px; font-family: Helvetica, Arial, sans-serif; color: ${textColor};">
-            Please click below to reset your password
-          </td>
-        </tr>
-        <tr>
-          <td align="center" style="padding: 20px 0;">
-            <table border="0" cellspacing="0" cellpadding="0">
-              <tr>
-                <td align="center" style="border-radius: 5px;" bgcolor="${buttonBackgroundColor}"><a href="${url}" target="_blank" style="font-size: 18px; font-family: Helvetica, Arial, sans-serif; color: ${buttonTextColor}; text-decoration: none; border-radius: 5px; padding: 10px 20px; border: 1px solid ${buttonBorderColor}; display: inline-block; font-weight: bold;">Reset Password</a></td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td align="center" style="padding: 0px 0px 10px 0px; font-size: 16px; line-height: 22px; font-family: Helvetica, Arial, sans-serif; color: ${textColor};">
-            If you did not request this email you can safely ignore it.
-          </td>
-        </tr>
-      </table>
-    </body>
-  `;
-}
-async function sendPasswordResetEmail(resetToken, to, baseUrl) {
-  const frontendUrl = baseUrl || getBaseUrlForEmails();
-  const info = await transport.sendMail({
-    to,
-    from: process.env.SMTP_FROM,
-    subject: "Your password reset token!",
-    html: passwordResetEmail({
-      url: `${frontendUrl}/dashboard/reset?token=${resetToken}`
-    })
-  });
-  if (process.env.SMTP_USER?.includes("ethereal.email")) {
-    console.log(`\u{1F4E7} Message Sent!  Preview it at ${(0, import_nodemailer.getTestMessageUrl)(info)}`);
-  }
-}
-
-// features/keystone/mutations/approval-control.ts
-var APPROVAL_TTL_MS = 24 * 60 * 60 * 1e3;
-var approvalExpiry = (from = /* @__PURE__ */ new Date()) => new Date(from.getTime() + APPROVAL_TTL_MS);
-var reviewPayload = (value) => JSON.parse(JSON.stringify(value ?? null));
-var approvalReview = (payload) => ({ requestPayload: reviewPayload(payload), expiresAt: approvalExpiry() });
-var isTrustedInternalContext = (context, capability) => Boolean(context?.trustedTenantId && context?.trustedActorId && context?.trustedCapabilities?.includes(capability)) && (process.env.NODE_ENV === "test" || Boolean(process.env.NODE_TEST_CONTEXT) || process.env.SPORTSBOOK_SANDBOX === "true");
-var lockUser = (tx, userId) => tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR SHARE`;
-var holdsTenantCapability = (user, tenantId, capability) => Boolean(user && user.tenantId === tenantId && user.role && user.role.tenantId === tenantId && user.role[capability] && user.tenant?.status === "ACTIVE");
-async function assertCurrentActor(tx, context, tenantId, capability) {
-  if (isTrustedInternalContext(context, capability)) {
-    if (context.trustedTenantId !== tenantId) throw new Error("Not found");
-    return String(context.trustedActorId);
-  }
-  const actorId = context?.session?.itemId;
-  if (!actorId) throw new Error("Not found");
-  await lockUser(tx, actorId);
-  const user = await tx.user.findUnique({ where: { id: actorId }, include: { role: true, tenant: true } });
-  if (!holdsTenantCapability(user, tenantId, capability) || !user.operatorMfaEnabled) throw new Error("Not found");
-  return actorId;
-}
-async function assertApprovalAuthority(tx, approval, executorId) {
-  if (!approval.approverId || approval.approverId === approval.requesterId) throw new Error("DUAL_CONTROL_REQUIRED");
-  if (approval.approverId === executorId) throw new Error("DUAL_CONTROL_REQUIRED");
-  await lockUser(tx, approval.approverId);
-  const [approver, requester] = await Promise.all([
-    tx.user.findUnique({ where: { id: approval.approverId }, include: { role: true, tenant: true } }),
-    tx.user.findUnique({ where: { id: approval.requesterId }, select: { id: true, tenantId: true } })
-  ]);
-  if (!holdsTenantCapability(approver, approval.tenantId, "canApproveSensitiveActions")) throw new Error("APPROVER_AUTHORITY_NOT_CURRENT");
-  if (!requester || requester.tenantId !== approval.tenantId) throw new Error("REQUESTER_AUTHORITY_NOT_CURRENT");
-}
-async function consumeApproval(tx, context, input) {
-  const executorId = await assertCurrentActor(tx, context, input.tenantId, input.capability);
-  await tx.$queryRaw`SELECT id FROM "ApprovalRequest" WHERE id = ${input.approvalId} AND tenant = ${input.tenantId} FOR UPDATE`;
-  const row = await tx.approvalRequest.findFirst({ where: { id: input.approvalId, tenantId: input.tenantId, action: input.action, payloadHash: input.payloadHash, status: "APPROVED" } });
-  if (!row?.approverId || row.approverId === row.requesterId) throw new Error("DUAL_CONTROL_REQUIRED");
-  if (row.consumedAt) {
-    if (input.consumedKey && row.consumedKey === input.consumedKey) return { ...row, replay: true };
-    throw new Error("APPROVAL_ALREADY_CONSUMED");
-  }
-  if (!row.expiresAt) throw new Error("APPROVAL_REAPPROVAL_REQUIRED");
-  if (new Date(row.expiresAt) <= /* @__PURE__ */ new Date()) throw new Error("APPROVAL_EXPIRED");
-  await assertApprovalAuthority(tx, { tenantId: input.tenantId, requesterId: row.requesterId, approverId: row.approverId }, executorId);
-  const claimed = await tx.approvalRequest.updateMany({
-    where: { id: row.id, tenantId: input.tenantId, status: "APPROVED", consumedAt: null, expiresAt: { gt: /* @__PURE__ */ new Date() } },
-    data: { consumedAt: /* @__PURE__ */ new Date(), consumedById: executorId, consumedKey: input.consumedKey ?? row.id }
-  });
-  if (claimed.count !== 1) throw new Error("APPROVAL_ALREADY_CONSUMED");
-  return { ...row, replay: false };
-}
-
-// features/keystone/mutations/setting-policy.ts
-async function normalizeTenantSetting(tx, tenantId, key2, raw) {
-  const definition = await tx.configDefinition.findFirst({ where: { tenantId, key: key2 } });
-  if (!definition) throw new Error("SETTING_NOT_DEFINED");
-  if (definition.secret) throw new Error("SECRET_SETTING_NOT_SUPPORTED");
-  const scopes = Array.isArray(definition.allowedScopes) ? definition.allowedScopes.map(String) : [];
-  if (!scopes.includes("TENANT")) throw new Error("SETTING_SCOPE_NOT_ALLOWED");
-  const text7 = String(raw ?? "").trim();
-  let value;
-  switch (definition.valueType) {
-    case "MONEY":
-      if (!/^\d+$/.test(text7)) throw new Error("INVALID_SETTING_VALUE");
-      value = text7;
-      break;
-    case "INTEGER":
-      if (!/^-?\d+$/.test(text7) || !Number.isSafeInteger(Number(text7))) throw new Error("INVALID_SETTING_VALUE");
-      value = Number(text7);
-      break;
-    case "BOOLEAN":
-      if (text7 !== "true" && text7 !== "false") throw new Error("INVALID_SETTING_VALUE");
-      value = text7 === "true";
-      break;
-    case "JSON":
-      try {
-        value = JSON.parse(text7);
-      } catch {
-        throw new Error("INVALID_SETTING_VALUE");
-      }
-      if (!value || typeof value !== "object") throw new Error("INVALID_SETTING_VALUE");
-      break;
-    case "STRING":
-      if (!text7) throw new Error("INVALID_SETTING_VALUE");
-      value = text7;
-      break;
-    default:
-      throw new Error("SETTING_TYPE_UNSUPPORTED");
-  }
-  return { definition, value, valueType: String(definition.valueType) };
-}
-
-// features/sportsbook/domain/zoned-time.ts
-var LOCAL_INPUT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
-var EXPLICIT_OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/i;
-function wallClockMs(instant, timeZone) {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(new Date(instant));
-  const value = (type) => Number(parts.find((part) => part.type === type)?.value);
-  return Date.UTC(value("year"), value("month") - 1, value("day"), value("hour"), value("minute"), value("second")) + (instant % 1e3 + 1e3) % 1e3;
-}
-function validTimeZone(timeZone) {
-  if (!timeZone) return null;
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone });
-    return timeZone;
-  } catch {
-    return null;
-  }
-}
-function resolveOperatorInstant(value, timeZone, label = "TIME") {
-  const text7 = typeof value === "string" ? value.trim() : "";
-  if (!text7) throw new Error(`INVALID_${label}`);
-  if (EXPLICIT_OFFSET.test(text7)) {
-    const instant = new Date(text7);
-    if (Number.isNaN(instant.getTime())) throw new Error(`INVALID_${label}`);
-    return instant;
-  }
-  const match = LOCAL_INPUT.exec(text7);
-  if (!match) throw new Error(`INVALID_${label}`);
-  const zone = validTimeZone(timeZone);
-  if (!zone) throw new Error(`${label}_TIMEZONE_NOT_CONFIGURED`);
-  const [, y, mo, d, h, mi, s, ms] = match;
-  const local = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s ?? 0), Number((ms ?? "0").padEnd(3, "0")));
-  const check = new Date(local);
-  if (check.getUTCFullYear() !== Number(y) || check.getUTCMonth() !== Number(mo) - 1 || check.getUTCDate() !== Number(d) || check.getUTCHours() !== Number(h) || check.getUTCMinutes() !== Number(mi)) throw new Error(`INVALID_${label}`);
-  const offsets = new Set([-2, 0, 2].map((days) => {
-    const probe = local + days * 864e5;
-    return wallClockMs(probe, zone) - probe;
-  }));
-  const candidates = [...new Set([...offsets].map((offset) => local - offset))].filter((instant) => wallClockMs(instant, zone) === local);
-  if (candidates.length === 0) throw new Error(`NONEXISTENT_LOCAL_${label}`);
-  if (candidates.length > 1) throw new Error(`AMBIGUOUS_LOCAL_${label}_PROVIDE_OFFSET`);
-  return new Date(candidates[0]);
-}
-async function tenantTimeZone(tx, tenantId) {
-  const [tenant4, locale] = await Promise.all([
-    tx.tenant.findUnique({ where: { id: tenantId }, select: { defaultTimezone: true } }),
-    tx.brandLocale.findFirst({ where: { tenantId, status: "ACTIVE" }, orderBy: [{ default: "desc" }, { createdAt: "asc" }], select: { timezone: true } })
-  ]);
-  return validTimeZone(tenant4?.defaultTimezone) ?? validTimeZone(locale?.timezone) ?? "UTC";
-}
-
-// features/keystone/mutations/sportsbook.ts
-var graphql = String.raw;
-var requireUnscopedCapability = async (context, capability) => {
-  const itemId = context.session?.itemId;
-  if (!itemId || !hasOperatorMfaAssurance(context.session)) throw new Error("Not found");
-  const user = await context.prisma.user.findUnique({ where: { id: itemId }, include: { role: true } });
-  if (!user?.role?.[capability]) throw new Error("Not found");
-  return user;
-};
-var requireTenant = async (context, capability = "canManageSportsbook") => {
-  const isTrustedInternal = Boolean(context.trustedTenantId && context.trustedActorId && context.trustedCapabilities?.includes(capability)) && (process.env.NODE_ENV === "test" || Boolean(process.env.NODE_TEST_CONTEXT) || process.env.SPORTSBOOK_SANDBOX === "true");
-  if (isTrustedInternal) return context.trustedTenantId;
-  const user = await requireUnscopedCapability(context, capability);
-  if (!user.tenantId) throw new Error("Not found");
-  return user.tenantId;
-};
-async function lockWagerForSettlement(tx, tenantId, wagerId) {
-  const rows = await tx.$queryRaw`SELECT id FROM "Wager" WHERE id = ${wagerId} AND tenant = ${tenantId} FOR UPDATE`;
-  if (!rows.length) throw new Error("Not found");
-}
-async function assertCurrentSettlement(tx, tenantId, wagerId, settlementId) {
-  const current = await tx.settlement.findFirst({ where: { tenantId, wagerId }, orderBy: { version: "desc" } });
-  if (!current || current.id !== settlementId) throw new Error("STALE_SETTLEMENT_CORRECTION");
-  return current;
-}
-var serializable2 = async (prisma, fn) => {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await prisma.$transaction(fn, { isolationLevel: "Serializable" });
-    } catch (error) {
-      if (attempt >= 7 || !isRetryableTransactionError(error)) throw error;
-      await transactionBackoff(attempt);
-    }
-  }
-};
-var decimalOddsFromAmounts = (gross, stake) => {
-  if (stake <= 0n) throw new Error("INVALID_STAKE");
-  const scaled = gross * 1000000n / stake;
-  return `${scaled / 1000000n}.${String(scaled % 1000000n).padStart(6, "0")}`;
-};
-var limitPeriodStart = (period, now) => new Date(now.getTime() - (period === "DAILY" ? 1 : period === "WEEKLY" ? 7 : 30) * 864e5);
-var stakeLimitFacts = async (tx, tenantId, playerId, now, currency) => {
-  const limits = (await tx.playerLimit.findMany({ where: { tenantId, playerId, type: "STAKE", effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] } })).filter((limit) => !limit.currency || limit.currency === currency);
-  let selected = null;
-  for (const limit of limits) {
-    const wagers = await tx.wager.findMany({ where: { tenantId, playerId, currency, status: { not: "REJECTED" }, createdAt: { gte: limitPeriodStart(limit.period ?? "DAILY", now) } }, select: { stakeMinor: true } });
-    const wageredInPeriod = wagers.reduce((sum, wager) => sum + BigInt(wager.stakeMinor), 0n), periodLimit = BigInt(limit.amountMinor), remaining = periodLimit - wageredInPeriod;
-    if (!selected || remaining < selected.remaining) selected = { periodLimit, wageredInPeriod, remaining };
-  }
-  return selected;
-};
-var journalEntryFingerprint = (rows) => rows.map((e) => `${e.accountId}|${e.side}|${e.amountMinor ?? String(e.amount)}|${e.currency}`).sort().join("\n");
-var postJournal = async (tx, tenantId, journal, correlationId) => {
-  validateJournal(journal);
-  const reversalOfId = journal.reversalOf ? (await tx.journalTransaction.findFirst({ where: { tenantId, idempotencyKey: journal.reversalOf } }))?.id ?? null : null;
-  const prior = await tx.journalTransaction.findFirst({ where: { tenantId, idempotencyKey: journal.idempotencyKey } });
-  if (prior) {
-    const priorEntries = await tx.journalEntry.findMany({ where: { tenantId, transactionId: prior.id } });
-    if (prior.type !== journal.type || prior.correlationId !== correlationId || (prior.reversalOfId ?? null) !== reversalOfId || journalEntryFingerprint(priorEntries) !== journalEntryFingerprint(journal.entries)) throw new Error("JOURNAL_IDEMPOTENCY_CONFLICT");
-    return { ...prior, replayed: true };
-  }
-  const posted = await tx.journalTransaction.create({ data: { tenantId, type: journal.type, idempotencyKey: journal.idempotencyKey, correlationId, status: "POSTED", effectiveAt: /* @__PURE__ */ new Date(), reversalOfId } });
-  await tx.journalEntry.createMany({ data: journal.entries.map((e) => ({ tenantId, transactionId: posted.id, accountId: e.accountId, side: e.side, amountMinor: String(e.amount), currency: e.currency })) });
-  return posted;
-};
-var emit = async (tx, tenantId, aggregateType, aggregateId, eventType, payload) => tx.outboxMessage.create({ data: { tenantId, aggregateType, aggregateId, eventType, payload, status: "PENDING", attempts: 0, maxAttempts: 10, availableAt: /* @__PURE__ */ new Date() } });
-var appendAudit = async (tx, tenantId, actorId, action, targetType, targetId, reason, payload) => {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
-  const previous = await tx.auditEvent.findFirst({ where: { tenantId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
-  const payloadHash = evidenceHash(payload);
-  const hash = evidenceHash({ tenantId, previousHash: previous?.hash ?? "", actorId, action, targetType, targetId, reason, payloadHash });
-  return tx.auditEvent.create({ data: { tenantId, actorId, action, targetType, targetId, reason, payloadHash, previousHash: previous?.hash ?? "", hash } });
-};
-var rejectApprovedResultVersion = async (tx, tenantId, actorId, approval, reason) => {
-  const recorded = approval.requestPayload?.resultVersionId;
-  const candidates = await tx.resultVersion.findMany({ where: { tenantId, status: "PENDING", ...recorded ? { id: String(recorded) } : {} } });
-  const result = candidates.find((item) => {
-    try {
-      return resultApprovalHash(item) === approval.payloadHash;
-    } catch {
-      return false;
-    }
-  });
-  if (!result) return;
-  const updated = await tx.resultVersion.updateMany({ where: { id: result.id, tenantId, status: "PENDING" }, data: { status: "REJECTED" } });
-  if (updated.count === 1) await appendAudit(tx, tenantId, actorId, "result.rejected", "ResultVersion", result.id, reason, { approvalId: approval.id, payloadHash: approval.payloadHash });
-};
-var requireScopedPlayer = async (tx, tenantId, playerId) => {
-  const player = await tx.player.findFirst({ where: { id: playerId, tenantId } });
-  if (!player) throw new Error("Not found");
-  return player;
-};
-var parseObject = (value, label) => {
-  try {
-    const parsed = JSON.parse(value);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
-    return parsed;
-  } catch {
-    throw new Error(`INVALID_${label}`);
-  }
-};
-var positiveMoney = (value, label) => {
-  if (!/^\d+$/.test(value) || BigInt(value) <= 0n) throw new Error(`INVALID_${label}`);
-  return value;
-};
-var roleCapabilityKeys = ["canAccessDashboard", "canManageOnboarding", "canManageSportsbook", "canTrade", "canManageRisk", "canManageCompliance", "canManageFinance", "canManageIntegrations", "canApproveSensitiveActions", "canReadAudit", "canManageRoles", "canManagePeople"];
-var parseRoleCapabilities = (raw) => {
-  let value;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    throw new Error("INVALID_CAPABILITIES");
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("INVALID_CAPABILITIES");
-  const input = value, result = {};
-  for (const key2 of Object.keys(input)) {
-    if (!roleCapabilityKeys.includes(key2) || typeof input[key2] !== "boolean") throw new Error("INVALID_CAPABILITIES");
-    result[key2] = input[key2];
-  }
-  return result;
-};
-var accountMap = async (tx, tenantId, playerId, currency) => {
-  const rows = await tx.ledgerAccount.findMany({ where: { tenantId, currency, OR: [{ playerId }, { key: { in: ["WAGERS_PENDING", "GAMING_REVENUE", "WINNINGS_EXPENSE", "PAYMENT_CLEARING"] } }] } });
-  const map = Object.fromEntries(rows.map((a) => [a.key, a]));
-  for (const key2 of ["PLAYER_CASH", "WAGERS_PENDING", "GAMING_REVENUE", "WINNINGS_EXPENSE", "PAYMENT_CLEARING"]) if (!map[key2]) throw new Error(`MISSING_LEDGER_ACCOUNT:${key2}`);
-  return map;
-};
-var sportsbookTypeDefs = graphql`
-  type WagerCommandResult { accepted: Boolean!, wagerId: ID, rejectionCode: String, termsHash: String!, potentialReturnMinor: String! }
-  type OnboardingPreview { version: String!, fixtureHash: String!, payload: String! }
-  extend type Mutation {
-    previewSportsbookOnboarding(slug:String!,operatorName:String!,brandName:String!,domain:String!,currency:String!,currencyExponent:Int!,jurisdictionCode:String!,timezone:String!): OnboardingPreview!
-    acceptStraightWager(quoteId:ID!,idempotencyKey:String!): WagerCommandResult!
-    applySportsbookOnboarding(slug:String!,operatorName:String!,brandName:String!,domain:String!,currency:String!,currencyExponent:Int!,jurisdictionCode:String!,timezone:String!): OnboardingPreview!
-    createCatalogEvent(competitionId:ID!,externalKey:String!,name:String!,startAt:String!,marketDefinition:String!,selections:String!): ID!
-    ingestSandboxPrice(selectionId:ID!,decimalOdds:String!,line:String,sequence:String!,externalId:String!): Boolean!
-    setMarketPrices(marketId:ID!,prices:String!,line:String): Int!
-    setMarketStatus(marketId:ID!,status:String!,reason:String!,expectedVersion:Int!,expectedStatus:String!): Boolean!
-    ingestSandboxResult(eventId:ID!,payload:String!): ID!
-    requestResultApproval(resultVersionId:ID!,reason:String!): ID!
-    withdrawResultVersion(resultVersionId:ID!,reason:String!): Boolean!
-    approveResultVersion(resultVersionId:ID!,approvalId:ID!,reason:String!): Boolean!
-    suspendMarket(marketId:ID!,reason:String!): Boolean!
-    gradeMarket(marketId:ID!,resultVersionId:ID!,outcome:String!,factorNumerator:String,factorDenominator:String,ruleVersion:String!,reason:String!): ID!
-    gradeMarketSelection(marketId:ID!,selectionId:ID!,resultVersionId:ID!,reason:String!): ID!
-    createRiskLimit(profileId:ID!,scopeType:String!,scopeId:String!,maxStakeMinor:String!,maxPayoutMinor:String!,maxLiabilityMinor:String!,currency:String!): ID!
-    openWagerInvestigation(wagerId:ID!,category:String!,reason:String!): ID!
-    sandboxPayment(playerId:ID!,type:String!,amountMinor:String!,currency:String!,idempotencyKey:String!): ID!
-    setResponsibleGamingLimit(playerId:ID!,type:String!,period:String!,amountMinor:String!,currency:String!): ID!
-    selfExclude(playerId:ID!,scope:String!,endsAt:String): ID!
-    openVerificationCase(playerId:ID!,type:String!,evidenceReference:String!): ID!
-    decideVerificationCase(caseId:ID!,decision:String!,reason:String!): Boolean!
-    reviewAMLCase(playerId:ID!,status:String!,riskBand:String!,reason:String!): ID!
-    settleWager(wagerId:ID!,resultVersionId:ID!,outcome:String!,factorNumerator:String,factorDenominator:String,idempotencyKey:String!): ID!
-    requestResettlementApproval(settlementId:ID!,resultVersionId:ID!,outcome:String!,factorNumerator:String,factorDenominator:String,reason:String!): ID!
-    resettleWager(settlementId:ID!,resultVersionId:ID!,outcome:String!,factorNumerator:String,factorDenominator:String,idempotencyKey:String!,approvalId:ID!): ID!
-    runReconciliation(type:String!,windowFrom:String!,windowTo:String!): ID!
-    enqueueRecovery(aggregateType:String!,aggregateId:ID!,eventType:String!): ID!
-    replayQueueItem(sourceType:String!,sourceId:ID!,reason:String!): ID!
-    openOperationalIncident(severity:String!,title:String!,evidence:String!): ID!
-    setIncidentStatus(incidentId:ID!,status:String!,reason:String!): Boolean!
-    generateComplianceReport(type:String!,periodStart:String!,periodEnd:String!): ID!
-    requestSettingChange(key:String!,value:String!,reason:String!): ID!
-    applyApprovedSetting(approvalId:ID!,key:String!,value:String!): ID!
-    bootstrapIndependentApprover(name:String!,email:String!,password:String!): ID!
-    requestRoleDefinition(name:String!,capabilities:String!,reason:String!): ID!
-    applyApprovedRoleDefinition(approvalId:ID!,name:String!,capabilities:String!): ID!
-    requestRoleGrant(userId:ID!,roleId:ID!,reason:String!): ID!
-    applyApprovedRoleGrant(approvalId:ID!,userId:ID!,roleId:ID!): ID!
-    requestRoleRevocation(userId:ID!,reason:String!): ID!
-    applyApprovedRoleRevocation(approvalId:ID!,userId:ID!,roleId:ID!): ID!
-    requestOperatorAdmission(name:String!,email:String!,roleId:ID!,reason:String!): ID!
-    applyApprovedOperatorAdmission(approvalId:ID!,name:String!,email:String!,roleId:ID!): ID!
-    requestSensitiveApproval(action:String!,payloadHash:String!,reason:String!): ID!
-    decideSensitiveApproval(approvalId:ID!,approve:Boolean!,reason:String!,payloadHash:String): Boolean!
-    dismissOperatorOnboarding: String!
-  }
-`;
-var sportsbookResolvers = {
-  Mutation: {
-    applySportsbookOnboarding: async (_root, args, context) => {
-      await requireUnscopedCapability(context, "canManageOnboarding");
-      if (typeof args.timezone !== "string" || !validTimeZone(args.timezone)) throw new Error("INVALID_TIMEZONE");
-      const fixture = buildOnboardingFixture(args);
-      const applied = await serializable2(context.prisma, async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${context.session.itemId} FOR UPDATE`;
-        const actor = await tx.user.findUnique({ where: { id: context.session.itemId }, include: { role: true } });
-        if (!actor?.role?.canManageOnboarding || !actor.operatorMfaEnabled) throw new Error("Not found");
-        if (actor.role.tenantId && actor.role.tenantId !== actor.tenantId) throw new Error("ONBOARDING_ROLE_TENANT_MISMATCH");
-        const existingTenant = await tx.tenant.findUnique({ where: { slug: args.slug } });
-        if (actor.tenantId) {
-          if (!existingTenant || existingTenant.id !== actor.tenantId) throw new Error("ONBOARDING_TENANT_MISMATCH");
-        } else if (existingTenant) throw new Error("ONBOARDING_SLUG_UNAVAILABLE");
-        if (existingTenant) {
-          const operatorStage = await tx.onboardingProgress.findFirst({ where: { tenantId: existingTenant.id, stage: "OPERATOR" } }), manifest = operatorStage?.details?.manifest;
-          if (!manifest?.fixtureHash) throw new Error("ONBOARDING_SETUP_UNVERIFIABLE");
-          if (manifest.fixtureHash !== fixture.fixtureHash) throw new Error("ONBOARDING_CONFLICT");
-        }
-        if (existingTenant && (existingTenant.name !== args.operatorName || existingTenant.defaultTimezone !== args.timezone)) throw new Error("ONBOARDING_CONFLICT");
-        const tenant4 = existingTenant ?? await tx.tenant.create({ data: { name: args.operatorName, slug: args.slug, status: "ACTIVE", defaultTimezone: args.timezone } });
-        const existingBrand = await tx.brand.findFirst({ where: { tenantId: tenant4.id } });
-        if (existingBrand && (existingBrand.domain !== args.domain || existingBrand.name !== args.brandName)) throw new Error("ONBOARDING_CONFLICT");
-        const brand = existingBrand ?? await tx.brand.create({ data: { tenantId: tenant4.id, name: args.brandName, domain: args.domain, defaultLocale: "en", logoIcon: DEFAULT_STORE_LOGO_ICON, logoColor: DEFAULT_STORE_LOGO_COLOR, status: "ACTIVE" } });
-        const jurisdiction = await tx.jurisdiction.upsert({ where: { code: args.jurisdictionCode }, create: { code: args.jurisdictionCode, authority: "UNCONFIGURED", status: "PENDING" }, update: {} });
-        if (!await tx.operatorJurisdiction.findFirst({ where: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id } })) await tx.operatorJurisdiction.create({ data: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id, licenseReference: "EXTERNAL-GATE", policyVersion: "sandbox-v1", status: "PENDING" } });
-        const operatorJurisdiction = await tx.operatorJurisdiction.findFirst({ where: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id } });
-        const onboardingUser = await tx.user.update({ where: { id: context.session.itemId }, data: { tenantId: tenant4.id, onboardingStatus: "in_progress" } });
-        if (onboardingUser.roleId) await tx.role.updateMany({ where: { id: onboardingUser.roleId, OR: [{ tenantId: null }, { tenantId: tenant4.id }] }, data: { tenantId: tenant4.id } });
-        const legalEntity = await tx.legalEntity.findFirst({ where: { tenantId: tenant4.id, registrationReference: "EXTERNAL-GATE" } }) ?? await tx.legalEntity.create({ data: { tenantId: tenant4.id, name: `${args.operatorName} legal entity`, countryCode: "UNCONFIGURED", registrationReference: "EXTERNAL-GATE", status: "PENDING" } });
-        const currency = await tx.currencyDefinition.findUnique({ where: { code: args.currency } }) ?? await tx.currencyDefinition.create({ data: { code: args.currency, exponent: args.currencyExponent, name: `${args.currency} sandbox currency`, status: "ACTIVE" } });
-        if (Number(currency.exponent) !== Number(args.currencyExponent)) throw new Error("CURRENCY_EXPONENT_CONFLICT");
-        if (currency.status !== "ACTIVE") throw new Error("CURRENCY_NOT_ACTIVE");
-        if (!await tx.tenantCurrency.findFirst({ where: { tenantId: tenant4.id, currencyId: currency.id } })) await tx.tenantCurrency.create({ data: { tenantId: tenant4.id, currencyId: currency.id, depositsEnabled: true, withdrawalsEnabled: true, wageringEnabled: true, defaultForBrand: true, status: "ACTIVE" } });
-        if (!await tx.brandLocale.findFirst({ where: { tenantId: tenant4.id, brandId: brand.id, locale: "en-US" } })) await tx.brandLocale.create({ data: { tenantId: tenant4.id, brandId: brand.id, locale: "en-US", language: "en", timezone: args.timezone, termsVersion: "sandbox-full-v1", termsContentHash: evidenceHash({ type: "TERMS", version: "sandbox-full-v1" }), default: true, status: "ACTIVE" } });
-        if (!await tx.operatorChannel.findFirst({ where: { tenantId: tenant4.id, key: "sandbox-web" } })) await tx.operatorChannel.create({ data: { tenantId: tenant4.id, legalEntityId: legalEntity.id, operatorJurisdictionId: operatorJurisdiction.id, brandId: brand.id, key: "sandbox-web", type: "WEB", status: "PENDING", capabilities: { mode: "sandbox", productionBlocked: true } } });
-        for (const [key2, value, type] of [["currency", args.currency, "STRING"], ["currencyExponent", args.currencyExponent, "INTEGER"], ["houseRules", { straightFixedOdds: true, inPlay: true, parlay: true, system: true, roundRobin: true, teaser: true, eachWay: true, cashOut: true, partialAcceptance: true }, "JSON"], ["maxStakeMinor", "100000", "MONEY"], ["maxPayoutMinor", "1000000", "MONEY"], ["liveDelayMs", 3e3, "INTEGER"], ["minimumAge", 18, "INTEGER"], ["priceChangeConsent", ["EXACT", "ACCEPT_BETTER", "ACCEPT_WITHIN_TOLERANCE"], "JSON"]]) if (!await tx.configValue.findFirst({ where: { tenantId: tenant4.id, key: key2 } })) await tx.configValue.create({ data: { tenantId: tenant4.id, key: key2, value, valueType: type, scopeType: "TENANT", scopeId: tenant4.id, policyVersion: "sandbox-full-v1", effectiveFrom: /* @__PURE__ */ new Date() } });
-        for (const [key2, valueType, mergeStrategy, description] of [["maxStakeMinor", "MONEY", "MIN", "Maximum accepted stake"], ["maxPayoutMinor", "MONEY", "MIN", "Maximum contractual payout"], ["liveDelayMs", "INTEGER", "MAX", "Minimum live acceptance delay"], ["wagerStructures", "JSON", "DENY_WINS", "Permitted wager structures"], ["minimumAge", "INTEGER", "MAX", "Minimum customer age"]]) if (!await tx.configDefinition.findFirst({ where: { tenantId: tenant4.id, key: key2 } })) await tx.configDefinition.create({ data: { tenantId: tenant4.id, key: key2, valueType, mergeStrategy, allowedScopes: ["TENANT", "JURISDICTION", "BRAND"], validationSchema: { mode: "sandbox" }, secret: false, description } });
-        if (!await tx.jurisdictionPolicyVersion.findFirst({ where: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id, version: 1 } })) await tx.jurisdictionPolicyVersion.create({ data: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id, version: 1, authorityCitation: "UNCONFIGURED-EXTERNAL-GATE", policyDocument: { mode: "sandbox", productionActivation: false }, effectiveFrom: /* @__PURE__ */ new Date(), status: "DRAFT", evidenceHash: evidenceHash({ jurisdiction: args.jurisdictionCode, mode: "sandbox" }) } });
-        for (const rule of [{ name: "sandbox-comprehensive", sportKey: "", rules: { structures: ["STRAIGHT", "PARLAY", "SYSTEM", "ROUND_ROBIN", "TEASER", "EACH_WAY"], cashOut: true, deadHeat: true, push: true, void: true, partialAcceptance: true } }, { name: "teaser:6", sportKey: "football", rules: { points: "6", decimalOdds: "1.91", approvedFor: ["spread", "total"] } }]) if (!await tx.houseRuleVersion.findFirst({ where: { tenantId: tenant4.id, name: rule.name, version: 1 } })) await tx.houseRuleVersion.create({ data: { tenantId: tenant4.id, name: rule.name, version: 1, sportKey: rule.sportKey, marketDefinitionKey: "", rules: rule.rules, semanticHash: evidenceHash(rule), effectiveFrom: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
-        for (const flag of [{ key: "sandbox.full-wagering", description: "Local comprehensive wager structures" }, { key: "sandbox.cashout", description: "Local deterministic cash-out" }, { key: "sandbox.promotions", description: "Local restricted-value promotions" }]) if (!await tx.featureFlag.findFirst({ where: { tenantId: tenant4.id, key: flag.key, scopeType: "TENANT", scopeId: tenant4.id } })) await tx.featureFlag.create({ data: { tenantId: tenant4.id, key: flag.key, description: flag.description, enabled: true, scopeType: "TENANT", scopeId: tenant4.id, safeDefault: false, ownerId: context.session.itemId } });
-        for (const p of fixture.providers) if (!await tx.providerConnection.findFirst({ where: { tenantId: tenant4.id, adapterId: p.adapterId } })) await tx.providerConnection.create({ data: { tenantId: tenant4.id, adapterId: p.adapterId, adapterVersion: "1.0.0", configReference: `sandbox:${p.kind}`, capabilities: { kind: p.kind }, certificationStatus: "SANDBOX", status: "ACTIVE" } });
-        const region = await tx.region.findFirst({ where: { tenantId: tenant4.id, key: "sandbox-global" } }) ?? await tx.region.create({ data: { tenantId: tenant4.id, key: "sandbox-global", name: "Sandbox global region", countryCodes: ["XX"], status: "ACTIVE" } });
-        const sport = await tx.sport.findFirst({ where: { tenantId: tenant4.id, key: "football" } }) ?? await tx.sport.create({ data: { tenantId: tenant4.id, key: "football", name: "Football", active: true } });
-        const competition = await tx.competition.findFirst({ where: { tenantId: tenant4.id, key: "sandbox-league" } }) ?? await tx.competition.create({ data: { tenantId: tenant4.id, sportId: sport.id, regionId: region.id, key: "sandbox-league", name: "Sandbox League", timezone: args.timezone, status: "ACTIVE" } });
-        if (!await tx.season.findFirst({ where: { tenantId: tenant4.id, competitionId: competition.id, key: "sandbox-2026" } })) await tx.season.create({ data: { tenantId: tenant4.id, competitionId: competition.id, key: "sandbox-2026", name: "Sandbox 2026", startsAt: new Date(Date.now() - 30 * 864e5), endsAt: new Date(Date.now() + 180 * 864e5), status: "ACTIVE" } });
-        for (const definition of [{ key: "match-result", name: "Match result", family: "MATCH_RESULT" }, { key: "moneyline", name: "Moneyline", family: "MONEYLINE" }, { key: "spread", name: "Point spread", family: "SPREAD" }, { key: "total", name: "Total", family: "TOTAL" }]) if (!await tx.marketDefinition.findFirst({ where: { tenantId: tenant4.id, key: definition.key, version: 1 } })) await tx.marketDefinition.create({ data: { tenantId: tenant4.id, key: definition.key, name: definition.name, sportKey: "*", parametersSchema: { line: definition.key === "spread" || definition.key === "total" }, gradingRuleFamily: definition.family, allowedPhases: ["PREMATCH", "LIVE"], status: "ACTIVE", version: 1 } });
-        if (!await tx.limitProfile.findFirst({ where: { tenantId: tenant4.id, name: "Sandbox defaults" } })) await tx.limitProfile.create({ data: { tenantId: tenant4.id, name: "Sandbox defaults", version: 1, status: "ACTIVE", effectiveFrom: /* @__PURE__ */ new Date() } });
-        if (!await tx.safeguardingAccount.findFirst({ where: { tenantId: tenant4.id, accountReference: "sandbox-safeguarding" } })) await tx.safeguardingAccount.create({ data: { tenantId: tenant4.id, legalEntityId: legalEntity.id, accountReference: "sandbox-safeguarding", classification: "NOT_PROTECTED", currency: args.currency, status: "ACTIVE", disclosureVersion: "sandbox-only" } });
-        for (const policy of [{ recordClass: "AUDIT", days: 2555, mode: "PRESERVE" }, { recordClass: "CUSTOMER_SESSION", days: 30, mode: "DELETE" }, { recordClass: "GEO", days: 30, mode: "TOKENIZE" }]) if (!await tx.retentionPolicyVersion.findFirst({ where: { tenantId: tenant4.id, recordClass: policy.recordClass, version: 1 } })) await tx.retentionPolicyVersion.create({ data: { tenantId: tenant4.id, recordClass: policy.recordClass, version: 1, retentionDays: policy.days, archiveDays: 0, deletionMode: policy.mode, legalHoldWins: true, effectiveFrom: /* @__PURE__ */ new Date(), status: "ACTIVE", evidenceHash: evidenceHash(policy) } });
-        for (const job of [{ type: "PROVIDER_HEALTH", scopeId: tenant4.id, key: "onboarding-provider-health" }, { type: "EXPIRY", scopeId: tenant4.id, key: "onboarding-expiry" }, { type: "NOTIFICATION", scopeId: tenant4.id, key: "onboarding-notification" }]) if (!await tx.scheduledJob.findFirst({ where: { tenantId: tenant4.id, idempotencyKey: job.key } })) await tx.scheduledJob.create({ data: { tenantId: tenant4.id, type: job.type, scopeType: "TENANT", scopeId: job.scopeId, payload: { source: "onboarding" }, status: "SCHEDULED", dueAt: /* @__PURE__ */ new Date(), attempts: 0, maxAttempts: 10, idempotencyKey: job.key } });
-        for (const stage of ["OPERATOR", "BRAND", "POLICY", "PROVIDERS", "CATALOG", "GOVERNANCE", "FINANCE", "PROMOTIONS", "OPERATIONS"]) {
-          const progress = await tx.onboardingProgress.findFirst({ where: { tenantId: tenant4.id, stage } });
-          if (stage === "PROMOTIONS") {
-            const transition = prepareSandboxPromotionProgress(progress, fixture.fixtureHash);
-            if (transition.kind === "CREATE") await tx.onboardingProgress.create({ data: { tenantId: tenant4.id, stage, status: "PENDING", evidenceHash: transition.evidenceHash, details: { mode: "sandbox", promotionProvisioning: "PENDING" } } });
-            if (transition.kind === "RESET_PENDING") {
-              const reset = await tx.onboardingProgress.updateMany({ where: { id: progress.id, tenantId: tenant4.id, stage, status: "COMPLETE", evidenceHash: transition.previousEvidenceHash }, data: { status: "PENDING", evidenceHash: transition.evidenceHash, completedAt: null, details: { mode: "sandbox", promotionProvisioning: "PENDING" } } });
-              if (reset.count !== 1) throw new Error("ONBOARDING_PROMOTIONS_PROGRESS_STALE");
-            }
-          } else if (!progress) await tx.onboardingProgress.create({ data: { tenantId: tenant4.id, stage, status: "COMPLETE", evidenceHash: evidenceHash({ fixtureHash: fixture.fixtureHash, stage }), completedAt: /* @__PURE__ */ new Date(), details: stage === "OPERATOR" ? { mode: "sandbox", manifest: { fixtureHash: fixture.fixtureHash, actorId: context.session.itemId, input: { slug: args.slug, operatorName: args.operatorName, brandName: args.brandName, domain: args.domain, currency: args.currency, currencyExponent: args.currencyExponent, jurisdictionCode: args.jurisdictionCode, timezone: args.timezone }, tenantId: tenant4.id, brandId: brand.id, currencyId: currency.id, jurisdictionId: jurisdiction.id } } : { mode: "sandbox" } } });
-        }
-        for (const stage of ["LICENSING", "CERTIFICATION"]) {
-          const progress = await tx.onboardingProgress.findFirst({ where: { tenantId: tenant4.id, stage } });
-          if (!progress) await tx.onboardingProgress.create({ data: { tenantId: tenant4.id, stage, status: "BLOCKED", evidenceHash: evidenceHash({ fixtureHash: fixture.fixtureHash, stage, external: true }), details: { externalGate: true } } });
-        }
-        await appendAudit(tx, tenant4.id, context.session.itemId, "operator.onboarded", "Tenant", tenant4.id, "SANDBOX_ONBOARDING", { fixtureHash: fixture.fixtureHash, brandId: brand.id });
-        return { tenantId: tenant4.id, brandId: brand.id };
-      });
-      await ensurePromotionsThenComplete(
-        () => ensureSandboxPromotions(context.prisma, applied.tenantId),
-        async () => {
-          const completeHash = evidenceHash({ fixtureHash: fixture.fixtureHash, stage: "PROMOTIONS" });
-          const pendingHash = evidenceHash({ fixtureHash: fixture.fixtureHash, stage: "PROMOTIONS", provisioning: "PENDING" });
-          const completed = await context.prisma.onboardingProgress.updateMany({ where: { tenantId: applied.tenantId, stage: "PROMOTIONS", status: "PENDING", evidenceHash: pendingHash }, data: { status: "COMPLETE", evidenceHash: completeHash, completedAt: /* @__PURE__ */ new Date(), details: { mode: "sandbox" } } });
-          if (completed.count === 1) return;
-          const existing = await context.prisma.onboardingProgress.findFirst({ where: { tenantId: applied.tenantId, stage: "PROMOTIONS", status: "COMPLETE", evidenceHash: completeHash }, select: { id: true } });
-          if (!existing) throw new Error("ONBOARDING_PROMOTIONS_PROGRESS_NOT_PENDING");
-        }
-      );
-      await context.prisma.user.updateMany({ where: { id: context.session.itemId, tenantId: applied.tenantId }, data: { onboardingStatus: "completed" } });
-      return { version: fixture.version, fixtureHash: fixture.fixtureHash, payload: JSON.stringify({ ...fixture, fullProduct: { tenantId: applied.tenantId, brandId: applied.brandId, structures: ["STRAIGHT", "PARLAY", "SYSTEM", "ROUND_ROBIN", "TEASER", "EACH_WAY"], cashOut: true, promotions: true, inPlay: true } }) };
-    },
-    createCatalogEvent: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canTrade");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canTrade");
-        const competition = await tx.competition.findFirst({ where: { id: a.competitionId, tenantId } });
-        if (!competition) throw new Error("Not found");
-        const startAt = resolveOperatorInstant(a.startAt, await tenantTimeZone(tx, tenantId), "START_TIME");
-        let selections;
-        try {
-          selections = JSON.parse(a.selections);
-        } catch {
-          throw new Error("INVALID_SELECTIONS");
-        }
-        if (!Array.isArray(selections) || selections.length < 2 || selections.some((x) => !String(x?.key ?? "").trim() || !String(x?.label ?? "").trim()) || new Set(selections.map((x) => String(x.key).trim())).size !== selections.length) throw new Error("INVALID_SELECTIONS");
-        const definition = await tx.marketDefinition.findFirst({ where: { tenantId, key: a.marketDefinition, status: "ACTIVE" }, orderBy: { version: "desc" } });
-        if (!definition) throw new Error("MARKET_DEFINITION_NOT_ACTIVE");
-        const duplicate = await tx.event.findFirst({ where: { tenantId, externalKey: a.externalKey } });
-        if (duplicate) throw new Error("EXTERNAL_KEY_EXISTS");
-        const event = await tx.event.create({ data: { tenantId, competitionId: competition.id, externalKey: a.externalKey, name: a.name, startAt, status: "SCHEDULED", version: 1 } });
-        const market = await tx.market.create({ data: { tenantId, eventId: event.id, definitionId: definition.id, definitionKey: definition.key, parameters: {}, tradingMode: "PREMATCH", cashOutEnabled: true, status: "SUSPENDED", version: 1 } });
-        await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "MARKET", scopeId: market.id, fromStatus: AWAITING_PRICES, toStatus: "SUSPENDED", reason: "Awaiting prices", source: "CATALOG", actorId: context.session.itemId, effectiveAt: /* @__PURE__ */ new Date() } });
-        await tx.selection.createMany({ data: selections.map((selection) => ({ tenantId, marketId: market.id, key: String(selection.key), label: String(selection.label), status: "OPEN" })) });
-        await appendAudit(tx, tenantId, context.session.itemId, "catalog.event_created", "Event", event.id, "OPERATOR_ENTRY", { competitionId: competition.id, marketId: market.id, definitionId: definition.id, externalKey: a.externalKey, selections });
-        return event.id;
-      });
-    },
-    /** Trader pricing: one decimal price per selection of a market, sequenced and enveloped by the server. */
-    setMarketPrices: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canTrade");
-      let prices;
-      try {
-        prices = JSON.parse(a.prices);
-      } catch {
-        throw new Error("INVALID_PRICES");
-      }
-      if (!prices || typeof prices !== "object" || Array.isArray(prices)) throw new Error("INVALID_PRICES");
-      const entries = Object.entries(prices).map(([selectionId, odds]) => [selectionId, String(odds ?? "").trim()]).filter(([, odds]) => odds !== "");
-      if (!entries.length || entries.length > 50) throw new Error("INVALID_PRICES");
-      for (const [, odds] of entries) {
-        if (!/^\d{1,4}(\.\d{1,4})?$/.test(odds) || Number(odds) <= 1) throw new Error("INVALID_DECIMAL_ODDS");
-      }
-      const line = typeof a.line === "string" ? a.line.trim().slice(0, 32) : "";
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canTrade");
-        const market = await tx.market.findFirst({ where: { id: a.marketId, tenantId }, select: { id: true, status: true } });
-        const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-sports", certificationStatus: "SANDBOX", status: "ACTIVE" } });
-        if (!market || !provider) throw new Error("Not found");
-        if (!["OPEN", "SUSPENDED"].includes(market.status)) throw new Error("MARKET_NOT_TRADING");
-        const now = /* @__PURE__ */ new Date();
-        for (const [selectionId, decimalOdds] of entries) {
-          const selection = await tx.selection.findFirst({ where: { id: selectionId, tenantId, marketId: market.id }, select: { id: true } });
-          if (!selection) throw new Error("SELECTION_NOT_IN_MARKET");
-          const latest = await tx.priceSnapshot.findFirst({ where: { tenantId, selectionId }, orderBy: { receivedAt: "desc" }, select: { sequence: true } });
-          const sequence = String((Number.parseInt(latest?.sequence ?? "0", 10) || 0) + 1);
-          const payload = { source: "TRADER", marketId: market.id, selectionId, decimalOdds, line, sequence, actorId: context.session.itemId };
-          const envelope = await tx.rawEnvelope.create({ data: { tenantId, providerConnectionId: provider.id, direction: "INBOUND", externalId: `trader:${(0, import_node_crypto5.randomUUID)()}`, schemaVersion: "sandbox.v1", payload, payloadHash: evidenceHash(payload), receivedAt: now } });
-          await tx.priceSnapshot.create({ data: { tenantId, selectionId, providerConnectionId: provider.id, decimalOdds, line, sequence, effectiveAt: now, receivedAt: now, rawEnvelopeId: envelope.id, status: "OPEN" } });
-        }
-        await appendAudit(tx, tenantId, context.session.itemId, "market.priced", "Market", market.id, "TRADER_PRICE", { selections: entries.length });
-        return entries.length;
-      });
-    },
-    ingestSandboxPrice: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canTrade");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canTrade");
-        const selection = await tx.selection.findFirst({ where: { id: a.selectionId, tenantId } });
-        const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-sports", certificationStatus: "SANDBOX", status: "ACTIVE" } });
-        if (!selection || !provider) throw new Error("Not found");
-        const envelope = await tx.rawEnvelope.create({ data: { tenantId, providerConnectionId: provider.id, direction: "INBOUND", externalId: a.externalId, schemaVersion: "sandbox.v1", payload: a, payloadHash: evidenceHash(a), receivedAt: /* @__PURE__ */ new Date() } }).catch(async () => null);
-        await tx.priceSnapshot.create({ data: { tenantId, selectionId: a.selectionId, providerConnectionId: provider.id, decimalOdds: a.decimalOdds, line: a.line || "", sequence: a.sequence, effectiveAt: /* @__PURE__ */ new Date(), receivedAt: /* @__PURE__ */ new Date(), rawEnvelopeId: envelope?.id, status: "OPEN" } });
-        return true;
-      });
-    },
-    setMarketStatus: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canTrade");
-      if (!["OPEN", "SUSPENDED", "CLOSED"].includes(a.status)) throw new Error("INVALID_MARKET_STATUS");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canTrade");
-        const market = await tx.market.findFirst({ where: { id: a.marketId, tenantId }, include: { event: { select: { status: true } } } });
-        if (!market) throw new Error("Not found");
-        if (Number(market.version ?? 1) !== Number(a.expectedVersion) || market.status !== a.expectedStatus) throw new Error("STALE_MARKET_REVIEW_REFRESH_REQUIRED");
-        if (a.status === "OPEN" && market.status === "SUSPENDED") {
-          const changes = await tx.tradingStatusChange.findMany({ where: { tenantId, scopeType: "MARKET", scopeId: market.id }, select: { fromStatus: true, toStatus: true } });
-          const selections = await tx.selection.findMany({ where: { tenantId, marketId: market.id }, select: { id: true } });
-          let unpricedSelections = 0;
-          for (const selection of selections) {
-            if (!await tx.priceSnapshot.findFirst({ where: { tenantId, selectionId: selection.id, status: "OPEN" }, select: { id: true } })) unpricedSelections++;
-          }
-          assertMarketFirstOpenAllowed({ eventStatus: market.event?.status, createdAwaitingPrices: changes.some((change) => change.fromStatus === AWAITING_PRICES), everOpened: changes.some((change) => change.toStatus === "OPEN"), unpricedSelections, selections: selections.length });
-        } else if (a.status === "OPEN") assertMarketOpenAllowed(market.status, market.event?.status);
-        if (market.status === a.status) throw new Error(`MARKET_ALREADY_${a.status}`);
-        const updated = await tx.market.updateMany({ where: { id: market.id, tenantId, status: market.status, version: market.version }, data: { status: a.status, version: Number(market.version ?? 0) + 1 } });
-        if (updated.count !== 1) throw new Error("STALE_MARKET_STATE");
-        await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "MARKET", scopeId: market.id, fromStatus: market.status, toStatus: a.status, reason: a.reason, source: "OPERATOR", actorId: context.session.itemId, effectiveAt: /* @__PURE__ */ new Date() } });
-        await appendAudit(tx, tenantId, context.session.itemId, `market.${String(a.status).toLowerCase()}`, "Market", market.id, a.reason, { from: market.status, to: a.status });
-        return true;
-      });
-    },
-    ingestSandboxResult: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canTrade");
-      let payload;
-      try {
-        payload = JSON.parse(a.payload);
-      } catch {
-        throw new Error("INVALID_CANONICAL_RESULT");
-      }
-      const canonical2 = parseCanonicalSelectionFacts(payload, a.eventId);
-      const payloadHash = evidenceHash(payload);
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canTrade");
-        const event = await tx.event.findFirst({ where: { id: a.eventId, tenantId } });
-        const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-results", certificationStatus: "SANDBOX", status: "ACTIVE" } });
-        if (!event || !provider) throw new Error("Not found");
-        if (event.status === "CANCELLED" || new Date(event.startAt).getTime() > Date.now()) throw new Error("EVENT_NOT_STARTED");
-        for (const fact of canonical2.facts) {
-          const market = await tx.market.findFirst({ where: { id: fact.marketKey, tenantId, eventId: event.id } });
-          if (market?.status === "OPEN") throw new Error("MARKET_STILL_OPEN");
-          const selections = market ? await tx.selection.findMany({ where: { tenantId, marketId: market.id, key: fact.selectionKey }, take: 2 }) : [];
-          if (!market || selections.length !== 1) throw new Error("CANONICAL_RESULT_SUBJECT_SCOPE_MISMATCH");
-        }
-        const latest = await tx.resultVersion.findFirst({ where: { tenantId, eventId: event.id }, orderBy: { version: "desc" } });
-        const result = await tx.resultVersion.create({ data: { tenantId, eventId: event.id, providerConnectionId: provider.id, version: (latest?.version ?? 0) + 1, status: "PENDING", payload, payloadHash } });
-        await appendAudit(tx, tenantId, context.session.itemId, "result.entered", "ResultVersion", result.id, "PENDING_INDEPENDENT_APPROVAL", { eventId: event.id, payloadHash, version: result.version });
-        return result.id;
-      });
-    },
-    requestResultApproval: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canTrade");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canTrade");
-        const result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "PENDING" } });
-        if (!result) throw new Error("Not found");
-        const payloadHash = resultApprovalHash(result);
-        if (await tx.approvalRequest.findFirst({ where: { tenantId, action: "APPROVE_RESULT", payloadHash, status: { in: ["PENDING", "APPROVED"] } }, select: { id: true } })) throw new Error("APPROVAL_ALREADY_REQUESTED");
-        const event = await tx.event.findFirst({ where: { id: result.eventId, tenantId }, select: { name: true, startAt: true, status: true, competition: { select: { name: true } } } });
-        const approval = await tx.approvalRequest.create({ data: { tenantId, action: "APPROVE_RESULT", payloadHash, ...approvalReview({ action: "APPROVE_RESULT", resultVersionId: result.id, version: result.version, eventId: result.eventId, eventName: event?.name ?? null, competition: event?.competition?.name ?? null, eventStartAt: event?.startAt ?? null, eventStatus: event?.status ?? null, providerConnectionId: result.providerConnectionId, result: result.payload, resultPayloadHash: result.payloadHash }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-        await appendAudit(tx, tenantId, context.session.itemId, "result.approval_requested", "ResultVersion", result.id, a.reason, { approvalId: approval.id, payloadHash });
-        return approval.id;
-      });
-    },
-    // A pending version the operator will not apply leaves the queue as REJECTED; its open approval requests lapse with it.
-    withdrawResultVersion: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canTrade");
-      const reason = String(a.reason ?? "").trim();
-      if (!reason) throw new Error("REASON_REQUIRED");
-      return context.prisma.$transaction(async (tx) => {
-        const actorId = await assertCurrentActor(tx, context, tenantId, "canTrade");
-        const result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "PENDING" } });
-        if (!result) throw new Error("RESULT_NOT_PENDING");
-        const updated = await tx.resultVersion.updateMany({ where: { id: result.id, tenantId, status: "PENDING" }, data: { status: "REJECTED" } });
-        if (updated.count !== 1) throw new Error("RESULT_NOT_PENDING");
-        let payloadHash = null;
-        try {
-          payloadHash = resultApprovalHash(result);
-        } catch {
-        }
-        if (payloadHash) await tx.approvalRequest.updateMany({ where: { tenantId, action: "APPROVE_RESULT", payloadHash, status: "PENDING" }, data: { status: "EXPIRED", decidedAt: /* @__PURE__ */ new Date() } });
-        await appendAudit(tx, tenantId, actorId, "result.withdrawn", "ResultVersion", result.id, reason, { payloadHash });
-        return true;
-      });
-    },
-    approveResultVersion: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRisk");
-      return serializable2(context.prisma, async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageRisk");
-        let result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "PENDING" } });
-        if (!result) throw new Error("Not found");
-        await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${result.eventId} AND tenant = ${tenantId} FOR UPDATE`;
-        await tx.$queryRaw`SELECT id FROM "ResultVersion" WHERE id = ${result.id} AND tenant = ${tenantId} FOR UPDATE`;
-        await requireTenant({ ...context, prisma: tx }, "canManageRisk");
-        result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "PENDING" } });
-        if (!result) throw new Error("STALE_RESULT_STATE");
-        const resultEvent = await tx.event.findFirst({ where: { id: result.eventId, tenantId }, select: { startAt: true, status: true } });
-        if (!resultEvent || resultEvent.status === "CANCELLED" || new Date(resultEvent.startAt).getTime() > Date.now()) throw new Error("EVENT_NOT_STARTED");
-        const payloadHash = resultApprovalHash(result);
-        const approval = await tx.approvalRequest.findFirst({ where: { id: a.approvalId, tenantId, action: "APPROVE_RESULT", payloadHash, status: "APPROVED" } });
-        if (!approval || !approval.approverId || approval.approverId === approval.requesterId) throw new Error("DUAL_CONTROL_REQUIRED");
-        if (approval.expiresAt && new Date(approval.expiresAt) <= /* @__PURE__ */ new Date()) throw new Error("APPROVAL_EXPIRED");
-        await tx.resultVersion.updateMany({ where: { tenantId, eventId: result.eventId, status: "APPROVED" }, data: { status: "SUPERSEDED" } });
-        await tx.resultVersion.update({ where: { id: result.id }, data: { status: "APPROVED", approvedAt: /* @__PURE__ */ new Date() } });
-        await emit(tx, tenantId, "EVENT", result.eventId, "settlement.requested", { resultVersionId: result.id, reason: a.reason });
-        await appendAudit(tx, tenantId, context.session.itemId, "result.approved", "ResultVersion", result.id, a.reason, { approvalId: approval.id, payloadHash });
-        return true;
-      });
-    },
-    suspendMarket: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canTrade");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canTrade");
-        const m = await tx.market.findFirst({ where: { id: a.marketId, tenantId } });
-        if (!m) throw new Error("Not found");
-        await tx.market.update({ where: { id: m.id }, data: { status: "SUSPENDED", version: { increment: 1 } } });
-        await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "MARKET", scopeId: m.id, fromStatus: m.status, toStatus: "SUSPENDED", reason: a.reason, source: "OPERATOR", actorId: context.session.itemId, effectiveAt: /* @__PURE__ */ new Date() } });
-        await appendAudit(tx, tenantId, context.session.itemId, "market.suspended", "Market", m.id, a.reason, { from: m.status, to: "SUSPENDED" });
-        return true;
-      });
-    },
-    gradeMarket: async (_r, _a, context) => {
-      await requireTenant(context, "canManageRisk");
-      throw new Error("SELECTION_RESULT_REQUIRED");
-    },
-    gradeMarketSelection: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRisk");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageRisk");
-        await tx.$queryRaw`SELECT id FROM "Selection" WHERE id = ${a.selectionId} AND tenant = ${tenantId} FOR UPDATE`;
-        await tx.$queryRaw`SELECT id FROM "ResultVersion" WHERE id = ${a.resultVersionId} AND tenant = ${tenantId} FOR UPDATE`;
-        const selection = await tx.selection.findFirst({ where: { id: a.selectionId, tenantId }, include: { market: true } }), result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "APPROVED" } });
-        if (!selection?.market || !result || selection.market.id !== a.marketId || selection.market.eventId !== result.eventId) throw new Error("UNAPPROVED_OR_MISMATCHED_RESULT");
-        const fact = resolveCanonicalSelectionFact(result.payload, result.eventId, selection.market.id, selection.key);
-        if (!fact) throw new Error("CANONICAL_SELECTION_RESULT_REQUIRED");
-        const now = /* @__PURE__ */ new Date(), rule = await activeHouseRule(tx, tenantId, selection.market, now);
-        if (!rule) throw new Error("APPROVED_HOUSE_RULE_REQUIRED");
-        const ruleBody = rule.rules ?? {};
-        if (fact.outcome === "DEAD_HEAT" && ruleBody.deadHeat !== true || fact.outcome === "PUSH" && ruleBody.push !== true || fact.outcome === "VOID" && ruleBody.void !== true) throw new Error("OUTCOME_NOT_ALLOWED_BY_HOUSE_RULE");
-        const ruleVersion = `${rule.name}@${rule.version}`, inputHash = evidenceHash({ marketId: selection.market.id, selectionId: selection.id, resultVersionId: result.id, outcome: fact.outcome, factorNumerator: fact.factorNumerator ?? null, factorDenominator: fact.factorDenominator ?? null, ruleVersion, ruleHash: rule.semanticHash, resultHash: result.payloadHash });
-        const prior = await tx.marketGrade.findFirst({ where: { tenantId, inputHash } });
-        if (prior) return prior.id;
-        const grade = await tx.marketGrade.create({ data: { tenantId, marketId: selection.market.id, resultVersionId: result.id, ruleVersion, outcome: fact.outcome, factorNumerator: fact.factorNumerator ?? "", factorDenominator: fact.factorDenominator ?? "", trace: { selectionId: selection.id, selectionKey: selection.key, reason: a.reason, resultHash: result.payloadHash, factHash: evidenceHash(fact), ruleId: rule.id, ruleHash: rule.semanticHash }, inputHash } });
-        const legs = await tx.wagerLeg.findMany({ where: { tenantId, marketKey: selection.market.id, selectionKey: selection.id } });
-        const legGradeRows = (gradeId, rows) => rows.map((leg) => ({ tenantId, wagerLegId: leg.id, marketGradeId: gradeId, outcome: fact.outcome, factorNumerator: fact.factorNumerator ?? "", factorDenominator: fact.factorDenominator ?? "", inputHash: evidenceHash({ gradeId, legId: leg.id, selectionId: selection.id }) }));
-        const sameRuleLegs = legs.filter((leg) => leg.ruleVersion === ruleVersion);
-        if (sameRuleLegs.length) await tx.legGrade.createMany({ data: legGradeRows(grade.id, sameRuleLegs) });
-        const reviewRequiredLegIds = [];
-        for (const accepted of [...new Set(legs.filter((leg) => leg.ruleVersion !== ruleVersion).map((leg) => String(leg.ruleVersion ?? "")))]) {
-          const acceptedLegs = legs.filter((leg) => String(leg.ruleVersion ?? "") === accepted), match = /^(.+)@(\d+)$/.exec(accepted), acceptedRule = match ? await tx.houseRuleVersion.findFirst({ where: { tenantId, name: match[1], version: Number(match[2]) } }) : null, acceptedBody = acceptedRule?.rules ?? {};
-          if (!acceptedRule || !await approvedHouseRuleEvidence(tx, tenantId, acceptedRule) || fact.outcome === "DEAD_HEAT" && acceptedBody.deadHeat !== true || fact.outcome === "PUSH" && acceptedBody.push !== true || fact.outcome === "VOID" && acceptedBody.void !== true) {
-            reviewRequiredLegIds.push(...acceptedLegs.map((leg) => leg.id));
-            continue;
-          }
-          const acceptedInputHash = evidenceHash({ marketId: selection.market.id, selectionId: selection.id, resultVersionId: result.id, outcome: fact.outcome, factorNumerator: fact.factorNumerator ?? null, factorDenominator: fact.factorDenominator ?? null, ruleVersion: accepted, ruleHash: acceptedRule.semanticHash, resultHash: result.payloadHash });
-          if (await tx.marketGrade.findFirst({ where: { tenantId, inputHash: acceptedInputHash } })) continue;
-          const acceptedGrade = await tx.marketGrade.create({ data: { tenantId, marketId: selection.market.id, resultVersionId: result.id, ruleVersion: accepted, outcome: fact.outcome, factorNumerator: fact.factorNumerator ?? "", factorDenominator: fact.factorDenominator ?? "", trace: { selectionId: selection.id, selectionKey: selection.key, reason: a.reason, resultHash: result.payloadHash, factHash: evidenceHash(fact), ruleId: acceptedRule.id, ruleHash: acceptedRule.semanticHash }, inputHash: acceptedInputHash } });
-          await tx.legGrade.createMany({ data: legGradeRows(acceptedGrade.id, acceptedLegs) });
-        }
-        if (reviewRequiredLegIds.length) await appendAudit(tx, tenantId, context.session.itemId, "selection.grade_review_required", "Selection", selection.id, "ACCEPTED_RULE_UNRESOLVED", { resultVersionId: result.id, legIds: reviewRequiredLegIds });
-        const selections = await tx.selection.findMany({ where: { tenantId, marketId: selection.market.id }, select: { id: true } }), grades = await tx.marketGrade.findMany({ where: { tenantId, marketId: selection.market.id, resultVersionId: result.id }, select: { trace: true } }), gradedIds = new Set(grades.map((item) => String(item.trace?.selectionId ?? ""))), complete = selections.length > 0 && selections.every((item) => gradedIds.has(item.id));
-        await tx.market.update({ where: { id: selection.market.id }, data: { status: complete ? "GRADED" : "SUSPENDED", version: { increment: 1 } } });
-        await appendAudit(tx, tenantId, context.session.itemId, "selection.graded", "Selection", selection.id, a.reason, { gradeId: grade.id, marketId: selection.market.id, resultVersionId: result.id, outcome: fact.outcome, ruleVersion, inputHash, complete });
-        return grade.id;
-      });
-    },
-    createRiskLimit: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRisk");
-      positiveMoney(a.maxStakeMinor, "MAX_STAKE");
-      positiveMoney(a.maxPayoutMinor, "MAX_PAYOUT");
-      positiveMoney(a.maxLiabilityMinor, "MAX_LIABILITY");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageRisk");
-        const profile = await tx.limitProfile.findFirst({ where: { id: a.profileId, tenantId, status: "ACTIVE" } });
-        if (!profile) throw new Error("Not found");
-        const scopeType = String(a.scopeType || ""), scopeId = String(a.scopeId || "").trim();
-        if (!["TENANT", "MARKET", "EVENT", "PLAYER"].includes(scopeType)) throw new Error("INVALID_LIMIT_SCOPE_TYPE");
-        if (scopeType === "TENANT") {
-          if (scopeId && scopeId !== tenantId) throw new Error("TENANT_SCOPE_TAKES_NO_TARGET");
-        } else {
-          if (!scopeId) throw new Error("LIMIT_SCOPE_TARGET_REQUIRED");
-          const target = scopeType === "MARKET" ? await tx.market.findFirst({ where: { id: scopeId, tenantId }, select: { id: true } }) : scopeType === "EVENT" ? await tx.event.findFirst({ where: { id: scopeId, tenantId }, select: { id: true } }) : await tx.player.findFirst({ where: { id: scopeId, tenantId }, select: { id: true } });
-          if (!target) throw new Error("LIMIT_SCOPE_TARGET_NOT_FOUND");
-        }
-        const currency = await tx.tenantCurrency.findFirst({ where: { tenantId, status: "ACTIVE", currency: { code: String(a.currency || "") } }, select: { id: true } });
-        if (!currency) throw new Error("LIMIT_CURRENCY_NOT_CONFIGURED");
-        const rule = await tx.limitRule.create({ data: { tenantId, profileId: profile.id, scopeType, scopeId: scopeType === "TENANT" ? "" : scopeId, maxStakeMinor: a.maxStakeMinor, maxPayoutMinor: a.maxPayoutMinor, maxLiabilityMinor: a.maxLiabilityMinor, currency: a.currency, priority: 100 } });
-        await appendAudit(tx, tenantId, context.session.itemId, "risk.limit_created", "LimitRule", rule.id, "OPERATOR_ACTION", { profileId: profile.id, scopeType: a.scopeType, scopeId: a.scopeId });
-        return rule.id;
-      });
-    },
-    openWagerInvestigation: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRisk");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageRisk");
-        const wager = await tx.wager.findFirst({ where: { id: a.wagerId, tenantId } });
-        if (!wager) throw new Error("Not found");
-        const dispute = await tx.dispute.create({ data: { tenantId, playerId: wager.playerId, wagerId: wager.id, category: a.category, status: "INVESTIGATING", evidence: { reason: a.reason, openedBy: context.session.itemId } } });
-        await tx.disputeEvent.create({ data: { tenantId, disputeId: dispute.id, type: "INVESTIGATION_OPENED", actorId: context.session.itemId, evidenceHash: evidenceHash({ wagerId: wager.id, reason: a.reason }), details: { reason: a.reason } } });
-        await appendAudit(tx, tenantId, context.session.itemId, "wager.investigation_opened", "Wager", wager.id, a.reason, { disputeId: dispute.id, category: a.category });
-        return dispute.id;
-      });
-    },
-    sandboxPayment: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageFinance");
-      if (!["DEPOSIT", "WITHDRAWAL"].includes(a.type)) throw new Error("INVALID_PAYMENT");
-      positiveMoney(String(a.amountMinor ?? ""), "PAYMENT_AMOUNT");
-      if (!/^[A-Za-z0-9:_-]{8,128}$/.test(String(a.idempotencyKey ?? ""))) throw new Error("INVALID_IDEMPOTENCY_KEY");
-      const actorId = context.session.itemId, deposit = a.type === "DEPOSIT", amount = BigInt(a.amountMinor);
-      const requestHash = evidenceHash({ action: "OPERATOR_SANDBOX_PAYMENT", tenantId, actorId, playerId: a.playerId, type: a.type, amountMinor: String(amount), currency: a.currency });
-      const prepared = await serializable2(context.prisma, async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageFinance");
-        const prior = await tx.paymentIntent.findFirst({ where: { tenantId, idempotencyKey: a.idempotencyKey }, include: { providerConnection: true } });
-        if (prior) {
-          if (prior.riskEvidence?.requestHash !== requestHash) throw new Error("IDEMPOTENCY_KEY_CONFLICT");
-          return { intent: prior, provider: prior.providerConnection, fresh: false };
-        }
-        const player = await tx.player.findFirst({ where: { id: a.playerId, tenantId } });
-        if (!player) throw new Error("Not found");
-        const enabled = (await tx.tenantCurrency.findMany({ where: { tenantId, status: "ACTIVE" }, include: { currency: true } })).find((row) => row.currency?.code === a.currency && row.currency?.status === "ACTIVE" && (deposit ? row.depositsEnabled : row.withdrawalsEnabled));
-        if (!enabled) throw new Error("PAYMENT_CURRENCY_UNAVAILABLE");
-        const accounts = await accountMap(tx, tenantId, a.playerId, a.currency);
-        const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-payments", status: "ACTIVE" }, orderBy: [{ failoverPriority: "asc" }, { createdAt: "asc" }, { id: "asc" }] });
-        if (!provider) throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
-        let holdId = null;
-        if (!deposit) {
-          const current = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
-          if (current) await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${current.id} FOR UPDATE`;
-          const projection = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
-          if (!projection || BigInt(projection.availableMinor) < amount) throw new Error("INSUFFICIENT_FUNDS");
-          holdId = (await tx.hold.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, purposeType: "WITHDRAWAL", purposeId: `operator:${a.idempotencyKey}`, amountMinor: String(amount), status: "ACTIVE", expiresAt: null, version: 1 } })).id;
-          await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, ...nextProjection(projection, reserveChange(amount)) } });
-        }
-        const intent = await tx.paymentIntent.create({ data: { tenantId, playerId: a.playerId, providerConnectionId: provider.id, holdId, type: a.type, amountMinor: String(amount), feeMinor: "0", currency: a.currency, idempotencyKey: a.idempotencyKey, status: "PROCESSING", riskEvidence: { mode: "SANDBOX", requestHash, actorId, provider: { connectionId: provider.id, adapterId: provider.adapterId, adapterVersion: provider.adapterVersion, configReference: provider.configReference, certificationStatus: provider.certificationStatus } } } });
-        await tx.paymentAttempt.create({ data: { tenantId, paymentIntentId: intent.id, attempt: 1, externalReference: "", status: "PENDING", reasonCode: "PREPARED" } });
-        await appendAudit(tx, tenantId, actorId, "payment.prepared", "PaymentIntent", intent.id, "SANDBOX_ADAPTER", { type: a.type, amountMinor: String(amount), currency: a.currency, holdId, providerConnectionId: provider.id });
-        return { intent, provider, fresh: true };
-      });
-      const settledStatus = (status3, id) => {
-        if (status3 === "SUCCEEDED") return id;
-        if (["PENDING", "PROCESSING", "UNKNOWN"].includes(status3 ?? "")) throw new Error(`PAYMENT_OUTCOME_UNKNOWN:${id}`);
-        throw new Error(`PAYMENT_${status3 ?? "FAILED"}:${id}`);
-      };
-      if (!["PENDING", "PROCESSING", "UNKNOWN"].includes(prepared.intent.status ?? "")) return settledStatus(prepared.intent.status, prepared.intent.id);
-      const outcome = await dispatchPinnedPayment(prepared.intent, prepared.provider, prepared.fresh);
-      const finalStatus = await serializable2(context.prisma, async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${prepared.intent.id} FOR UPDATE`;
-        const current = await tx.paymentIntent.findUnique({ where: { id: prepared.intent.id } });
-        if (!current) throw new Error("Not found");
-        if (!["PENDING", "PROCESSING", "UNKNOWN"].includes(current.status ?? "")) return current.status;
-        const accounts = await accountMap(tx, tenantId, current.playerId, current.currency), value = BigInt(current.amountMinor), isDeposit = current.type === "DEPOSIT", now = /* @__PURE__ */ new Date();
-        const lockProjection = async () => {
-          const latest = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
-          if (latest) await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${latest.id} FOR UPDATE`;
-          const locked = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
-          if (!locked) throw new Error("PAYMENT_LEDGER_UNAVAILABLE");
-          return locked;
-        };
-        let status3 = outcome.status;
-        if (status3 === "SUCCEEDED") {
-          const journal = await postJournal(tx, tenantId, { idempotencyKey: `payment:${current.idempotencyKey}`, type: current.type, entries: [{ accountId: accounts.PAYMENT_CLEARING.id, currency: current.currency, side: isDeposit ? "DEBIT" : "CREDIT", amount: value }, { accountId: accounts.PLAYER_CASH.id, currency: current.currency, side: isDeposit ? "CREDIT" : "DEBIT", amount: value }] }, current.id);
-          if (journal.replayed) throw new Error("JOURNAL_ALREADY_POSTED");
-          if (!isDeposit) {
-            const captured = await tx.hold.updateMany({ where: { id: current.holdId ?? "", tenantId, status: "ACTIVE" }, data: { status: "CAPTURED", version: { increment: 1 } } });
-            if (captured.count !== 1) throw new Error("WITHDRAWAL_HOLD_NOT_ACTIVE");
-          }
-          await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, ...nextProjection(await lockProjection(), isDeposit ? postedChange(value) : captureChange(value), now) } });
-        } else if (status3 === "FAILED") {
-          if (!isDeposit && current.holdId) {
-            const released = await tx.hold.updateMany({ where: { id: current.holdId, tenantId, status: "ACTIVE" }, data: { status: "RELEASED", version: { increment: 1 } } });
-            if (released.count === 1) await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, ...nextProjection(await lockProjection(), releaseChange(value), now) } });
-          }
-        } else status3 = "UNKNOWN";
-        await tx.paymentIntent.update({ where: { id: current.id }, data: { status: status3, completedAt: status3 === "UNKNOWN" ? null : now, ...outcome.externalRef ? { providerSessionReference: outcome.externalRef } : {} } });
-        const attempt = await tx.paymentAttempt.findFirst({ where: { tenantId, paymentIntentId: current.id }, orderBy: { attempt: "desc" } });
-        if (attempt) await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: status3, reasonCode: outcome.reasonCode, ...outcome.externalRef ? { externalReference: outcome.externalRef } : {} } });
-        await emit(tx, tenantId, "PAYMENT", current.id, status3 === "SUCCEEDED" ? "payment.completed.v1" : status3 === "FAILED" ? "payment.failed.v1" : "payment.unknown.v1", { type: current.type, amountMinor: current.amountMinor, currency: current.currency, providerConnectionId: current.providerConnectionId, reasonCode: outcome.reasonCode });
-        await appendAudit(tx, tenantId, actorId, status3 === "SUCCEEDED" ? "payment.completed" : status3 === "FAILED" ? "payment.failed" : "payment.outcome_unknown", "PaymentIntent", current.id, "SANDBOX_ADAPTER", { type: current.type, amountMinor: current.amountMinor, currency: current.currency, externalReference: outcome.externalRef, reasonCode: outcome.reasonCode });
-        return status3;
-      });
-      return settledStatus(finalStatus, prepared.intent.id);
-    },
-    setResponsibleGamingLimit: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageCompliance");
-      if (!/^\d+$/.test(a.amountMinor) || BigInt(a.amountMinor) < 0n) throw new Error("INVALID_LIMIT");
-      if (!["DEPOSIT", "STAKE", "LOSS", "SESSION"].includes(a.type)) throw new Error("INVALID_LIMIT_TYPE");
-      if (!["DAILY", "WEEKLY", "MONTHLY"].includes(a.period)) throw new Error("INVALID_LIMIT_PERIOD");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
-        await requireScopedPlayer(tx, tenantId, a.playerId);
-        const unit = a.type === "SESSION" ? "MIN" : String(a.currency || "");
-        if (a.type === "SESSION") {
-          if (a.currency && a.currency !== "MIN") throw new Error("SESSION_LIMIT_IS_MINUTES");
-        } else if (!await tx.tenantCurrency.findFirst({ where: { tenantId, status: "ACTIVE", currency: { code: unit } }, select: { id: true } })) throw new Error("LIMIT_CURRENCY_NOT_CONFIGURED");
-        if (a.type === "SESSION" && (!/^\d{1,5}$/.test(a.amountMinor) || Number(a.amountMinor) < 1 || Number(a.amountMinor) > { DAILY: 1440, WEEKLY: 10080, MONTHLY: 43200 }[a.period])) throw new Error("INVALID_SESSION_LIMIT");
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`player-limit:${tenantId}:${a.playerId}`}))`;
-        const now = /* @__PURE__ */ new Date(), active = await tx.playerLimit.findFirst({ where: { tenantId, playerId: a.playerId, type: a.type, period: a.period, effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }, orderBy: { effectiveFrom: "desc" } }), increase = Boolean(active && BigInt(a.amountMinor) > BigInt(active.amountMinor)), effectiveFrom = increase ? new Date(now.getTime() + 24 * 36e5) : now;
-        await tx.playerLimit.updateMany({ where: { tenantId, playerId: a.playerId, type: a.type, period: a.period, effectiveFrom: { gt: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] }, data: { effectiveTo: now } });
-        if (active) await tx.playerLimit.update({ where: { id: active.id }, data: { effectiveTo: effectiveFrom } });
-        const limit = await tx.playerLimit.create({ data: { tenantId, playerId: a.playerId, type: a.type, period: a.period, amountMinor: a.amountMinor, currency: unit, effectiveFrom } });
-        await appendAudit(tx, tenantId, context.session.itemId, "responsible_gaming.limit_set", "Player", a.playerId, increase ? "OPERATOR_ACTION_COOLING_OFF" : "OPERATOR_ACTION", { limitId: limit.id, type: a.type, period: a.period, amountMinor: a.amountMinor, currency: unit, effectiveFrom: effectiveFrom.toISOString() });
-        return limit.id;
-      }, { isolationLevel: "Serializable" });
-    },
-    selfExclude: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageCompliance");
-      if (!["OPERATOR", "ALL_WAGERING", "ALL_BRANDS"].includes(a.scope)) throw new Error("INVALID_EXCLUSION_SCOPE");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
-        await requireScopedPlayer(tx, tenantId, a.playerId);
-        const endsAt = a.endsAt ? resolveOperatorInstant(a.endsAt, await tenantTimeZone(tx, tenantId), "EXCLUSION_END") : null;
-        if (endsAt && endsAt.getTime() <= Date.now()) throw new Error("INVALID_EXCLUSION_END");
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`self-exclusion:${tenantId}:${a.playerId}`}))`;
-        const now = /* @__PURE__ */ new Date(), active = await tx.selfExclusion.findFirst({ where: { tenantId, playerId: a.playerId, status: "ACTIVE", startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gt: now } }] }, orderBy: { startsAt: "desc" } });
-        if (active) {
-          const extendsProtection = endsAt === null ? active.endsAt !== null : active.endsAt !== null && endsAt.getTime() > active.endsAt.getTime();
-          if (!extendsProtection) return active.id;
-          await tx.selfExclusion.update({ where: { id: active.id }, data: { endsAt } });
-          await appendAudit(tx, tenantId, context.session.itemId, "responsible_gaming.self_exclusion_extended", "Player", a.playerId, "OPERATOR_ACTION", { exclusionId: active.id, previousEndsAt: active.endsAt?.toISOString() ?? null, endsAt: endsAt?.toISOString() ?? null });
-          return active.id;
-        }
-        const exclusion = await tx.selfExclusion.create({ data: { tenantId, playerId: a.playerId, scope: a.scope, startsAt: now, endsAt, status: "ACTIVE", source: "OPERATOR" } });
-        await appendAudit(tx, tenantId, context.session.itemId, "responsible_gaming.self_excluded", "Player", a.playerId, "OPERATOR_ACTION", { exclusionId: exclusion.id, scope: a.scope, endsAt: endsAt?.toISOString() ?? null });
-        return exclusion.id;
-      }, { isolationLevel: "Serializable" });
-    },
-    openVerificationCase: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageCompliance");
-      if (!["KYC", "AGE", "ADDRESS"].includes(a.type)) throw new Error("INVALID_VERIFICATION_TYPE");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
-        await requireScopedPlayer(tx, tenantId, a.playerId);
-        const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-kyc", status: "ACTIVE" } });
-        if (!provider) throw new Error("KYC_PROVIDER_UNAVAILABLE");
-        const verification = await tx.verificationCase.create({ data: { tenantId, playerId: a.playerId, providerConnectionId: provider.id, type: a.type, status: "PENDING", evidenceReference: a.evidenceReference } });
-        await tx.player.update({ where: { id: a.playerId }, data: { kycStatus: "PENDING" } });
-        await appendAudit(tx, tenantId, context.session.itemId, "verification.opened", "Player", a.playerId, "COMPLIANCE_REVIEW", { caseId: verification.id, type: a.type });
-        return verification.id;
-      });
-    },
-    decideVerificationCase: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageCompliance");
-      if (!["APPROVED", "REJECTED"].includes(a.decision)) throw new Error("INVALID_DECISION");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
-        const verification = await tx.verificationCase.findFirst({ where: { id: a.caseId, tenantId, status: "PENDING" } });
-        if (!verification?.playerId) throw new Error("Not found");
-        await tx.verificationCase.update({ where: { id: verification.id }, data: { status: a.decision } });
-        await tx.verificationCheck.create({ data: { tenantId, verificationCaseId: verification.id, attempt: 1, decision: a.decision === "APPROVED" ? "PASS" : "FAIL", reasonCode: a.reason } });
-        if (verification.type === "KYC" || verification.type === "AGE" && a.decision === "REJECTED") await tx.player.update({ where: { id: verification.playerId }, data: { kycStatus: a.decision } });
-        await appendAudit(tx, tenantId, context.session.itemId, "verification.decided", "VerificationCase", verification.id, a.reason, { decision: a.decision, playerId: verification.playerId });
-        return true;
-      });
-    },
-    reviewAMLCase: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageCompliance");
-      if (!["OPEN", "REVIEW", "CLOSED"].includes(a.status) || !["LOW", "MEDIUM", "HIGH"].includes(a.riskBand)) throw new Error("INVALID_AML_STATE");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
-        await requireScopedPlayer(tx, tenantId, a.playerId);
-        const existing = await tx.aMLCase.findFirst({ where: { tenantId, playerId: a.playerId, status: { not: "CLOSED" } }, orderBy: { createdAt: "desc" } });
-        const aml = existing ? await tx.aMLCase.update({ where: { id: existing.id }, data: { status: a.status, riskBand: a.riskBand, ownerId: context.session.itemId, restrictedEvidence: { reason: a.reason } } }) : await tx.aMLCase.create({ data: { tenantId, playerId: a.playerId, status: a.status, riskBand: a.riskBand, ownerId: context.session.itemId, restrictedEvidence: { reason: a.reason } } });
-        await tx.player.update({ where: { id: a.playerId }, data: { riskBand: a.riskBand } });
-        await appendAudit(tx, tenantId, context.session.itemId, "aml.case_updated", "AMLCase", aml.id, a.reason, { status: a.status, riskBand: a.riskBand, playerId: a.playerId });
-        return aml.id;
-      });
-    },
-    settleWager: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRisk");
-      return serializable2(context.prisma, async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageRisk");
-        const fullParts = await tx.wagerPart.findMany({ where: { tenantId, wagerId: a.wagerId }, take: 1 });
-        if (fullParts.length) throw new Error("FULL_ENGINE_SETTLEMENT_REQUIRED");
-        const old = await tx.settlement.findFirst({ where: { tenantId, wagerId: a.wagerId, inputHash: a.idempotencyKey } });
-        if (old) return old.id;
-        await lockWagerForSettlement(tx, tenantId, a.wagerId);
-        const retry = await tx.settlement.findFirst({ where: { tenantId, wagerId: a.wagerId, inputHash: a.idempotencyKey } });
-        if (retry) return retry.id;
-        const current = await tx.settlement.findFirst({ where: { tenantId, wagerId: a.wagerId }, orderBy: { version: "desc" } });
-        if (current) throw new Error("WAGER_ALREADY_SETTLED");
-        const wager = await tx.wager.findFirst({ where: { id: a.wagerId, tenantId }, include: { from_WagerLeg_wager: true } });
-        if (!wager) throw new Error("Not found");
-        const result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "APPROVED" } });
-        if (!result || !wager.from_WagerLeg_wager.some((leg) => leg.eventKey === result.eventId)) throw new Error("UNAPPROVED_OR_MISMATCHED_RESULT");
-        const legIds = wager.from_WagerLeg_wager.map((leg) => leg.id);
-        const grades = await tx.legGrade.findMany({ where: { tenantId, wagerLegId: { in: legIds }, marketGrade: { resultVersionId: result.id } }, include: { marketGrade: true } });
-        if (grades.length !== legIds.length || grades.some((grade2) => grade2.outcome !== a.outcome)) throw new Error("MISSING_OR_MISMATCHED_GRADE");
-        const grade = grades[0];
-        const factorNumerator = grade.factorNumerator ? BigInt(grade.factorNumerator) : void 0, factorDenominator = grade.factorDenominator ? BigInt(grade.factorDenominator) : void 0;
-        const payout = settlementAmount(BigInt(wager.stakeMinor), decimalOddsFromAmounts(BigInt(wager.potentialReturnMinor), BigInt(wager.stakeMinor)), { outcome: grade.outcome, factorNumerator, factorDenominator });
-        const accounts = await accountMap(tx, tenantId, wager.playerId, wager.currency);
-        const journal = settlementJournal({ idempotencyKey: `settlement:${a.idempotencyKey}`, stake: BigInt(wager.stakeMinor), payout, currency: wager.currency, pendingAccountId: accounts.WAGERS_PENDING.id, cashAccountId: accounts.PLAYER_CASH.id, revenueAccountId: accounts.GAMING_REVENUE.id, winningsExpenseAccountId: accounts.WINNINGS_EXPENSE.id });
-        const posted = await postJournal(tx, tenantId, journal, wager.id);
-        const balance = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
-        const nextBalance = BigInt(balance?.postedMinor ?? "0") + payout;
-        await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, postedMinor: String(nextBalance), pendingMinor: balance?.pendingMinor ?? "0", availableMinor: String(BigInt(balance?.availableMinor ?? "0") + (nextBalance - BigInt(balance?.postedMinor ?? "0"))), version: (balance?.version ?? 0) + 1, asOf: /* @__PURE__ */ new Date() } });
-        const s = await tx.settlement.create({ data: { tenantId, wagerId: wager.id, resultVersionId: a.resultVersionId, version: 1, outcome: a.outcome, payoutMinor: String(payout), inputHash: a.idempotencyKey, journalTransactionId: posted.id } });
-        await tx.hold.updateMany({ where: { tenantId, purposeType: "WAGER", purposeId: wager.id, status: "ACTIVE" }, data: { status: "CAPTURED", version: { increment: 1 } } });
-        await tx.wager.update({ where: { id: wager.id }, data: { status: "SETTLED" } });
-        await emit(tx, tenantId, "WAGER", wager.id, "wager.settled.v1", { settlementId: s.id, version: 1, payoutMinor: String(payout), currency: wager.currency });
-        await appendAudit(tx, tenantId, context.session.itemId, "wager.settled", "Wager", wager.id, "APPROVED_RESULT", { settlementId: s.id, resultVersionId: result.id, payoutMinor: String(payout) });
-        return s.id;
-      });
-    },
-    requestResettlementApproval: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRisk");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageRisk");
-        const settlement = await tx.settlement.findFirst({ where: { id: a.settlementId, tenantId }, include: { resultVersion: true } });
-        const result = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "APPROVED" } });
-        if (!settlement?.wagerId || !settlement.resultVersion || !result) throw new Error("Not found");
-        if (await tx.wagerPart.findFirst({ where: { tenantId, wagerId: settlement.wagerId } })) throw new Error("FULL_ENGINE_SETTLEMENT_REQUIRED");
-        await lockWagerForSettlement(tx, tenantId, settlement.wagerId);
-        await assertCurrentSettlement(tx, tenantId, settlement.wagerId, settlement.id);
-        if (result.eventId !== settlement.resultVersion.eventId || Number(result.version) <= Number(settlement.resultVersion.version)) throw new Error("OUT_OF_ORDER_RESULT_CORRECTION");
-        const action = `RESETTLE_WAGER:${settlement.id}:${result.id}:${a.outcome}:${a.factorNumerator || "-"}:${a.factorDenominator || "-"}`;
-        const payloadHash = evidenceHash({ action: "RESETTLE_WAGER", settlementId: settlement.id, resultVersionId: result.id, outcome: a.outcome, factorNumerator: a.factorNumerator ?? null, factorDenominator: a.factorDenominator ?? null });
-        const approval = await tx.approvalRequest.create({ data: { tenantId, action, payloadHash, requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-        await appendAudit(tx, tenantId, context.session.itemId, "resettlement.approval_requested", "Settlement", settlement.id, a.reason, { approvalId: approval.id, payloadHash });
-        return approval.id;
-      });
-    },
-    resettleWager: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRisk");
-      return serializable2(context.prisma, async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageRisk");
-        const payloadHash = evidenceHash({ action: "RESETTLE_WAGER", settlementId: a.settlementId, resultVersionId: a.resultVersionId, outcome: a.outcome, factorNumerator: a.factorNumerator ?? null, factorDenominator: a.factorDenominator ?? null });
-        const action = `RESETTLE_WAGER:${a.settlementId}:${a.resultVersionId}:${a.outcome}:${a.factorNumerator || "-"}:${a.factorDenominator || "-"}`;
-        const approval = await tx.approvalRequest.findFirst({ where: { id: a.approvalId, tenantId, action, payloadHash, status: "APPROVED" } });
-        if (!approval || !approval.approverId || approval.approverId === approval.requesterId) throw new Error("DUAL_CONTROL_REQUIRED");
-        const old = await tx.settlement.findFirst({ where: { id: a.settlementId, tenantId }, include: { wager: true, resultVersion: true, journalTransaction: { include: { from_JournalEntry_transaction: true } } } });
-        if (!old?.journalTransaction || !old.wager || !old.resultVersion) throw new Error("Not found");
-        if (await tx.wagerPart.findFirst({ where: { tenantId, wagerId: old.wagerId } })) throw new Error("FULL_ENGINE_SETTLEMENT_REQUIRED");
-        await lockWagerForSettlement(tx, tenantId, old.wagerId);
-        const prior = await tx.settlement.findFirst({ where: { tenantId, wagerId: old.wagerId, inputHash: a.idempotencyKey } });
-        if (prior) return prior.id;
-        await assertCurrentSettlement(tx, tenantId, old.wagerId, old.id);
-        const nextResult = await tx.resultVersion.findFirst({ where: { id: a.resultVersionId, tenantId, status: "APPROVED" } });
-        if (!nextResult || nextResult.eventId !== old.resultVersion.eventId || Number(nextResult.version) <= Number(old.resultVersion.version)) throw new Error("OUT_OF_ORDER_RESULT_CORRECTION");
-        const original = { idempotencyKey: old.journalTransaction.idempotencyKey, type: old.journalTransaction.type, entries: old.journalTransaction.from_JournalEntry_transaction.map((e) => ({ accountId: e.accountId, currency: e.currency, side: e.side, amount: BigInt(e.amountMinor) })) };
-        await postJournal(tx, tenantId, reverseJournal(original, `resettle-reversal:${a.idempotencyKey}`), old.wagerId);
-        const accounts = await accountMap(tx, tenantId, old.wager.playerId, old.wager.currency);
-        const legs = await tx.wagerLeg.findMany({ where: { tenantId, wagerId: old.wagerId } }), grades = await tx.legGrade.findMany({ where: { tenantId, wagerLegId: { in: legs.map((leg) => leg.id) }, marketGrade: { resultVersionId: a.resultVersionId } } });
-        if (!legs.length || grades.length !== legs.length || grades.some((grade2) => grade2.outcome !== a.outcome)) throw new Error("MISSING_OR_MISMATCHED_GRADE");
-        const grade = grades[0], factorNumerator = grade.factorNumerator ? BigInt(grade.factorNumerator) : void 0, factorDenominator = grade.factorDenominator ? BigInt(grade.factorDenominator) : void 0;
-        const payout = settlementAmount(BigInt(old.wager.stakeMinor), decimalOddsFromAmounts(BigInt(old.wager.potentialReturnMinor), BigInt(old.wager.stakeMinor)), { outcome: grade.outcome, factorNumerator, factorDenominator });
-        const replacement = settlementJournal({ idempotencyKey: `resettle-replacement:${a.idempotencyKey}`, stake: BigInt(old.wager.stakeMinor), payout, currency: old.wager.currency, pendingAccountId: accounts.WAGERS_PENDING.id, cashAccountId: accounts.PLAYER_CASH.id, revenueAccountId: accounts.GAMING_REVENUE.id, winningsExpenseAccountId: accounts.WINNINGS_EXPENSE.id });
-        const posted = await postJournal(tx, tenantId, replacement, old.wagerId);
-        const balance = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
-        const corrected = BigInt(balance?.postedMinor ?? "0") - BigInt(old.payoutMinor) + payout;
-        if (corrected < 0n) throw new Error("RESETTLEMENT_REQUIRES_RECEIVABLE_REVIEW");
-        await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, postedMinor: String(corrected), pendingMinor: balance?.pendingMinor ?? "0", availableMinor: String(BigInt(balance?.availableMinor ?? "0") + (corrected - BigInt(balance?.postedMinor ?? "0"))), version: (balance?.version ?? 0) + 1, asOf: /* @__PURE__ */ new Date() } });
-        const correctedSettlement = await tx.settlement.create({ data: { tenantId, wagerId: old.wagerId, resultVersionId: a.resultVersionId, version: old.version + 1, outcome: a.outcome, payoutMinor: String(payout), inputHash: a.idempotencyKey, journalTransactionId: posted.id, reversalOfId: old.id } });
-        await emit(tx, tenantId, "WAGER", old.wagerId, "wager.resettled.v1", { settlementId: correctedSettlement.id, version: correctedSettlement.version, payoutMinor: String(payout), currency: old.wager.currency });
-        await appendAudit(tx, tenantId, context.session.itemId, "wager.resettled", "Wager", old.wagerId, "DUAL_APPROVED", { approvalId: approval.id, settlementId: correctedSettlement.id, payloadHash });
-        return correctedSettlement.id;
-      });
-    },
-    runReconciliation: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageFinance");
-      const zone = await tenantTimeZone(context.prisma, tenantId), windowFrom = resolveOperatorInstant(a.windowFrom, zone, "RECONCILIATION_WINDOW"), windowTo = resolveOperatorInstant(a.windowTo, zone, "RECONCILIATION_WINDOW");
-      if (windowFrom >= windowTo) throw new Error("INVALID_RECONCILIATION_WINDOW");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageFinance");
-        const entries = await tx.journalEntry.findMany({ where: { tenantId, transaction: { effectiveAt: { gte: windowFrom, lte: windowTo } } } }), analysis = analyzeJournalBalances(entries), difference = analysis.absoluteDifferenceMinor;
-        const inputHash = evidenceHash({ type: a.type, windowFrom: windowFrom.toISOString(), windowTo: windowTo.toISOString(), entryCount: entries.length, unbalanced: analysis.unbalanced.map((item) => ({ transactionId: item.transactionId, currency: item.currency, debit: String(item.debitMinor), credit: String(item.creditMinor), difference: String(item.differenceMinor) })) });
-        const run = await tx.reconciliationRun.create({ data: { tenantId, type: a.type, windowFrom, windowTo, status: "COMPLETED", inputHash, differenceMinor: String(difference) } });
-        if (analysis.unbalanced.length) await tx.reconciliationItem.createMany({ data: analysis.unbalanced.map((item) => ({ tenantId, runId: run.id, internalReference: `journal:${item.transactionId}`, providerReference: "internal-ledger-control", differenceMinor: String(item.differenceMinor), currency: item.currency, status: "OPEN" })) });
-        await emit(tx, tenantId, "RECONCILIATION", run.id, "reconciliation.run", { inputHash, differenceMinor: String(difference) });
-        await appendAudit(tx, tenantId, context.session.itemId, "reconciliation.completed", "ReconciliationRun", run.id, "OPERATOR_ACTION", { inputHash, differenceMinor: String(difference) });
-        return run.id;
-      });
-    },
-    enqueueRecovery: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageIntegrations");
-      if (!["recovery.requested", "recovery.requested.v1"].includes(a.eventType)) throw new Error("UNSUPPORTED_RECOVERY_EVENT");
-      const unavailable = outboxEventUnavailableReason(a.eventType);
-      if (unavailable) throw new Error(unavailable);
-      return (await context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
-        return tx.outboxMessage.create({ data: { tenantId, aggregateType: a.aggregateType, aggregateId: a.aggregateId, eventType: a.eventType, payload: a, status: "PENDING", attempts: 0, maxAttempts: 10, availableAt: /* @__PURE__ */ new Date() } });
-      })).id;
-    },
-    replayQueueItem: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageIntegrations");
-      if (!["OUTBOX", "INBOX", "DEAD_LETTER"].includes(a.sourceType)) throw new Error("INVALID_SOURCE_TYPE");
-      if (typeof a.reason !== "string" || !a.reason.trim()) throw new Error("REPLAY_REASON_REQUIRED");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
-        await requireTenant({ ...context, prisma: tx }, "canManageIntegrations");
-        let kind = a.sourceType, sourceId = a.sourceId;
-        if (a.sourceType === "DEAD_LETTER") {
-          const dead = await tx.deadLetter.findFirst({ where: { id: a.sourceId, tenantId, resolvedAt: null } });
-          if (!dead) throw new Error("Not found");
-          kind = dead.sourceType;
-          sourceId = dead.sourceId;
-        }
-        const model = replaySourceModel(kind);
-        if (!model) throw new Error(`REPLAY_NOT_ALLOWED:REPLAY_UNSUPPORTED_SOURCE:${String(kind)}`);
-        const item = await tx[model].findFirst({ where: { id: sourceId, tenantId } }), unavailable = replayUnavailableReason(item ? { kind, status: item.status, eventType: item.eventType, jobType: item.type } : null);
-        if (unavailable) throw new Error(`REPLAY_NOT_ALLOWED:${unavailable}`);
-        const reset = await tx[model].updateMany({ where: { id: item.id, tenantId, status: item.status, attempts: item.attempts }, data: kind === "SCHEDULED_JOB" ? { status: "SCHEDULED", dueAt: /* @__PURE__ */ new Date(), leaseUntil: null, leaseOwner: "", lastError: "" } : { status: "PENDING", availableAt: /* @__PURE__ */ new Date(), leaseUntil: null, leaseOwner: "", lastError: "" } });
-        if (reset.count !== 1) throw new Error("REPLAY_SOURCE_CHANGED");
-        const resolved = await tx.deadLetter.updateMany({ where: { tenantId, sourceType: kind, sourceId: item.id, resolvedAt: null }, data: { resolvedAt: /* @__PURE__ */ new Date() } });
-        if (kind === "INBOX") await emit(tx, tenantId, "INBOX", item.id, "ingestion.replay", { reason: a.reason });
-        await appendAudit(tx, tenantId, context.session.itemId, "queue.replayed", kind, item.id, a.reason, { requestedSourceType: a.sourceType, requestedSourceId: a.sourceId, observedStatus: item.status, attempts: item.attempts, resolvedDeadLetters: resolved.count });
-        return item.id;
-      });
-    },
-    openOperationalIncident: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageIntegrations");
-      if (!["SEV1", "SEV2", "SEV3", "SEV4"].includes(a.severity)) throw new Error("INVALID_SEVERITY");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
-        const incident = await tx.incident.create({ data: { tenantId, severity: a.severity, title: a.title, status: "OPEN", commanderId: context.session.itemId, evidence: parseObject(a.evidence, "EVIDENCE") } });
-        await appendAudit(tx, tenantId, context.session.itemId, "incident.created", "Incident", incident.id, "OPERATOR_ACTION", { severity: a.severity, title: a.title });
-        return incident.id;
-      });
-    },
-    setIncidentStatus: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageIntegrations");
-      if (!["OPEN", "MITIGATING", "RESOLVED"].includes(a.status)) throw new Error("INVALID_INCIDENT_STATUS");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
-        const incident = await tx.incident.findFirst({ where: { id: a.incidentId, tenantId } });
-        if (!incident) throw new Error("Not found");
-        await tx.incident.update({ where: { id: incident.id }, data: { status: a.status, resolvedAt: a.status === "RESOLVED" ? /* @__PURE__ */ new Date() : null } });
-        await appendAudit(tx, tenantId, context.session.itemId, "incident.status_changed", "Incident", incident.id, a.reason, { from: incident.status, to: a.status });
-        return true;
-      });
-    },
-    generateComplianceReport: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageCompliance");
-      const zone = await tenantTimeZone(context.prisma, tenantId), periodStart2 = resolveOperatorInstant(a.periodStart, zone, "REPORT_PERIOD"), periodEnd = resolveOperatorInstant(a.periodEnd, zone, "REPORT_PERIOD");
-      if (periodStart2 >= periodEnd) throw new Error("INVALID_REPORT_PERIOD");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
-        const [wagers, audits, payments] = await Promise.all([tx.wager.count({ where: { tenantId, createdAt: { gte: periodStart2, lte: periodEnd } } }), tx.auditEvent.count({ where: { tenantId, createdAt: { gte: periodStart2, lte: periodEnd } } }), tx.paymentIntent.count({ where: { tenantId, createdAt: { gte: periodStart2, lte: periodEnd } } })]);
-        const version = await tx.complianceReport.count({ where: { tenantId, type: a.type } }) + 1;
-        const artifactHash = evidenceHash({ type: a.type, periodStart: periodStart2.toISOString(), periodEnd: periodEnd.toISOString(), wagers, audits, payments, version });
-        const report = await tx.complianceReport.create({ data: { tenantId, type: a.type, periodStart: periodStart2, periodEnd, version, artifactHash, artifactReference: "", status: "DRAFT" } });
-        await appendAudit(tx, tenantId, context.session.itemId, "report.draft_recorded", "ComplianceReport", report.id, "OPERATOR_ACTION", { artifactHash, type: a.type, counts: { wagers, audits, payments }, artifact: "NOT_GENERATED" });
-        return report.id;
-      });
-    },
-    requestSettingChange: async (_r, a, context) => {
-      const tenantId = await requireTenant(context);
-      if (!/^[A-Za-z][A-Za-z0-9_.-]{1,63}$/.test(a.key)) throw new Error("INVALID_SETTING_KEY");
-      const payloadHash = evidenceHash({ action: "SETTING_CHANGE", key: a.key, value: a.value });
-      const action = `SETTING_CHANGE:${a.key}:${Buffer.from(a.value).toString("base64url")}`;
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
-        const normalized = await normalizeTenantSetting(tx, tenantId, a.key, a.value), current = await tx.configValue.findFirst({ where: { tenantId, key: a.key, scopeType: "TENANT", scopeId: tenantId, effectiveTo: null }, orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }] });
-        const approval = await tx.approvalRequest.create({ data: { tenantId, action, payloadHash, ...approvalReview({ action: "SETTING_CHANGE", key: a.key, value: a.value, normalizedValue: normalized.value, valueType: normalized.valueType, scopeType: "TENANT", scopeId: tenantId, before: current ? { id: current.id, value: current.value, policyVersion: current.policyVersion } : null }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-        await appendAudit(tx, tenantId, context.session.itemId, "setting.change_requested", "ApprovalRequest", approval.id, a.reason, { key: a.key, payloadHash });
-        return approval.id;
-      });
-    },
-    applyApprovedSetting: async (_r, a, context) => {
-      const tenantId = await requireTenant(context);
-      const payloadHash = evidenceHash({ action: "SETTING_CHANGE", key: a.key, value: a.value });
-      return context.prisma.$transaction(async (tx) => {
-        const action = `SETTING_CHANGE:${a.key}:${Buffer.from(a.value).toString("base64url")}`;
-        const approval = await consumeApproval(tx, context, { tenantId, capability: "canManageSportsbook", approvalId: a.approvalId, action, payloadHash });
-        if (approval.replay) throw new Error("APPROVAL_ALREADY_CONSUMED");
-        const normalized = await normalizeTenantSetting(tx, tenantId, a.key, a.value);
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`config:${tenantId}:${a.key}`}))`;
-        const now = /* @__PURE__ */ new Date();
-        await tx.configValue.updateMany({ where: { tenantId, key: a.key, scopeType: "TENANT", scopeId: tenantId, effectiveTo: null }, data: { effectiveTo: now } });
-        const value = normalized.value;
-        const setting = await tx.configValue.create({ data: { tenantId, key: a.key, value, valueType: normalized.valueType, scopeType: "TENANT", scopeId: tenantId, policyVersion: `approved:${approval.id}`, effectiveFrom: /* @__PURE__ */ new Date() } });
-        await appendAudit(tx, tenantId, context.session.itemId, "setting.changed", "ConfigValue", setting.id, "DUAL_APPROVED", { approvalId: approval.id, key: a.key, payloadHash });
-        return setting.id;
-      });
-    },
-    bootstrapIndependentApprover: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRoles");
-      if (!/^\S+@\S+\.\S+$/.test(a.email) || String(a.password).length < 12) throw new Error("INVALID_APPROVER");
-      return context.transaction(async (txContext) => {
-        await txContext.prisma.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`approver-bootstrap:${tenantId}`}))`;
-        await assertCurrentActor(txContext.prisma, context, tenantId, "canManageRoles");
-        const existing = await txContext.prisma.user.count({ where: { tenantId, role: { canApproveSensitiveActions: true } } });
-        if (existing) throw new Error("APPROVER_ALREADY_BOOTSTRAPPED");
-        let role = await txContext.prisma.role.findFirst({ where: { tenantId, name: "Independent Approver" } });
-        if (!role) role = await txContext.sudo().query.Role.createOne({ data: { tenant: { connect: { id: tenantId } }, name: "Independent Approver", canAccessDashboard: true, canApproveSensitiveActions: true, canReadAudit: true }, query: "id name" });
-        const user = await txContext.sudo().query.User.createOne({ data: { tenant: { connect: { id: tenantId } }, role: { connect: { id: role.id } }, name: a.name, email: a.email, password: a.password }, query: "id email" });
-        await txContext.prisma.roleGrant.create({ data: { tenantId, userId: user.id, roleId: role.id, scope: { tenantId, bootstrap: true }, effectiveFrom: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
-        await appendAudit(txContext.prisma, tenantId, context.session.itemId, "approver.bootstrapped", "User", user.id, "ONE_TIME_DUAL_CONTROL_BOOTSTRAP", { roleId: role.id, emailHash: evidenceHash(a.email.toLowerCase()) });
-        return user.id;
-      });
-    },
-    requestRoleDefinition: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRoles"), capabilities = parseRoleCapabilities(a.capabilities), payloadHash = evidenceHash({ action: "ROLE_DEFINITION", name: a.name, capabilities }), action = `ROLE_DEFINITION:${Buffer.from(JSON.stringify({ name: a.name, capabilities })).toString("base64url")}`;
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageRoles");
-        const approval = await tx.approvalRequest.create({ data: { tenantId, action, payloadHash, ...approvalReview({ action: "ROLE_DEFINITION", name: a.name, capabilities }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-        await appendAudit(tx, tenantId, context.session.itemId, "role.definition_requested", "Tenant", tenantId, a.reason, { approvalId: approval.id, name: a.name, capabilities, payloadHash });
-        return approval.id;
-      });
-    },
-    applyApprovedRoleDefinition: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRoles"), capabilities = parseRoleCapabilities(a.capabilities), payloadHash = evidenceHash({ action: "ROLE_DEFINITION", name: a.name, capabilities });
-      return context.prisma.$transaction(async (tx) => {
-        const action = `ROLE_DEFINITION:${Buffer.from(JSON.stringify({ name: a.name, capabilities })).toString("base64url")}`;
-        const approval = await consumeApproval(tx, context, { tenantId, capability: "canManageRoles", approvalId: a.approvalId, action, payloadHash });
-        if (approval.replay) throw new Error("APPROVAL_ALREADY_CONSUMED");
-        const existing = await tx.role.findFirst({ where: { tenantId, name: a.name } });
-        if (existing) throw new Error("ROLE_EXISTS");
-        const role = await tx.role.create({ data: { tenantId, name: a.name, ...capabilities } });
-        await appendAudit(tx, tenantId, context.session.itemId, "role.defined", "Role", role.id, "DUAL_APPROVED", { approvalId: approval.id, name: a.name, capabilities });
-        return role.id;
-      });
-    },
-    requestRoleGrant: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRoles");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageRoles");
-        const user = await tx.user.findFirst({ where: { id: a.userId, tenantId }, include: { role: true } }), role = await tx.role.findFirst({ where: { id: a.roleId, tenantId } });
-        if (!user || !role) throw new Error("Not found");
-        const action = `ROLE_GRANT:${user.id}:${role.id}`;
-        const payloadHash = evidenceHash({ action: "ROLE_GRANT", userId: user.id, roleId: role.id });
-        const { id: _roleId, tenantId: _roleTenant, createdAt: _rc, updatedAt: _ru, ...roleCapabilities } = role;
-        const approval = await tx.approvalRequest.create({ data: { tenantId, action, payloadHash, ...approvalReview({ action: "ROLE_GRANT", userId: user.id, userName: user.name, userEmail: user.email, roleId: role.id, roleName: role.name, capabilities: roleCapabilities, replacesRoleId: user.roleId ?? null, replacesRoleName: user.role?.name ?? null }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-        await appendAudit(tx, tenantId, context.session.itemId, "role.grant_requested", "User", user.id, a.reason, { approvalId: approval.id, roleId: role.id, payloadHash });
-        return approval.id;
-      });
-    },
-    applyApprovedRoleGrant: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRoles");
-      const payloadHash = evidenceHash({ action: "ROLE_GRANT", userId: a.userId, roleId: a.roleId });
-      return context.prisma.$transaction(async (tx) => {
-        const action = `ROLE_GRANT:${a.userId}:${a.roleId}`;
-        const approval = await consumeApproval(tx, context, { tenantId, capability: "canManageRoles", approvalId: a.approvalId, action, payloadHash });
-        if (approval.replay) throw new Error("APPROVAL_ALREADY_CONSUMED");
-        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${a.userId} AND tenant = ${tenantId} FOR UPDATE`;
-        const user = await tx.user.findFirst({ where: { id: a.userId, tenantId } }), role = await tx.role.findFirst({ where: { id: a.roleId, tenantId } });
-        if (!user || !role) throw new Error("Not found");
-        const now = /* @__PURE__ */ new Date();
-        const superseded = await tx.roleGrant.updateMany({ where: { tenantId, userId: user.id, status: "ACTIVE" }, data: { status: "REVOKED", effectiveTo: now } });
-        await tx.user.update({ where: { id: user.id }, data: { roleId: role.id } });
-        const grant = await tx.roleGrant.create({ data: { tenantId, userId: user.id, roleId: role.id, scope: { tenantId, approvalId: approval.id, replacesRoleId: user.roleId ?? null }, effectiveFrom: now, status: "ACTIVE" } });
-        await appendAudit(tx, tenantId, context.session.itemId, "role.granted", "User", user.id, "DUAL_APPROVED", { approvalId: approval.id, roleId: role.id, grantId: grant.id, previousRoleId: user.roleId ?? null, supersededGrants: superseded.count });
-        return grant.id;
-      });
-    },
-    requestRoleRevocation: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRoles");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageRoles");
-        const user = await tx.user.findFirst({ where: { id: a.userId, tenantId }, include: { role: true } });
-        if (!user?.roleId) throw new Error("Not found");
-        const action = `ROLE_REVOKE:${user.id}:${user.roleId}`, payloadHash = evidenceHash({ action: "ROLE_REVOKE", userId: user.id, roleId: user.roleId });
-        const approval = await tx.approvalRequest.create({ data: { tenantId, action, payloadHash, ...approvalReview({ action: "ROLE_REVOKE", userId: user.id, userName: user.name, userEmail: user.email, roleId: user.roleId, roleName: user.role?.name ?? null }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-        await appendAudit(tx, tenantId, context.session.itemId, "role.revocation_requested", "User", user.id, a.reason, { approvalId: approval.id, roleId: user.roleId, payloadHash });
-        return approval.id;
-      });
-    },
-    applyApprovedRoleRevocation: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRoles");
-      const action = `ROLE_REVOKE:${a.userId}:${a.roleId}`, payloadHash = evidenceHash({ action: "ROLE_REVOKE", userId: a.userId, roleId: a.roleId });
-      return context.prisma.$transaction(async (tx) => {
-        const approval = await consumeApproval(tx, context, { tenantId, capability: "canManageRoles", approvalId: a.approvalId, action, payloadHash });
-        if (approval.replay) throw new Error("APPROVAL_ALREADY_CONSUMED");
-        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${a.userId} AND tenant = ${tenantId} FOR UPDATE`;
-        const user = await tx.user.findFirst({ where: { id: a.userId, tenantId } });
-        if (!user) throw new Error("Not found");
-        if (user.roleId !== a.roleId) throw new Error("ROLE_ASSIGNMENT_CHANGED");
-        const now = /* @__PURE__ */ new Date(), revoked = await tx.roleGrant.updateMany({ where: { tenantId, userId: user.id, status: "ACTIVE" }, data: { status: "REVOKED", effectiveTo: now } });
-        await tx.user.update({ where: { id: user.id }, data: { roleId: null } });
-        await appendAudit(tx, tenantId, context.session.itemId, "role.revoked", "User", user.id, "DUAL_APPROVED", { approvalId: approval.id, roleId: a.roleId, revokedGrants: revoked.count });
-        return user.id;
-      });
-    },
-    requestOperatorAdmission: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManagePeople"), email = String(a.email ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim();
-      if (!/^\S+@\S+\.\S+$/.test(email) || name.length < 2) throw new Error("INVALID_OPERATOR_ADMISSION");
-      return context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManagePeople");
-        const role = await tx.role.findFirst({ where: { id: a.roleId, tenantId } });
-        if (!role) throw new Error("Not found");
-        if (await tx.user.findUnique({ where: { email } })) throw new Error("OPERATOR_EMAIL_UNAVAILABLE");
-        const emailHash = evidenceHash(email), action = `OPERATOR_ADMISSION:${emailHash}:${role.id}`, payloadHash = evidenceHash({ action: "OPERATOR_ADMISSION", name, email, roleId: role.id });
-        const approval = await tx.approvalRequest.create({ data: { tenantId, action, payloadHash, ...approvalReview({ action: "OPERATOR_ADMISSION", name, email, roleId: role.id, roleName: role.name }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-        await appendAudit(tx, tenantId, context.session.itemId, "operator.admission_requested", "ApprovalRequest", approval.id, a.reason, { roleId: role.id, emailHash, payloadHash });
-        return approval.id;
-      });
-    },
-    applyApprovedOperatorAdmission: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManagePeople"), email = String(a.email ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim(), emailHash = evidenceHash(email), action = `OPERATOR_ADMISSION:${emailHash}:${a.roleId}`, payloadHash = evidenceHash({ action: "OPERATOR_ADMISSION", name, email, roleId: a.roleId });
-      const token = (0, import_node_crypto6.randomBytes)(32).toString("base64url");
-      const userId = await context.transaction(async (txContext) => {
-        const approval = await consumeApproval(txContext.prisma, context, { tenantId, capability: "canManagePeople", approvalId: a.approvalId, action, payloadHash });
-        if (approval.replay) throw new Error("APPROVAL_ALREADY_CONSUMED");
-        const role = await txContext.prisma.role.findFirst({ where: { id: a.roleId, tenantId } });
-        if (!role) throw new Error("Not found");
-        if (await txContext.prisma.user.findUnique({ where: { email } })) throw new Error("OPERATOR_EMAIL_UNAVAILABLE");
-        const user = await txContext.sudo().query.User.createOne({ data: { tenant: { connect: { id: tenantId } }, role: { connect: { id: role.id } }, name, email, password: (0, import_node_crypto6.randomBytes)(32).toString("base64url") }, query: "id" });
-        await txContext.prisma.user.update({ where: { id: user.id }, data: { passwordResetToken: evidenceHash(token), passwordResetIssuedAt: /* @__PURE__ */ new Date(), passwordResetRedeemedAt: null } });
-        await txContext.prisma.roleGrant.create({ data: { tenantId, userId: user.id, roleId: role.id, scope: { tenantId, approvalId: approval.id, admission: true }, effectiveFrom: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
-        await appendAudit(txContext.prisma, tenantId, context.session.itemId, "operator.admitted", "User", user.id, "DUAL_APPROVED", { approvalId: approval.id, roleId: role.id, emailHash });
-        return user.id;
-      });
-      await sendPasswordResetEmail(token, email);
-      return userId;
-    },
-    requestSensitiveApproval: async (_r, a, context) => {
-      const tenantId = await requireTenant(context);
-      if (!/^[a-f0-9]{64}$/i.test(a.payloadHash)) throw new Error("INVALID_PAYLOAD_HASH");
-      return (await context.prisma.$transaction(async (tx) => {
-        await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
-        return tx.approvalRequest.create({ data: { tenantId, action: a.action, payloadHash: a.payloadHash, ...approvalReview({ action: a.action, payloadHash: a.payloadHash, bodyAvailable: false }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-      })).id;
-    },
-    decideSensitiveApproval: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canApproveSensitiveActions");
-      const outcome = await serializable2(context.prisma, async (tx) => {
-        const actorId = await assertCurrentActor(tx, context, tenantId, "canApproveSensitiveActions");
-        const approval = await tx.approvalRequest.findFirst({ where: { id: a.approvalId, tenantId } });
-        if (!approval) throw new Error("Not found");
-        const decision = a.approve ? "APPROVED" : "REJECTED";
-        if (approval.status !== "PENDING") {
-          if (approval.approverId === actorId && approval.status === decision && (!a.payloadHash || a.payloadHash === approval.payloadHash)) return { decided: true };
-          throw new Error("APPROVAL_ALREADY_DECIDED");
-        }
-        if (approval.requesterId === actorId) throw new Error("DUAL_CONTROL_REQUIRED");
-        if (a.payloadHash && a.payloadHash !== approval.payloadHash) throw new Error("APPROVAL_PAYLOAD_CHANGED");
-        const now = /* @__PURE__ */ new Date();
-        if (approval.expiresAt && new Date(approval.expiresAt) <= now) {
-          await tx.approvalRequest.updateMany({ where: { id: approval.id, tenantId, status: "PENDING" }, data: { status: "EXPIRED" } });
-          return { expired: true };
-        }
-        const updated = await tx.approvalRequest.updateMany({ where: { id: approval.id, tenantId, status: "PENDING", payloadHash: approval.payloadHash, requesterId: { not: actorId } }, data: { approverId: actorId, status: decision, reason: a.reason, decidedAt: now, ...approval.expiresAt ? {} : { expiresAt: new Date(now.getTime() + APPROVAL_TTL_MS) } } });
-        if (updated.count !== 1) throw new Error("APPROVAL_ALREADY_DECIDED");
-        await appendAudit(tx, tenantId, actorId, a.approve ? "approval.approved" : "approval.rejected", "ApprovalRequest", approval.id, a.reason, { action: approval.action, payloadHash: approval.payloadHash });
-        if (!a.approve && approval.action === "APPROVE_RESULT") await rejectApprovedResultVersion(tx, tenantId, actorId, approval, a.reason);
-        return { decided: true };
-      });
-      if (outcome.expired) throw new Error("APPROVAL_EXPIRED");
-      return true;
-    },
-    dismissOperatorOnboarding: async (_r, _a, context) => {
-      const userId = context.session?.itemId;
-      if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
-      await context.prisma.user.updateMany({ where: { id: userId, onboardingStatus: { in: ["not_started", "in_progress"] } }, data: { onboardingStatus: "dismissed" } });
-      const user = await context.prisma.user.findUnique({ where: { id: userId }, select: { onboardingStatus: true } });
-      return String(user?.onboardingStatus ?? "not_started");
-    },
-    previewSportsbookOnboarding: async (_root, args, context) => {
-      await requireUnscopedCapability(context, "canManageOnboarding");
-      const fixture = buildOnboardingFixture(args);
-      return { version: fixture.version, fixtureHash: fixture.fixtureHash, payload: JSON.stringify(fixture) };
-    },
-    acceptStraightWager: async (_root, args, context) => {
-      const tenantId = await requireTenant(context);
-      if (!context.trustedTenantId) throw new Error("CUSTOMER_SESSION_REQUIRED");
-      if (!/^[A-Za-z0-9:_-]{8,128}$/.test(args.idempotencyKey)) throw new Error("INVALID_IDEMPOTENCY_KEY");
-      const customerActor = context.customerActor;
-      return serializable2(context.prisma, async (tx) => {
-        if (customerActor) {
-          if (customerActor.tenantId !== tenantId) throw new Error("Not found");
-          await assertCurrentCustomerActor(tx, customerActor, true);
-        }
-        const customerCommand = context.customerCommand;
-        if (customerCommand) {
-          await tx.$queryRaw`SELECT id FROM "CustomerCommand" WHERE id = ${customerCommand.id} AND tenant = ${tenantId} FOR UPDATE`;
-        }
-        const prior = await tx.wager.findFirst({ where: { tenantId, idempotencyKey: args.idempotencyKey, ...customerActor ? { playerId: customerActor.playerId } : {} } });
-        if (prior) return { accepted: prior.status !== "REJECTED", wagerId: prior.id, rejectionCode: prior.status === "REJECTED" ? "PREVIOUSLY_REJECTED" : null, termsHash: prior.termsHash, potentialReturnMinor: prior.potentialReturnMinor };
-        if (customerCommand) {
-          const owned = await tx.customerCommand.findFirst({ where: { id: customerCommand.id, tenantId, type: "WAGER", ...customerActor ? { playerId: customerActor.playerId } : {} } });
-          if (!owned) throw new Error("Not found");
-          if (owned.status !== "IN_PROGRESS") throw new Error("CUSTOMER_COMMAND_ALREADY_COMPLETED");
-        }
-        const quote = await tx.quote.findFirst({ where: { id: args.quoteId, tenantId, ...customerActor ? { playerId: customerActor.playerId } : {} }, include: { player: true, priceSnapshot: true, selection: { include: { market: { include: { event: true } } } } } });
-        if (!quote) throw new Error("Not found");
-        const now = /* @__PURE__ */ new Date();
-        const [currentTenant, latestPrice] = await Promise.all([
-          tx.tenant.findFirst({ where: { id: tenantId, status: "ACTIVE" } }),
-          tx.priceSnapshot.findFirst({ where: { tenantId, selectionId: quote.selectionId }, orderBy: { receivedAt: "desc" } })
-        ]);
-        const eventTradable = ["SCHEDULED", "LIVE"].includes(quote.selection?.market?.event?.status ?? "");
-        const priceCurrent = Boolean(latestPrice && latestPrice.status === "OPEN" && (latestPrice.id === quote.priceSnapshotId || latestPrice.decimalOdds === quote.decimalOdds && String(latestPrice.line ?? "") === String(quote.priceSnapshot?.line ?? "")));
-        const [geoApproved, kycApproved, provenance] = await Promise.all([
-          currentGeoApproved(tx, tenantId, quote.playerId, now),
-          currentKycApproved(tx, tenantId, quote.player, now),
-          currentWagerProvenance(tx, tenantId)
-        ]);
-        const [exclusion, restriction, geo, account, responsibleLimit] = await Promise.all([
-          tx.selfExclusion.findFirst({ where: { tenantId, playerId: quote.playerId, status: "ACTIVE", startsAt: { lte: /* @__PURE__ */ new Date() }, OR: [{ endsAt: null }, { endsAt: { gt: /* @__PURE__ */ new Date() } }] } }),
-          tx.accountRestriction.findFirst({ where: { tenantId, playerId: quote.playerId, status: "ACTIVE", capability: "WAGER" } }),
-          Promise.resolve(geoApproved),
-          tx.ledgerAccount.findFirst({ where: { tenantId, playerId: quote.playerId, key: "PLAYER_CASH", currency: quote.currency, status: "ACTIVE" }, include: {} }),
-          stakeLimitFacts(tx, tenantId, quote.playerId, now, quote.currency)
-        ]);
-        const fullLimitViolation = await wagerLimitViolation(tx, tenantId, quote.playerId, BigInt(quote.stakeMinor), now, customerActor?.sessionId);
-        let projection = account ? await tx.balanceProjection.findFirst({ where: { tenantId, accountId: account.id }, orderBy: { version: "desc" } }) : null;
-        if (projection) {
-          await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${projection.id} FOR UPDATE`;
-          projection = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: account.id }, orderBy: { version: "desc" } });
-        }
-        let decision = evaluateAcceptance({ id: quote.id, tenantId, playerId: quote.playerId, selectionId: quote.selectionId, snapshotId: quote.priceSnapshotId, decimalOdds: quote.decimalOdds, stake: BigInt(quote.stakeMinor), currency: quote.currency, expiresAt: quote.expiresAt, policyVersion: quote.policyVersion, rulesHash: quote.termsHash }, { now, tenantActive: Boolean(currentTenant), playerActive: quote.player.status === "ACTIVE", kycApproved, geoApproved: Boolean(geo), selfExcluded: Boolean(exclusion || restriction), wageredInPeriod: fullLimitViolation ? 1n : responsibleLimit?.wageredInPeriod ?? 0n, periodLimit: fullLimitViolation ? 0n : responsibleLimit?.periodLimit, marketOpen: eventTradable && quote.selection.market.status === "OPEN" && quote.selection.status === "OPEN", priceReceivedAt: quote.priceSnapshot.receivedAt, maxPriceAgeMs: Number(process.env.MAX_PRICE_AGE_MS ?? 3e4), available: BigInt(projection?.availableMinor ?? "0"), currentLiability: 0n, maxLiability: BigInt(process.env.SANDBOX_MAX_LIABILITY_MINOR ?? "100000000") });
-        if (decision.accepted) {
-          const extra = !priceCurrent ? "PRICE_CHANGED" : (await riskLimitViolation(tx, { tenantId, playerId: quote.playerId, currency: quote.currency, stakeMinor: BigInt(quote.stakeMinor), potentialReturnMinor: decision.potentialReturn, allocations: [{ marketId: quote.selection.marketId, eventId: quote.selection.market.eventId ?? null, stakeMinor: BigInt(quote.stakeMinor), liabilityMinor: decision.liability }], now }))?.code;
-          if (extra) decision = { ...decision, accepted: false, rejectionCode: extra, gates: [...decision.gates, { gate: extra === "PRICE_CHANGED" ? "currentPrice" : "riskLimits", passed: false, code: extra }] };
-        }
-        const wager = await tx.wager.create({ data: { tenantId, playerId: quote.playerId, quoteId: quote.id, ...decision.accepted ? provenance : {}, idempotencyKey: args.idempotencyKey, stakeMinor: quote.stakeMinor, potentialReturnMinor: String(decision.potentialReturn), currency: quote.currency, termsHash: decision.termsHash, status: decision.accepted ? "ACCEPTED" : "REJECTED", acceptedAt: decision.accepted ? /* @__PURE__ */ new Date() : null } });
-        await tx.acceptanceDecision.create({ data: { tenantId, wagerId: wager.id, quoteId: quote.id, accepted: decision.accepted, rejectionCode: decision.rejectionCode, gateResults: [...decision.gates, { gate: "provenance", passed: true, ...provenance }], inputHash: decision.termsHash } });
-        if (decision.accepted) await tx.wagerLeg.create({ data: { tenantId, wagerId: wager.id, eventKey: quote.selection.market.eventId, marketKey: quote.selection.marketId, selectionKey: quote.selectionId, snapshotId: quote.priceSnapshotId, decimalOdds: quote.decimalOdds, line: quote.priceSnapshot.line, ruleVersion: quote.policyVersion } });
-        if (decision.accepted && account && projection) {
-          const accounts = await accountMap(tx, tenantId, quote.playerId, quote.currency), stake = BigInt(quote.stakeMinor);
-          await postJournal(tx, tenantId, { idempotencyKey: `stake:${args.idempotencyKey}`, type: "WAGER_STAKE", entries: [{ accountId: accounts.PLAYER_CASH.id, currency: quote.currency, side: "DEBIT", amount: stake }, { accountId: accounts.WAGERS_PENDING.id, currency: quote.currency, side: "CREDIT", amount: stake }] }, wager.id);
-          await tx.hold.create({ data: { tenantId, accountId: account.id, purposeType: "WAGER", purposeId: wager.id, amountMinor: quote.stakeMinor, status: "CAPTURED", version: 1 } });
-          const next = BigInt(projection.postedMinor) - stake;
-          await tx.balanceProjection.create({ data: { tenantId, accountId: account.id, postedMinor: String(next), pendingMinor: projection.pendingMinor, availableMinor: String(BigInt(projection.availableMinor) - stake), version: projection.version + 1, asOf: /* @__PURE__ */ new Date() } });
-          const exposure = await tx.exposurePosition.findFirst({ where: { tenantId, scopeType: "MARKET", scopeId: quote.selection.marketId, currency: quote.currency } });
-          if (exposure) await tx.exposurePosition.update({ where: { id: exposure.id }, data: { stakeMinor: String(BigInt(exposure.stakeMinor) + stake), liabilityMinor: String(BigInt(exposure.liabilityMinor) + decision.liability), version: { increment: 1 }, asOf: /* @__PURE__ */ new Date() } });
-          else await tx.exposurePosition.create({ data: { tenantId, scopeType: "MARKET", scopeId: quote.selection.marketId, currency: quote.currency, stakeMinor: quote.stakeMinor, liabilityMinor: String(decision.liability), version: 1, asOf: /* @__PURE__ */ new Date() } });
-          await tx.wagerExposureAllocation.create({ data: { tenantId, wagerId: wager.id, marketId: quote.selection.marketId, stakeMinor: quote.stakeMinor, liabilityMinor: String(decision.liability), remainingStakeMinor: quote.stakeMinor, remainingLiabilityMinor: String(decision.liability), version: 1, status: "OPEN" } });
-        }
-        await emit(tx, tenantId, "WAGER", wager.id, decision.accepted ? "wager.accepted.v1" : "wager.rejected.v1", { status: wager.status, stakeMinor: quote.stakeMinor, currency: quote.currency, termsHash: decision.termsHash, rejectionCode: decision.rejectionCode ?? null });
-        await appendAudit(tx, tenantId, context.session?.itemId ?? context.trustedActorId ?? quote.playerId, decision.accepted ? "wager.accepted" : "wager.rejected", "Wager", wager.id, decision.rejectionCode ?? "ALL_GATES_PASSED", { termsHash: decision.termsHash, quoteId: quote.id, gateResults: decision.gates });
-        if (customerCommand) await finishCustomerCommand(tx, customerCommand.id, decision.accepted ? "SUCCEEDED" : "REJECTED", { state: decision.accepted ? "ACCEPTED" : "REJECTED", accepted: decision.accepted, duplicate: customerCommand.duplicate, wagerId: wager.id, receiptId: wager.id, rejectionCode: decision.rejectionCode ?? null, termsHash: decision.termsHash, potentialReturnMinor: String(decision.potentialReturn) });
-        return { accepted: decision.accepted, wagerId: wager.id, rejectionCode: decision.rejectionCode, termsHash: decision.termsHash, potentialReturnMinor: String(decision.potentialReturn) };
-      });
-    }
-  }
-};
+// features/keystone/mutations/sportsbook-full.ts
+init_mail();
 
 // features/sportsbook/adapters/webhook-egress.ts
-var import_node_crypto7 = require("node:crypto");
+var import_node_crypto9 = require("node:crypto");
 var import_node_net = require("node:net");
 var import_promises = require("node:dns/promises");
 var import_node_https = require("node:https");
-var PLATFORM_WEBHOOK_SIGNING_KEY_ID = "platform-outbound-v1";
 var MAX_WEBHOOK_PAYLOAD_BYTES = 256 * 1024;
 var DNS_DEADLINE_MS = 2e3;
 var nonPublic = new import_node_net.BlockList();
@@ -3092,7 +4395,11 @@ async function validateWebhookDestination(raw) {
   return url;
 }
 
+// features/keystone/mutations/sportsbook-full.ts
+init_sandbox();
+
 // features/sportsbook/domain/retention.ts
+init_engine();
 var SUPPORTED = /* @__PURE__ */ new Set(["CUSTOMER_SESSION:DELETE", "GEO:TOKENIZE"]);
 var RECORD_CLASS_SCOPES = /* @__PURE__ */ new Set(["AUDIT", "CUSTOMER_SESSION", "GEO"]);
 var MAX_RETENTION_CANDIDATES = 5e3;
@@ -3135,7 +4442,7 @@ async function retentionCandidates(tx, tenantId, policy, windowFrom, windowTo, e
 }
 
 // features/sportsbook/domain/totp.ts
-var import_node_crypto8 = require("node:crypto");
+var import_node_crypto10 = require("node:crypto");
 var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 function base32Encode(input) {
   let bits = 0, value = 0, result = "";
@@ -3168,26 +4475,26 @@ function base32Decode(input) {
 function key() {
   const value = process.env.PII_ENCRYPTION_KEY ?? process.env.SESSION_SECRET;
   if (!value || value.length < 32) throw new Error("MFA_ENCRYPTION_KEY_REQUIRED");
-  return (0, import_node_crypto8.createHash)("sha256").update(value).digest();
+  return (0, import_node_crypto10.createHash)("sha256").update(value).digest();
 }
 function encryptTotpSecret(secret) {
-  const iv = (0, import_node_crypto8.randomBytes)(12), cipher = (0, import_node_crypto8.createCipheriv)("aes-256-gcm", key(), iv), data = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
+  const iv = (0, import_node_crypto10.randomBytes)(12), cipher = (0, import_node_crypto10.createCipheriv)("aes-256-gcm", key(), iv), data = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
   return `totp:v1:${iv.toString("base64url")}:${cipher.getAuthTag().toString("base64url")}:${data.toString("base64url")}`;
 }
 function decryptTotpSecret(value) {
   const [scope, version, ivText, tagText, dataText] = value.split(":");
   if (scope !== "totp" || version !== "v1") throw new Error("INVALID_MFA_SECRET");
-  const decipher = (0, import_node_crypto8.createDecipheriv)("aes-256-gcm", key(), Buffer.from(ivText, "base64url"));
+  const decipher = (0, import_node_crypto10.createDecipheriv)("aes-256-gcm", key(), Buffer.from(ivText, "base64url"));
   decipher.setAuthTag(Buffer.from(tagText, "base64url"));
   return Buffer.concat([decipher.update(Buffer.from(dataText, "base64url")), decipher.final()]).toString("utf8");
 }
 function generateTotpSecret() {
-  return base32Encode((0, import_node_crypto8.randomBytes)(20));
+  return base32Encode((0, import_node_crypto10.randomBytes)(20));
 }
 function totpCode(secret, time = Date.now(), step = 30) {
   const counter = BigInt(Math.floor(time / 1e3 / step)), buffer = Buffer.alloc(8);
   buffer.writeBigUInt64BE(counter);
-  const digest = (0, import_node_crypto8.createHmac)("sha1", base32Decode(secret)).update(buffer).digest(), offset = digest[digest.length - 1] & 15, value = (digest[offset] & 127) << 24 | (digest[offset + 1] & 255) << 16 | (digest[offset + 2] & 255) << 8 | digest[offset + 3] & 255;
+  const digest = (0, import_node_crypto10.createHmac)("sha1", base32Decode(secret)).update(buffer).digest(), offset = digest[digest.length - 1] & 15, value = (digest[offset] & 127) << 24 | (digest[offset + 1] & 255) << 16 | (digest[offset + 2] & 255) << 8 | digest[offset + 3] & 255;
   return String(value % 1e6).padStart(6, "0");
 }
 function verifyTotp(secret, supplied, time = Date.now()) {
@@ -3195,9 +4502,12 @@ function verifyTotp(secret, supplied, time = Date.now()) {
   const actual = Buffer.from(supplied);
   return [-1, 0, 1].some((window) => {
     const expected = Buffer.from(totpCode(secret, time + window * 3e4));
-    return expected.length === actual.length && (0, import_node_crypto8.timingSafeEqual)(expected, actual);
+    return expected.length === actual.length && (0, import_node_crypto10.timingSafeEqual)(expected, actual);
   });
 }
+
+// features/keystone/mutations/sportsbook-full.ts
+init_session_assurance();
 
 // features/sportsbook/domain/cashout-economics.ts
 var PORTION_SCALE = 1000000n;
@@ -3296,181 +4606,11 @@ function projectCashOutState(totalStakeMinor, rows, parts) {
   return { ...acceptanceState, totalStakeMinor: totalStake, closedStakeMinor, remainingStakeMinor, remainingPartStakeMinor };
 }
 
-// features/sportsbook/settlement/full-straight.ts
-var assertHumanSession = (session, actorId) => {
-  if (session?.itemId !== actorId || !hasOperatorMfaAssurance(session)) fail("SETTLEMENT_SESSION_ASSURANCE_REQUIRED");
-};
-var CONTRACT = "openfront.full-straight.initial.v1";
-var fail = (reason) => {
-  throw new Error(reason);
-};
-var minor = (value) => typeof value === "string" && /^\d{1,24}$/.test(value) ? BigInt(value) : fail("INVALID_SETTLEMENT_MONEY");
-var one = (rows, reason) => rows.length === 1 ? rows[0] : fail(reason);
-async function assertCurrentRiskOperator(tx, tenantId, actorId) {
-  await tx.$queryRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
-  await tx.$queryRaw`SELECT id FROM "Tenant" WHERE id = ${tenantId} FOR SHARE`;
-  await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${actorId} AND tenant = ${tenantId} FOR SHARE`;
-  const user = await tx.user.findFirst({ where: { id: actorId, tenantId }, include: { role: true } });
-  if (!user?.roleId) fail("SETTLEMENT_AUTHORITY_REQUIRED");
-  await tx.$queryRaw`SELECT id FROM "Role" WHERE id = ${user.roleId} FOR SHARE`;
-  const current = await tx.user.findFirst({ where: { id: actorId, tenantId }, include: { role: true } });
-  const tenant4 = await tx.tenant.findFirst({ where: { id: tenantId, status: "ACTIVE" } });
-  if (!tenant4 || current?.roleId !== user.roleId || !current?.role?.canManageRisk || !current.operatorMfaEnabled) fail("SETTLEMENT_AUTHORITY_REQUIRED");
-}
-async function assertApprovalIdentities(tx, tenantId, approval) {
-  for (const [id, approver] of [[approval.requesterId, false], [approval.approverId, true]]) {
-    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${id} AND tenant = ${tenantId} FOR SHARE`;
-    const user = await tx.user.findFirst({ where: { id, tenantId }, include: { role: true } });
-    if (!user?.roleId) fail("APPROVAL_PRINCIPAL_SCOPE_REQUIRED");
-    await tx.$queryRaw`SELECT id FROM "Role" WHERE id = ${user.roleId} FOR SHARE`;
-    const current = await tx.user.findFirst({ where: { id, tenantId }, include: { role: true } });
-    if (!current?.operatorMfaEnabled || (approver ? !current.role?.canApproveSensitiveActions : !current.role?.canTrade && !current.role?.canManageSportsbook)) fail("APPROVAL_PRINCIPAL_SCOPE_REQUIRED");
-  }
-}
-async function loadFullStraightPlan(tx, tenantId, wagerId) {
-  await lockWagerForSettlement(tx, tenantId, wagerId);
-  const wager = await tx.wager.findFirst({ where: { id: wagerId, tenantId } });
-  if (!wager?.playerId || wager.structure !== "STRAIGHT") fail("UNSUPPORTED_FULL_STRAIGHT_CONTRACT");
-  if (!["ACCEPTED", "OPEN", "GRADED"].includes(wager.status) || wager.bonusAwardId || wager.promotionId) fail("UNSUPPORTED_FULL_STRAIGHT_STATE_OR_FUNDING");
-  const settled = await tx.settlement.findFirst({ where: { tenantId, wagerId } });
-  if (settled) fail("WAGER_ALREADY_SETTLED");
-  const part = one(await tx.wagerPart.findMany({ where: { tenantId, wagerId }, take: 2 }), "FULL_STRAIGHT_PART_COVERAGE_REQUIRED");
-  const leg = one(await tx.wagerLeg.findMany({ where: { tenantId, wagerId }, take: 2 }), "FULL_STRAIGHT_LEG_COVERAGE_REQUIRED");
-  if (part.partIndex !== 0 || part.status !== "OPEN" || leg.wagerPartId !== part.id || leg.legIndex !== 0 || minor(part.stakeMinor) !== minor(wager.stakeMinor) || minor(part.potentialReturnMinor) !== minor(wager.potentialReturnMinor)) fail("ACCEPTED_PART_EVIDENCE_MISMATCH");
-  if (await tx.cashOutAcceptance.findFirst({ where: { tenantId, wagerId } })) fail("CASHOUT_SETTLEMENT_PLAN_REQUIRED");
-  await tx.$queryRaw`SELECT id FROM "Player" WHERE id = ${wager.playerId} AND tenant = ${tenantId} FOR SHARE`;
-  if (!await tx.player.findFirst({ where: { id: wager.playerId, tenantId } })) fail("SETTLEMENT_PLAYER_SCOPE_MISMATCH");
-  const selection = await tx.selection.findFirst({ where: { id: leg.selectionKey, tenantId }, include: { market: true } });
-  if (!selection?.market || selection.market.id !== leg.marketKey || selection.market.eventId !== leg.eventKey) fail("SETTLEMENT_SELECTION_SCOPE_MISMATCH");
-  const acceptedSnapshot = await tx.priceSnapshot.findFirst({ where: { id: leg.snapshotId, tenantId, selectionId: leg.selectionKey } });
-  if (!acceptedSnapshot?.providerConnectionId || acceptedSnapshot.decimalOdds !== leg.decimalOdds || String(acceptedSnapshot.line ?? "") !== leg.line || !await tx.providerConnection.findFirst({ where: { id: acceptedSnapshot.providerConnectionId, tenantId } })) fail("ACCEPTED_PRICE_SOURCE_SCOPE_REQUIRED");
-  await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${leg.eventKey} AND tenant = ${tenantId} FOR SHARE`;
-  await tx.$queryRaw`SELECT id FROM "Selection" WHERE id = ${leg.selectionKey} AND tenant = ${tenantId} FOR SHARE`;
-  const result = one(await tx.resultVersion.findMany({ where: { tenantId, eventId: leg.eventKey, status: "APPROVED" }, take: 2 }), "ONE_APPROVED_RESULT_REQUIRED");
-  await tx.$queryRaw`SELECT id FROM "ResultVersion" WHERE id = ${result.id} AND tenant = ${tenantId} FOR SHARE`;
-  const approval = await tx.approvalRequest.findFirst({ where: { tenantId, action: "APPROVE_RESULT", payloadHash: resultApprovalHash(result), status: "APPROVED" } });
-  if (!approval?.approverId || approval.requesterId === approval.approverId || !result.approvedAt) fail("INDEPENDENT_RESULT_EVIDENCE_REQUIRED");
-  await assertApprovalIdentities(tx, tenantId, approval);
-  if (!await tx.providerConnection.findFirst({ where: { id: result.providerConnectionId, tenantId } })) fail("RESULT_SOURCE_SCOPE_MISMATCH");
-  const fact = resolveCanonicalSelectionFact(result.payload, leg.eventKey, leg.marketKey, selection.key);
-  if (!fact) fail("CANONICAL_SELECTION_RESULT_REQUIRED");
-  if (!["WIN", "LOSS", "VOID"].includes(fact.outcome)) fail("UNSUPPORTED_FULL_STRAIGHT_OUTCOME");
-  const grade = one(await tx.legGrade.findMany({ where: { tenantId, wagerLegId: leg.id, marketGrade: { resultVersionId: result.id } }, include: { marketGrade: true }, take: 2 }), "EXACT_SELECTION_GRADE_COVERAGE_REQUIRED");
-  const marketGrade = grade.marketGrade, trace = marketGrade?.trace;
-  if (!marketGrade || marketGrade.tenantId !== tenantId || marketGrade.marketId !== leg.marketKey || marketGrade.resultVersionId !== result.id || trace?.selectionId !== leg.selectionKey || trace?.selectionKey !== selection.key || trace?.resultHash !== result.payloadHash || trace?.factHash !== evidenceHash(fact) || grade.outcome !== fact.outcome || marketGrade.outcome !== fact.outcome || grade.factorNumerator || grade.factorDenominator || marketGrade.factorNumerator || marketGrade.factorDenominator) fail("SELECTION_GRADE_EVIDENCE_MISMATCH");
-  if (marketGrade.inputHash !== evidenceHash({ marketId: leg.marketKey, selectionId: leg.selectionKey, resultVersionId: result.id, outcome: fact.outcome, factorNumerator: null, factorDenominator: null, ruleVersion: marketGrade.ruleVersion, ruleHash: trace.ruleHash, resultHash: result.payloadHash }) || grade.inputHash !== evidenceHash({ gradeId: marketGrade.id, legId: leg.id, selectionId: leg.selectionKey })) fail("GRADE_CONTENT_EVIDENCE_MISMATCH");
-  const rule = await tx.houseRuleVersion.findFirst({ where: { id: trace.ruleId, tenantId } });
-  if (!rule || `${rule.name}@${rule.version}` !== leg.ruleVersion || marketGrade.ruleVersion !== leg.ruleVersion || rule.semanticHash !== trace.ruleHash) fail("ACCEPTED_RULE_EVIDENCE_REQUIRED");
-  await tx.$queryRaw`SELECT id FROM "HouseRuleVersion" WHERE id = ${rule.id} AND tenant = ${tenantId} FOR SHARE`;
-  const ruleApproval = await tx.approvalRequest.findFirst({ where: { id: rule.approvalRequestId ?? "", tenantId, action: `HOUSE_RULE:${rule.name}`, payloadHash: rule.semanticHash, status: "APPROVED" } });
-  if (!ruleApproval?.approverId || ruleApproval.approverId === ruleApproval.requesterId || !wager.acceptedAt || rule.effectiveFrom > wager.acceptedAt || rule.effectiveTo && rule.effectiveTo <= wager.acceptedAt) fail("ACCEPTED_RULE_APPROVAL_REQUIRED");
-  await assertApprovalIdentities(tx, tenantId, ruleApproval);
-  if (rule.semanticHash !== evidenceHash({ action: "HOUSE_RULE", name: rule.name, sportKey: rule.sportKey, marketDefinitionKey: rule.marketDefinitionKey, rules: rule.rules, effectiveFrom: rule.effectiveFrom })) fail("RULE_CONTENT_EVIDENCE_MISMATCH");
-  if (rule.rules?.taxPolicy !== "NONE") fail("SETTLEMENT_TAX_POLICY_REQUIRED");
-  if (rule.rules?.currencyExponent !== 2) fail("ACCEPTED_CURRENCY_EXPONENT_EVIDENCE_REQUIRED");
-  if (!Array.isArray(rule.rules?.structures) || !rule.rules.structures.includes("STRAIGHT") || fact.outcome === "VOID" && rule.rules.void !== true) fail("OUTCOME_NOT_ALLOWED_BY_ACCEPTED_RULE");
-  const quoteLeg = one(await tx.customerQuoteLegTerms.findMany({ where: { tenantId, playerId: wager.playerId, quoteId: wager.quoteId, quoteKey: wager.quoteId, legIndex: "0" }, take: 2 }), "ORIGINAL_QUOTE_EVIDENCE_REQUIRED");
-  if (quoteLeg.eventId !== leg.eventKey || quoteLeg.marketId !== leg.marketKey || quoteLeg.selectionId !== leg.selectionKey || quoteLeg.ruleVersion !== leg.ruleVersion || quoteLeg.evidenceHash !== evidenceHash({ quoteId: wager.quoteId, index: 0, selectionId: quoteLeg.selectionId, snapshotId: quoteLeg.priceSnapshotId, decimalOdds: quoteLeg.decimalOdds, line: quoteLeg.line, ruleVersion: quoteLeg.ruleVersion, ruleHash: rule.semanticHash, currency: wager.currency, currencyExponent: rule.rules.currencyExponent })) fail("ORIGINAL_QUOTE_EVIDENCE_REQUIRED");
-  const decision = one(await tx.acceptanceDecision.findMany({ where: { tenantId, wagerId }, take: 2 }), "ACCEPTANCE_EVIDENCE_REQUIRED");
-  const price = decision.gateResults?.acceptedPriceEvidence?.[0];
-  if (!decision.accepted || decision.inputHash !== wager.termsHash || decision.gateResults?.rejectedParts?.length || decision.gateResults?.acceptedParts?.length !== 1 || decision.gateResults.acceptedParts[0] !== 0 || !price || price.legIndex !== 0 || price.snapshotId !== leg.snapshotId || price.decimalOdds !== leg.decimalOdds || price.line !== leg.line) fail("ACCEPTED_PRICE_EVIDENCE_MISMATCH");
-  const commandId = /^combination:([A-Za-z0-9_-]+)$/.exec(wager.idempotencyKey)?.[1];
-  if (!commandId) fail("ORIGINAL_CUSTOMER_COMMAND_REQUIRED");
-  await tx.$queryRaw`SELECT id FROM "CustomerCommand" WHERE id = ${commandId} AND tenant = ${tenantId} AND player = ${wager.playerId} FOR SHARE`;
-  const command = await tx.customerCommand.findFirst({ where: { id: commandId, tenantId, playerId: wager.playerId, type: "WAGER", status: "SUCCEEDED" } });
-  if (!command?.result || command.result.wagerId !== wagerId || command.result.receiptId !== wagerId || command.result.state !== "ACCEPTED" || command.result.accepted !== true || command.result.termsHash !== wager.termsHash || command.result.acceptedStakeMinor !== wager.stakeMinor || command.result.potentialReturnMinor !== wager.potentialReturnMinor || command.result.acceptedPartIndexes?.length !== 1 || command.result.acceptedPartIndexes[0] !== 0 || command.result.rejectedPartIndexes?.length || !/^[a-f0-9]{64}$/.test(command.requestHash)) fail("ORIGINAL_CUSTOMER_COMMAND_REQUIRED");
-  const receiptPart = command.result.acceptedParts?.[0], receiptPrice = command.result.acceptedPrices?.[0];
-  if (command.result.acceptedParts?.length !== 1 || !receiptPart || receiptPart.index !== part.partIndex || receiptPart.key !== part.combinationKey || receiptPart.stakeMinor !== part.stakeMinor || receiptPart.potentialReturnMinor !== part.potentialReturnMinor || receiptPart.decimalOdds !== part.decimalOdds || command.result.acceptedPrices?.length !== 1 || !receiptPrice || receiptPrice.legIndex !== 0 || receiptPrice.selectionId !== leg.selectionKey || receiptPrice.priceSnapshotId !== leg.snapshotId || receiptPrice.decimalOdds !== leg.decimalOdds || receiptPrice.line !== leg.line) fail("ORIGINAL_CUSTOMER_COMMAND_REQUIRED");
-  const oldPrice = parseExactDecimal(part.decimalOdds), acceptedPrice = parseExactDecimal(leg.decimalOdds);
-  if (oldPrice.numerator * acceptedPrice.denominator !== acceptedPrice.numerator * oldPrice.denominator) fail("ACCEPTED_PRICE_EVIDENCE_MISMATCH");
-  const configured = await tx.tenantCurrency.findFirst({ where: { tenantId, status: "ACTIVE", currency: { code: wager.currency } }, include: { currency: true } });
-  if (!configured?.currency || configured.currency.code !== wager.currency || !Number.isInteger(configured.currency.exponent) || configured.currency.exponent !== rule.rules.currencyExponent) fail("SETTLEMENT_CURRENCY_EVIDENCE_REQUIRED");
-  const accounts = {};
-  for (const key2 of ["PLAYER_CASH", "WAGERS_PENDING", "GAMING_REVENUE", "WINNINGS_EXPENSE"]) accounts[key2] = one(await tx.ledgerAccount.findMany({ where: { tenantId, playerId: key2 === "PLAYER_CASH" ? wager.playerId : null, currency: wager.currency, key: key2, status: "ACTIVE" }, take: 2 }), `EXACT_LEDGER_ACCOUNT_REQUIRED:${key2}`);
-  await tx.$queryRaw`SELECT id FROM "LedgerAccount" WHERE id = ${accounts.PLAYER_CASH.id} AND tenant = ${tenantId} FOR UPDATE`;
-  const balance = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
-  if (!balance || minor(balance.availableMinor) > minor(balance.postedMinor)) fail("SETTLEMENT_BALANCE_EVIDENCE_REQUIRED");
-  minor(balance.pendingMinor);
-  await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${balance.id} AND tenant = ${tenantId} FOR UPDATE`;
-  const hold = one(await tx.hold.findMany({ where: { tenantId, accountId: accounts.PLAYER_CASH.id, purposeType: "WAGER", purposeId: wagerId }, take: 2 }), "EXACT_CAPTURED_HOLD_REQUIRED");
-  if (hold.status !== "CAPTURED" || minor(hold.amountMinor) !== minor(wager.stakeMinor)) fail("EXACT_CAPTURED_HOLD_REQUIRED");
-  const stakeJournal = one(await tx.journalTransaction.findMany({ where: { tenantId, correlationId: wagerId, type: "WAGER_STAKE", status: "POSTED" }, take: 2 }), "STAKE_JOURNAL_EVIDENCE_REQUIRED");
-  const entries = await tx.journalEntry.findMany({ where: { tenantId, transactionId: stakeJournal.id }, take: 3 });
-  if (entries.length !== 2 || !entries.some((entry) => entry.accountId === accounts.PLAYER_CASH.id && entry.side === "DEBIT") || !entries.some((entry) => entry.accountId === accounts.WAGERS_PENDING.id && entry.side === "CREDIT") || entries.some((entry) => entry.currency !== wager.currency || minor(entry.amountMinor) !== minor(wager.stakeMinor))) fail("STAKE_JOURNAL_EVIDENCE_MISMATCH");
-  await tx.$queryRaw`SELECT id FROM "ExposurePosition" WHERE tenant = ${tenantId} AND "scopeType" = 'MARKET' AND "scopeId" = ${leg.marketKey} AND currency = ${wager.currency} FOR UPDATE`;
-  const allocation = one(await tx.wagerExposureAllocation.findMany({ where: { tenantId, wagerId }, take: 2 }), "EXACT_EXPOSURE_ALLOCATION_REQUIRED");
-  const exposure = one(await tx.exposurePosition.findMany({ where: { tenantId, scopeType: "MARKET", scopeId: leg.marketKey, currency: wager.currency }, take: 2 }), "EXACT_EXPOSURE_POSITION_REQUIRED");
-  const liability = minor(wager.potentialReturnMinor) - minor(wager.stakeMinor);
-  if (allocation.marketId !== leg.marketKey || allocation.status !== "OPEN" || minor(allocation.remainingStakeMinor) !== minor(wager.stakeMinor) || minor(allocation.remainingLiabilityMinor) !== liability || minor(exposure.stakeMinor) < minor(wager.stakeMinor) || minor(exposure.liabilityMinor) < liability) fail("EXPOSURE_CONSERVATION_EVIDENCE_REQUIRED");
-  const calculated = settleCombinationPart({ stakeMinor: minor(part.stakeMinor), acceptedPotentialReturnMinor: minor(part.potentialReturnMinor), stakeReturned: true, legs: [{ decimalOdds: leg.decimalOdds, outcome: fact.outcome }] });
-  if (calculated.payoutMinor > minor(wager.maxPayoutMinor)) fail("ACCEPTED_PAYOUT_CAP_EXCEEDED");
-  const bundle = { contract: CONTRACT, tenantId, wagerId, playerId: wager.playerId, wagerVersion: wager.version, termsHash: wager.termsHash, quoteLegEvidenceHash: quoteLeg.evidenceHash, partId: part.id, legId: leg.id, commandId: command.id, commandRequestHash: command.requestHash, commandReceiptHash: evidenceHash(command.result), stakeMinor: wager.stakeMinor, potentialReturnMinor: wager.potentialReturnMinor, decimalOdds: leg.decimalOdds, line: leg.line, snapshotId: leg.snapshotId, priceProviderConnectionId: acceptedSnapshot.providerConnectionId, currency: wager.currency, currencyExponent: configured.currency.exponent, eventId: leg.eventKey, marketId: leg.marketKey, selectionId: leg.selectionKey, selectionKey: selection.key, resultVersionId: result.id, resultVersion: result.version, resultHash: result.payloadHash, providerConnectionId: result.providerConnectionId, approvalId: approval.id, gradeId: grade.id, gradeHash: grade.inputHash, marketGradeId: marketGrade.id, marketGradeHash: marketGrade.inputHash, ruleId: rule.id, ruleVersion: leg.ruleVersion, ruleHash: rule.semanticHash, ruleApprovalId: ruleApproval.id, outcome: fact.outcome, payoutMinor: String(calculated.payoutMinor), roundingRule: "DOWN_AT_POSTING", stakeJournalId: stakeJournal.id, stakeEntries: entries.map((entry) => ({ id: entry.id, accountId: entry.accountId, side: entry.side, amountMinor: entry.amountMinor, currency: entry.currency })).sort((a, b) => a.id.localeCompare(b.id)), holdId: hold.id, holdVersion: hold.version, allocationId: allocation.id, allocationVersion: allocation.version, accounts: Object.fromEntries(Object.entries(accounts).map(([key2, row]) => [key2, row.id])) };
-  const plan = { state: "READY", contract: CONTRACT, planHash: evidenceHash(bundle), tenantId, wagerId, playerId: wager.playerId, outcome: fact.outcome, stakeMinor: wager.stakeMinor, payoutMinor: String(calculated.payoutMinor), currency: wager.currency, currencyExponent: configured.currency.exponent, resultVersionId: result.id, ruleVersion: leg.ruleVersion, bundle };
-  return { plan, wager, part, leg, result, grade, balance, hold, accounts, allocation, exposure };
-}
-function getFullStraightPlan(prisma, tenantId, actorId, wagerId, session) {
-  return serializable2(prisma, async (tx) => {
-    assertHumanSession(session, actorId);
-    await assertCurrentRiskOperator(tx, tenantId, actorId);
-    const plan = (await loadFullStraightPlan(tx, tenantId, wagerId)).plan;
-    assertHumanSession(session, actorId);
-    return plan;
-  });
-}
-async function settleFullStraight(tx, tenantId, actorId, input, session) {
-  assertHumanSession(session, actorId);
-  if (!/^[A-Za-z0-9:_-]{8,128}$/.test(input.idempotencyKey) || !/^[a-f0-9]{64}$/.test(input.planHash ?? "")) fail("REVIEWED_SETTLEMENT_PLAN_REQUIRED");
-  if (input.expectedActorId !== actorId || input.expectedTenantId !== tenantId) fail("SETTLEMENT_INTENT_SCOPE_CHANGED");
-  await assertCurrentRiskOperator(tx, tenantId, actorId);
-  await lockWagerForSettlement(tx, tenantId, input.wagerId);
-  const wager = await tx.wager.findFirst({ where: { id: input.wagerId, tenantId } });
-  if (!wager?.playerId) fail("SETTLEMENT_PLAYER_SCOPE_MISMATCH");
-  await tx.$queryRaw`SELECT id FROM "Player" WHERE id = ${wager.playerId} AND tenant = ${tenantId} FOR SHARE`;
-  if (!await tx.player.findFirst({ where: { id: wager.playerId, tenantId } })) fail("SETTLEMENT_PLAYER_SCOPE_MISMATCH");
-  const requestHash = evidenceHash({ contract: CONTRACT, tenantId, actorId, wagerId: input.wagerId, planHash: input.planHash, idempotencyKey: input.idempotencyKey });
-  const prior = await tx.settlement.findFirst({ where: { tenantId, inputHash: input.idempotencyKey } });
-  if (prior) {
-    const line = one(await tx.settlementLine.findMany({ where: { tenantId, settlementId: prior.id }, take: 2 }), "ORIGINAL_SETTLEMENT_RECEIPT_REQUIRED");
-    if (prior.wagerId !== input.wagerId || line.trace?.contract !== CONTRACT || line.trace?.requestHash !== requestHash || line.trace?.planHash !== input.planHash) fail("SETTLEMENT_IDEMPOTENCY_CONFLICT");
-    const bundle = line.trace.bundle;
-    if (!bundle || evidenceHash(bundle) !== input.planHash || bundle.tenantId !== tenantId || bundle.wagerId !== input.wagerId || bundle.playerId !== wager.playerId || bundle.termsHash !== wager.termsHash || bundle.stakeMinor !== wager.stakeMinor || bundle.currency !== wager.currency || bundle.payoutMinor !== prior.payoutMinor || bundle.payoutMinor !== line.amountMinor || bundle.resultVersionId !== prior.resultVersionId || bundle.outcome !== prior.outcome || line.trace.capturedHoldId !== bundle.holdId) fail("ORIGINAL_SETTLEMENT_RECEIPT_REQUIRED");
-    if (!await tx.journalTransaction.findFirst({ where: { id: prior.journalTransactionId, tenantId, status: "POSTED", correlationId: input.wagerId, idempotencyKey: `full-straight:${input.idempotencyKey}` } })) fail("ORIGINAL_SETTLEMENT_RECEIPT_REQUIRED");
-    const originalCommand = await tx.customerCommand.findFirst({ where: { id: bundle.commandId, tenantId, playerId: wager.playerId, type: "WAGER", status: "SUCCEEDED", requestHash: bundle.commandRequestHash } });
-    if (!originalCommand || evidenceHash(originalCommand.result) !== bundle.commandReceiptHash) fail("ORIGINAL_SETTLEMENT_RECEIPT_SCOPE_REQUIRED");
-    for (const [key2, accountId] of Object.entries(bundle.accounts)) if (!await tx.ledgerAccount.findFirst({ where: { id: accountId, tenantId, currency: bundle.currency, key: key2, playerId: key2 === "PLAYER_CASH" ? wager.playerId : null } })) fail("ORIGINAL_SETTLEMENT_RECEIPT_SCOPE_REQUIRED");
-    const originalJournal = settlementJournal({ idempotencyKey: `full-straight:${input.idempotencyKey}`, stake: minor(bundle.stakeMinor), payout: minor(bundle.payoutMinor), currency: bundle.currency, pendingAccountId: bundle.accounts.WAGERS_PENDING, cashAccountId: bundle.accounts.PLAYER_CASH, revenueAccountId: bundle.accounts.GAMING_REVENUE, winningsExpenseAccountId: bundle.accounts.WINNINGS_EXPENSE });
-    const originalEntries = await tx.journalEntry.findMany({ where: { tenantId, transactionId: prior.journalTransactionId }, take: originalJournal.entries.length + 1 });
-    const signature = (entry) => `${entry.accountId}:${entry.side}:${entry.currency}:${entry.amountMinor ?? String(entry.amount)}`;
-    if (evidenceHash(originalEntries.map(signature).sort()) !== evidenceHash(originalJournal.entries.map(signature).sort())) fail("ORIGINAL_SETTLEMENT_RECEIPT_REQUIRED");
-    assertHumanSession(session, actorId);
-    return prior.id;
-  }
-  const data = await loadFullStraightPlan(tx, tenantId, input.wagerId), { plan, accounts, balance } = data;
-  if (plan.planHash !== input.planHash) fail("STALE_SETTLEMENT_PLAN");
-  const journal = settlementJournal({ idempotencyKey: `full-straight:${input.idempotencyKey}`, stake: minor(plan.stakeMinor), payout: minor(plan.payoutMinor), currency: plan.currency, pendingAccountId: accounts.WAGERS_PENDING.id, cashAccountId: accounts.PLAYER_CASH.id, revenueAccountId: accounts.GAMING_REVENUE.id, winningsExpenseAccountId: accounts.WINNINGS_EXPENSE.id });
-  if (await tx.journalTransaction.findFirst({ where: { tenantId, idempotencyKey: journal.idempotencyKey } })) fail("ORIGINAL_SETTLEMENT_RECEIPT_REQUIRED");
-  const now = /* @__PURE__ */ new Date();
-  const run = await tx.settlementRun.create({ data: { tenantId, triggerType: "RESULT_APPROVED", resultVersionId: plan.resultVersionId, inputHash: requestHash, status: "RUNNING", wagersConsidered: 1, wagersSettled: 0, startedAt: now } });
-  assertHumanSession(session, actorId);
-  const posted = await postJournal(tx, tenantId, journal, input.wagerId);
-  await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, postedMinor: String(minor(balance.postedMinor) + minor(plan.payoutMinor)), availableMinor: String(minor(balance.availableMinor) + minor(plan.payoutMinor)), pendingMinor: balance.pendingMinor, version: balance.version + 1, asOf: now } });
-  const settlement = await tx.settlement.create({ data: { tenantId, wagerId: input.wagerId, resultVersionId: plan.resultVersionId, settlementRunId: run.id, version: 1, outcome: plan.outcome, grossPayoutMinor: plan.payoutMinor, payoutMinor: plan.payoutMinor, taxMinor: "0", inputHash: input.idempotencyKey, journalTransactionId: posted.id } });
-  await tx.settlementLine.create({ data: { tenantId, settlementId: settlement.id, wagerPartId: data.part.id, wagerLegId: data.leg.id, lineType: plan.outcome === "LOSS" ? "LOSS" : plan.outcome === "VOID" ? "STAKE_RETURN" : "PROFIT", amountMinor: plan.payoutMinor, unroundedValue: `${plan.payoutMinor}.000000`, scale: 6, roundingRule: "DOWN_AT_POSTING", residualMinor: "0", trace: { contract: CONTRACT, requestHash, planHash: plan.planHash, bundle: plan.bundle, capturedHoldId: data.hold.id, grades: [{ legId: data.leg.id, gradeId: data.grade.id, outcome: plan.outcome }] } } });
-  const changed = await tx.wager.updateMany({ where: { id: input.wagerId, tenantId, version: data.wager.version, status: data.wager.status }, data: { status: "SETTLED", version: { increment: 1 } } });
-  if (changed.count !== 1) fail("STALE_WAGER_STATE");
-  await tx.wagerPart.update({ where: { id: data.part.id }, data: { status: "SETTLED", settlementId: settlement.id, gradeSummary: { outcome: plan.outcome, payoutMinor: plan.payoutMinor, resultVersionId: plan.resultVersionId, ruleVersion: plan.ruleVersion } } });
-  const closedStake = minor(data.allocation.remainingStakeMinor), closedLiability = minor(data.allocation.remainingLiabilityMinor);
-  const closed = await tx.wagerExposureAllocation.updateMany({ where: { id: data.allocation.id, tenantId, wagerId: input.wagerId, version: data.allocation.version, status: "OPEN" }, data: { remainingStakeMinor: "0", remainingLiabilityMinor: "0", status: "CLOSED", version: { increment: 1 } } });
-  if (closed.count !== 1) fail("STALE_EXPOSURE_ALLOCATION");
-  await tx.exposurePosition.update({ where: { id: data.exposure.id }, data: { stakeMinor: String(minor(data.exposure.stakeMinor) - closedStake), liabilityMinor: String(minor(data.exposure.liabilityMinor) - closedLiability), version: { increment: 1 }, asOf: now } });
-  await tx.settlementRun.update({ where: { id: run.id }, data: { status: "COMPLETED", wagersSettled: 1, completedAt: now } });
-  await appendAudit(tx, tenantId, actorId, "wager.settled_full", "Wager", input.wagerId, "REVIEWED_FULL_STRAIGHT_PLAN", { settlementId: settlement.id, requestHash, planHash: plan.planHash, resultVersionId: plan.resultVersionId, payoutMinor: plan.payoutMinor });
-  await emit(tx, tenantId, "WAGER", input.wagerId, "wager.settled.v2", { settlementId: settlement.id, planHash: plan.planHash, payoutMinor: plan.payoutMinor, currency: plan.currency });
-  assertHumanSession(session, actorId);
-  return settlement.id;
-}
-
 // features/keystone/mutations/sportsbook-full.ts
+init_trading_eligibility();
+init_full_straight();
+init_approval_control();
+init_zoned_time();
 var graphql2 = String.raw;
 var operatorInstant = async (context, tenantId, value, label) => resolveOperatorInstant(value, await tenantTimeZone(context.prisma, tenantId), label);
 var allowedEventStates = /* @__PURE__ */ new Set(["SCHEDULED", "LIVE", "ENDED", "CANCELLED", "SUSPENDED"]);
@@ -3548,6 +4688,7 @@ var sportsbookFullTypeDefs = graphql2`
     beginOperatorMfaEnrollment: OperatorMfaEnrollment!
     completeOperatorMfaEnrollment(code:String!): OperatorMfaCompletion!
     verifyOperatorMfaSession(code:String!): String!
+    regenerateOperatorMfaRecoveryCodes(code:String!): [String!]!
     sendUserPasswordResetLink(email:String!): Boolean!
     redeemUserPasswordResetToken(email:String!,token:String!,password:String!): OperatorPasswordResetResult!
     setEventTradingState(eventId:ID!,status:String!,livePhase:String,clockSeconds:Int,reason:String!): Boolean!
@@ -3587,7 +4728,6 @@ var sportsbookFullTypeDefs = graphql2`
     applyPromotionActivation(promotionId:ID!,approvalId:ID!): Boolean!
     requestWebhookEndpoint(name:String!,url:String!,eventTypes:String!,secretReference:String!,reason:String!): ID!
     applyWebhookEndpoint(name:String!,url:String!,eventTypes:String!,secretReference:String!,approvalId:ID!): ID!
-    testWebhookEndpoint(endpointId:ID!): ID!
     runAdapterCertification(connectionId:ID!): ID!
     setProviderOperationalState(connectionId:ID!,status:String!,reason:String!): Boolean!
     settleCombinationWager(wagerId:ID!,idempotencyKey:String!,planHash:String,expectedActorId:ID,expectedTenantId:ID): ID!
@@ -3608,7 +4748,6 @@ var sportsbookFullTypeDefs = graphql2`
     assessSettlementTax(settlementId:ID!,taxRuleId:ID!,idempotencyKey:String!): ID!
     requestLedgerAdjustment(accountId:ID!,amountMinor:String!,direction:String!,reasonCode:String!,evidence:String!): ID!
     applyLedgerAdjustment(adjustmentId:ID!,approvalId:ID!,idempotencyKey:String!): ID!
-    scheduleOperationalJob(type:String!,scopeType:String!,scopeId:String!,dueAt:String!,payload:String!,idempotencyKey:String!): ID!
     runRetentionDryRun(policyId:ID!,windowFrom:String!,windowTo:String!): ID!
     requestRetentionExecution(executionId:ID!,reason:String!): ID!
     applyRetentionExecution(executionId:ID!,approvalId:ID!): Boolean!
@@ -3752,7 +4891,6 @@ async function combinationSettlement(tx, tenantId, actorId, wagerId, idempotency
     if (projection) await tx.exposurePosition.update({ where: { id: projection.id }, data: { stakeMinor: String(stake), liabilityMinor: String(liability), version: { increment: 1 }, asOf: /* @__PURE__ */ new Date() } });
   }
   await tx.settlementRun.update({ where: { id: run.id }, data: { status: "COMPLETED", wagersSettled: 1, completedAt: /* @__PURE__ */ new Date() } });
-  await emit(tx, tenantId, "WAGER", wagerId, correctionOf ? "wager.resettled.v2" : "wager.settled.v2", { settlementId: settlement.id, version: settlement.version, payoutMinor: String(totalPayout), currency: wager.currency, inputHash, resultVersionIds: resultVersions.map((item) => item.id) });
   await appendAudit(tx, tenantId, actorId, correctionOf ? "wager.resettled_full" : "wager.settled_full", "Wager", wagerId, correctionOf ? "DUAL_APPROVED_CORRECTION" : "APPROVED_RESULTS", { settlementId: settlement.id, runId: run.id, payoutMinor: String(totalPayout), inputHash, resultVersionIds: resultVersions.map((item) => item.id) });
   return settlement.id;
 }
@@ -3789,7 +4927,7 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
   completeOperatorMfaEnrollment: async (_r, a, context) => {
     const userId = context.session?.itemId;
     if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
-    const recoveryCodes = Array.from({ length: 8 }, () => `${(0, import_node_crypto9.randomBytes)(4).toString("hex").slice(0, 4)}-${(0, import_node_crypto9.randomBytes)(4).toString("hex").slice(0, 4)}`.toUpperCase()), recoveryHashes = recoveryCodes.map((code) => evidenceHash(code));
+    const recoveryCodes = Array.from({ length: 8 }, () => `${(0, import_node_crypto11.randomBytes)(4).toString("hex").slice(0, 4)}-${(0, import_node_crypto11.randomBytes)(4).toString("hex").slice(0, 4)}`.toUpperCase()), recoveryHashes = recoveryCodes.map((code) => evidenceHash(code));
     const result = await context.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
       const current = await tx.user.findUnique({ where: { id: userId }, include: { role: true } });
@@ -3808,6 +4946,32 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
     if (!result.user) throw new Error("INVALID_MFA_CODE");
     const sessionToken = await startOperatorMfaSession(context, result.user.id);
     return { enabled: true, recoveryCodes, sessionToken };
+  },
+  // Replace every recovery code (old ones stop working). Requires a verified session AND a fresh authenticator code, never a recovery code.
+  regenerateOperatorMfaRecoveryCodes: async (_r, a, context) => {
+    const userId = context.session?.itemId;
+    if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
+    if (!hasOperatorMfaAssurance(context.session)) throw new Error("MFA_STEP_UP_REQUIRED");
+    const supplied = String(a.code ?? "").trim();
+    if (!/^\d{6}$/.test(supplied)) throw new Error("AUTHENTICATOR_CODE_REQUIRED");
+    const recoveryCodes = Array.from({ length: 8 }, () => `${(0, import_node_crypto11.randomBytes)(4).toString("hex").slice(0, 4)}-${(0, import_node_crypto11.randomBytes)(4).toString("hex").slice(0, 4)}`.toUpperCase());
+    const ok = await context.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user?.operatorMfaEnabled || !user.operatorMfaSecret) throw new Error("MFA_NOT_ENROLLED");
+      const now = /* @__PURE__ */ new Date();
+      if (user.operatorMfaLockedUntil && user.operatorMfaLockedUntil > now) throw new Error("MFA_TEMPORARILY_LOCKED");
+      if (!verifyTotp(decryptTotpSecret(user.operatorMfaSecret), supplied)) {
+        const attempts = Number(user.operatorMfaFailedAttempts ?? 0) + 1;
+        await tx.user.update({ where: { id: user.id }, data: { operatorMfaFailedAttempts: attempts, operatorMfaLockedUntil: attempts >= 5 ? new Date(now.getTime() + 15 * 6e4) : null } });
+        return false;
+      }
+      await tx.user.update({ where: { id: user.id }, data: { operatorMfaRecoveryHashes: recoveryCodes.map((code) => evidenceHash(code)), operatorMfaFailedAttempts: 0, operatorMfaLockedUntil: null } });
+      if (user.tenantId) await appendAudit(tx, user.tenantId, user.id, "operator.mfa_recovery_codes_regenerated", "User", user.id, "OPERATOR_SECURITY", { recoveryCodeCount: recoveryCodes.length });
+      return true;
+    });
+    if (!ok) throw new Error("INVALID_MFA_CODE");
+    return recoveryCodes;
   },
   verifyOperatorMfaSession: async (_r, a, context) => {
     const userId = context.session?.itemId;
@@ -3837,7 +5001,7 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
     if (!/^\S+@\S+\.\S+$/.test(email)) return true;
     const user = await context.prisma.user.findUnique({ where: { email } });
     if (!user) return true;
-    const token = (0, import_node_crypto9.randomBytes)(32).toString("base64url"), digest = evidenceHash(token);
+    const token = (0, import_node_crypto11.randomBytes)(32).toString("base64url"), digest = evidenceHash(token);
     await context.prisma.user.update({ where: { id: user.id }, data: { passwordResetToken: digest, passwordResetIssuedAt: /* @__PURE__ */ new Date() } });
     void sendPasswordResetEmail(token, email).catch(() => console.error("Operator password reset email could not be sent."));
     return true;
@@ -3865,6 +5029,7 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
       const event = await tx.event.findFirst({ where: { id: a.eventId, tenantId } });
       if (!event) throw new Error("Not found");
       assertEventTradingTransition(event.status, a.status);
+      assertEventTransition(event.status, a.status);
       if (a.clockSeconds !== void 0 && a.clockSeconds !== null && (!Number.isSafeInteger(a.clockSeconds) || a.clockSeconds < 0 || a.clockSeconds > 2147483647)) throw new Error("INVALID_CLOCK_SECONDS");
       const nextPhase = a.livePhase ?? event.livePhase, nextClock = a.clockSeconds ?? event.clockSeconds;
       if (event.status === a.status && event.livePhase === nextPhase && (event.clockSeconds ?? null) === (nextClock ?? null)) return true;
@@ -3943,6 +5108,7 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
     const tenantId = await requireTenant(context, "canTrade");
     return context.prisma.$transaction(async (tx) => {
       await assertCurrentActor(tx, context, tenantId, "canTrade");
+      if (await tx.competitor.findFirst({ where: { tenantId, key: a.key }, select: { id: true } })) throw new Error("CATALOG_KEY_EXISTS");
       const row = await tx.competitor.create({ data: { tenantId, key: a.key, name: a.name, status: "ACTIVE" } });
       await appendAudit(tx, tenantId, context.session.itemId, "catalog.competitor_created", "Competitor", row.id, "OPERATOR_ENTRY", { key: a.key });
       return row.id;
@@ -4086,7 +5252,7 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
       {
         const value = row.value;
         if (!["SUSPENDED", "CLOSED"].includes(value?.status)) throw new Error("INVALID_OVERRIDE");
-        const market = await tx.market.updateMany({ where: { id: row.targetId, tenantId }, data: { status: value.status, version: { increment: 1 } } });
+        const market = await tx.market.updateMany({ where: { id: row.targetId, tenantId, status: { in: ["OPEN", "SUSPENDED"] } }, data: { status: value.status, version: { increment: 1 } } });
         if (market.count !== 1) throw new Error("Not found");
       }
       await appendAudit(tx, tenantId, context.session.itemId, "trading.override_applied", "TraderOverride", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
@@ -4291,25 +5457,24 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
     const tenantId = await requireTenant(context, "canManageSportsbook");
     return context.prisma.$transaction(async (tx) => {
       await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
-      const p = await tx.promotion.findFirst({ where: { id: a.promotionId, tenantId, status: "DRAFT" } });
-      if (!p) throw new Error("Not found");
-      const payloadHash = evidenceHash({ action: "ACTIVATE_PROMOTION", promotionId: p.id, termsHash: p.termsHash });
-      const approval = await tx.approvalRequest.create({ data: { tenantId, action: `ACTIVATE_PROMOTION:${p.id}`, payloadHash, ...approvalReview({ action: "ACTIVATE_PROMOTION", promotionId: p.id, termsHash: p.termsHash, key: p.key, name: p.name, type: p.type, budgetMinor: p.budgetMinor, currency: p.currency, startsAt: p.startsAt, endsAt: p.endsAt }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-      await tx.promotion.update({ where: { id: p.id }, data: { approvalRequestId: approval.id } });
+      const p2 = await tx.promotion.findFirst({ where: { id: a.promotionId, tenantId, status: "DRAFT" } });
+      if (!p2) throw new Error("Not found");
+      const payloadHash = evidenceHash({ action: "ACTIVATE_PROMOTION", promotionId: p2.id, termsHash: p2.termsHash });
+      const approval = await tx.approvalRequest.create({ data: { tenantId, action: `ACTIVATE_PROMOTION:${p2.id}`, payloadHash, ...approvalReview({ action: "ACTIVATE_PROMOTION", promotionId: p2.id, termsHash: p2.termsHash, key: p2.key, name: p2.name, type: p2.type, budgetMinor: p2.budgetMinor, currency: p2.currency, startsAt: p2.startsAt, endsAt: p2.endsAt }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+      await tx.promotion.update({ where: { id: p2.id }, data: { approvalRequestId: approval.id } });
       return approval.id;
     });
   },
   applyPromotionActivation: async (_r, a, context) => {
     const tenantId = await requireTenant(context, "canManageSportsbook");
     return context.prisma.$transaction(async (tx) => {
-      const p = await tx.promotion.findFirst({ where: { id: a.promotionId, tenantId, status: "DRAFT" } });
-      if (!p) throw new Error("Not found");
-      const payloadHash = evidenceHash({ action: "ACTIVATE_PROMOTION", promotionId: p.id, termsHash: p.termsHash });
-      await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `ACTIVATE_PROMOTION:${p.id}`, payloadHash);
-      await tx.promotion.update({ where: { id: p.id }, data: { status: p.startsAt > /* @__PURE__ */ new Date() ? "SCHEDULED" : "ACTIVE" } });
-      await tx.promotionRuleVersion.updateMany({ where: { tenantId, promotionId: p.id, status: "DRAFT" }, data: { status: "ACTIVE" } });
-      await emit(tx, tenantId, "PROMOTION", p.id, "promotion.activated.v1", { termsHash: p.termsHash });
-      await appendAudit(tx, tenantId, context.session.itemId, "promotion.activated", "Promotion", p.id, "DUAL_APPROVED", { approvalId: a.approvalId, termsHash: p.termsHash });
+      const p2 = await tx.promotion.findFirst({ where: { id: a.promotionId, tenantId, status: "DRAFT" } });
+      if (!p2) throw new Error("Not found");
+      const payloadHash = evidenceHash({ action: "ACTIVATE_PROMOTION", promotionId: p2.id, termsHash: p2.termsHash });
+      await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `ACTIVATE_PROMOTION:${p2.id}`, payloadHash);
+      await tx.promotion.update({ where: { id: p2.id }, data: { status: p2.startsAt > /* @__PURE__ */ new Date() ? "SCHEDULED" : "ACTIVE" } });
+      await tx.promotionRuleVersion.updateMany({ where: { tenantId, promotionId: p2.id, status: "DRAFT" }, data: { status: "ACTIVE" } });
+      await appendAudit(tx, tenantId, context.session.itemId, "promotion.activated", "Promotion", p2.id, "DUAL_APPROVED", { approvalId: a.approvalId, termsHash: p2.termsHash });
       return true;
     });
   },
@@ -4329,17 +5494,6 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
       const row = await tx.webhookEndpoint.create({ data: { tenantId, name: a.name, url, secretReference: a.secretReference, eventTypes, status: "ACTIVE", failureCount: 0, approvalRequestId: a.approvalId } });
       await appendAudit(tx, tenantId, context.session.itemId, "webhook.endpoint_activated", "WebhookEndpoint", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash, url, eventTypes });
       return row.id;
-    });
-  },
-  testWebhookEndpoint: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageIntegrations");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
-      const endpoint = await tx.webhookEndpoint.findFirst({ where: { id: a.endpointId, tenantId, status: "ACTIVE" } });
-      if (!endpoint) throw new Error("Not found");
-      const deliveryId = `delivery_${(0, import_node_crypto9.randomBytes)(18).toString("base64url")}`, payload = { id: `evt_${(0, import_node_crypto9.randomBytes)(12).toString("base64url")}`, type: "endpoint.test.v1", occurredAt: (/* @__PURE__ */ new Date()).toISOString(), tenantId, data: { test: true } }, payloadHash = evidenceHash(payload), delivery = await tx.webhookDelivery.create({ data: { tenantId, endpointId: endpoint.id, deliveryId, eventType: "endpoint.test", eventVersion: "v1", payloadHash, signatureKeyId: PLATFORM_WEBHOOK_SIGNING_KEY_ID, status: "PENDING", attempts: 0, availableAt: /* @__PURE__ */ new Date() } }), outbox = await tx.outboxMessage.create({ data: { tenantId, aggregateType: "WEBHOOK_DELIVERY", aggregateId: delivery.id, eventType: "provider.delivery", payload: { endpointId: endpoint.id, deliveryId, eventType: "endpoint.test", eventVersion: "v1", payload }, status: "PENDING", attempts: 0, maxAttempts: 5, availableAt: /* @__PURE__ */ new Date() } });
-      await tx.webhookDelivery.update({ where: { id: delivery.id }, data: { outboxMessageId: outbox.id } });
-      return delivery.id;
     });
   },
   runAdapterCertification: async (_r, a, context) => {
@@ -4389,7 +5543,6 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
           suspended = update.count;
         }
       }
-      await emit(tx, tenantId, "PROVIDER", connection.id, a.status === "ACTIVE" ? "provider.recovered.v1" : "provider.degraded.v1", { kind, reason: a.reason, failoverId, suspended });
       await appendAudit(tx, tenantId, context.session.itemId, "provider.status_changed", "ProviderConnection", connection.id, a.reason, { from: connection.status, to: a.status, kind, failoverId, suspended, source: "OPERATOR_ATTESTATION" });
       return true;
     });
@@ -4486,7 +5639,6 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
         const active = await tx.wagerExposureAllocation.findMany({ where: { tenantId, marketId, status: { not: "CLOSED" } } }), stake = active.reduce((sum, item) => sum + BigInt(item.remainingStakeMinor), 0n), liability = active.reduce((sum, item) => sum + BigInt(item.remainingLiabilityMinor), 0n), projection = await tx.exposurePosition.findFirst({ where: { tenantId, scopeType: "MARKET", scopeId: marketId, currency: acceptance.currency } });
         if (projection) await tx.exposurePosition.update({ where: { id: projection.id }, data: { stakeMinor: String(stake), liabilityMinor: String(liability), version: { increment: 1 }, asOf: /* @__PURE__ */ new Date() } });
       }
-      await emit(tx, tenantId, "WAGER", acceptance.wagerId, "cashout.corrected.v1", { acceptanceId: corrected.id, reversalOf: acceptance.id });
       await appendAudit(tx, tenantId, context.session.itemId, "cashout.corrected", "CashOutAcceptance", corrected.id, "DUAL_APPROVED", { approvalId: a.approvalId, reversalOf: acceptance.id });
       return corrected.id;
     });
@@ -4496,7 +5648,7 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
     if (!["SANCTIONS", "PEP", "ADVERSE_MEDIA", "SOURCE_OF_FUNDS"].includes(a.screeningType) || !["POTENTIAL", "REVIEW", "CONFIRMED", "CLEARED", "FALSE_POSITIVE"].includes(a.status)) throw new Error("INVALID_SCREENING");
     const provider = await context.prisma.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-aml", status: "ACTIVE" } });
     if (!provider) throw new Error("AML_PROVIDER_UNAVAILABLE");
-    const result = await sandboxAdapters.aml.execute({}, { type: "screen", payload: { screeningType: a.screeningType, status: a.status } }, `screening:${a.playerId}:${(0, import_node_crypto9.randomBytes)(12).toString("hex")}`);
+    const result = await sandboxAdapters.aml.execute({}, { type: "screen", payload: { screeningType: a.screeningType, status: a.status } }, `screening:${a.playerId}:${(0, import_node_crypto11.randomBytes)(12).toString("hex")}`);
     return context.prisma.$transaction(async (tx) => {
       await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
       const player = await tx.player.findFirst({ where: { id: a.playerId, tenantId } });
@@ -4601,7 +5753,9 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
       await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
       const item = await tx.supportCase.findFirst({ where: { id: a.caseId, tenantId } });
       if (!item) throw new Error("Not found");
-      await tx.supportCase.update({ where: { id: item.id }, data: { status: a.status, ownerId: context.session.itemId, resolvedAt: ["RESOLVED", "CLOSED"].includes(a.status) ? /* @__PURE__ */ new Date() : null } });
+      assertSupportCaseTransition(item.status, a.status);
+      const caseMoved = await tx.supportCase.updateMany({ where: { id: item.id, tenantId, status: item.status }, data: { status: a.status, ownerId: context.session.itemId, resolvedAt: ["RESOLVED", "CLOSED"].includes(a.status) ? /* @__PURE__ */ new Date() : null } });
+      if (caseMoved.count !== 1) throw new Error("STALE_SUPPORT_CASE");
       await tx.supportCaseEvent.create({ data: { tenantId, supportCaseId: item.id, type: a.status === "RESOLVED" ? "RESOLVED" : "OPERATOR_MESSAGE", actorType: "STAFF", actorId: context.session.itemId, body: a.customerMessage, evidenceHash: evidenceHash({ caseId: item.id, status: a.status, message: a.customerMessage, reason: a.reason }), visibility: "CUSTOMER" } });
       await appendAudit(tx, tenantId, context.session.itemId, "support.status_changed", "SupportCase", item.id, a.reason, { from: item.status, to: a.status });
       return true;
@@ -4647,7 +5801,6 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
       if (journal.replayed) throw new Error("JOURNAL_ALREADY_POSTED");
       await tx.balanceProjection.create({ data: { tenantId, accountId: cash.id, postedMinor: String(next), pendingMinor: balance.pendingMinor, availableMinor: String(BigInt(balance.availableMinor) + (next - BigInt(balance.postedMinor))), version: Number(balance.version) + 1, asOf: /* @__PURE__ */ new Date() } });
       if (shortage > 0n) await tx.accountRestriction.create({ data: { tenantId, playerId: original.playerId, capability: "WAGER", reasonCode: "CHARGEBACK_SHORTFALL", startsAt: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
-      await emit(tx, tenantId, "PAYMENT", intent.id, "payment.chargeback_opened.v1", { originalPaymentIntentId: original.id, evidenceType: "OPERATOR_ATTESTED", amountMinor: String(amount), recoverableMinor: String(recoverable), shortageMinor: String(shortage), journalId: journal.id });
       await appendAudit(tx, tenantId, context.session.itemId, "payment.chargeback_opened", "PaymentIntent", intent.id, a.reason, { originalPaymentIntentId: original.id, amountMinor: String(amount), shortageMinor: String(shortage), journalId: journal.id });
       return intent.id;
     });
@@ -4750,18 +5903,6 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
       return journal.id;
     });
   },
-  scheduleOperationalJob: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageIntegrations"), dueAt = await operatorInstant(context, tenantId, a.dueAt, "DUE_AT"), payload = object(a.payload, "INVALID_JOB_PAYLOAD");
-    if (Number.isNaN(dueAt.getTime())) throw new Error("INVALID_DUE_AT");
-    assertScheduledJobHasHandler(a.type);
-    if (a.scopeType !== "TENANT" || a.scopeId !== tenantId) throw new Error("UNSUPPORTED_SCHEDULED_SCOPE");
-    if (typeof a.idempotencyKey !== "string" || !/^[A-Za-z0-9_.:-]{1,128}$/.test(a.idempotencyKey)) throw new Error("INVALID_IDEMPOTENCY_KEY");
-    const row = await context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
-      return tx.scheduledJob.create({ data: { tenantId, type: a.type, scopeType: a.scopeType, scopeId: a.scopeId, payload, status: "SCHEDULED", dueAt, attempts: 0, maxAttempts: 10, idempotencyKey: a.idempotencyKey } });
-    });
-    return row.id;
-  },
   runRetentionDryRun: async (_r, a, context) => {
     const tenantId = await requireTenant(context, "canManageCompliance"), from = await operatorInstant(context, tenantId, a.windowFrom, "WINDOW_FROM"), to = await operatorInstant(context, tenantId, a.windowTo, "WINDOW_TO");
     return context.prisma.$transaction(async (tx) => {
@@ -4822,7 +5963,6 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
       let approval = null;
       if (requiresApproval) approval = await tx.approvalRequest.create({ data: { tenantId, action: `DATA_EXPORT:${a.type}:${a.classification}`, payloadHash, ...approvalReview({ type: a.type, classification: a.classification, scope, expiresAt }), requesterId: context.session.itemId, status: "PENDING", reason: "RESTRICTED_EXPORT" } });
       const row = await tx.dataExport.create({ data: { tenantId, requestedBy: context.session.itemId, type: a.type, scope, classification: a.classification, status: requiresApproval ? "PENDING" : "GENERATING", rowCount: 0, expiresAt, approvalRequestId: approval?.id } });
-      if (!requiresApproval) await emit(tx, tenantId, "DATA_EXPORT", row.id, "export.requested.v1", { type: a.type, classification: a.classification, payloadHash, approvalId: null });
       await appendAudit(tx, tenantId, context.session.itemId, "export.requested", "DataExport", row.id, a.classification, { payloadHash, approvalId: approval?.id ?? null });
       return row.id;
     });
@@ -4836,7 +5976,6 @@ var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, contex
       const payloadHash = evidenceHash({ type: row.type, classification: row.classification, scope: row.scope, expiresAt: row.expiresAt });
       await approved(tx, context, "canReadAudit", tenantId, a.approvalId, `DATA_EXPORT:${row.type}:${row.classification}`, payloadHash);
       await tx.dataExport.update({ where: { id: row.id }, data: { status: "GENERATING" } });
-      await emit(tx, tenantId, "DATA_EXPORT", row.id, "export.requested.v1", { type: row.type, classification: row.classification, payloadHash, approvalId: a.approvalId });
       await appendAudit(tx, tenantId, context.session.itemId, "export.approved", "DataExport", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
       return true;
     });
@@ -4869,15 +6008,197 @@ async function createInitialUser(root, { data }, context) {
 }
 
 // features/keystone/mutations/index.ts
+init_sportsbook();
+
+// features/keystone/mutations/sportsbook-checkout.ts
+init_ledger();
+init_balance();
+init_paymentProviderAdapter();
+init_approval_control();
+init_funding();
+init_sportsbook();
 var graphql4 = String.raw;
+var sportsbookCheckoutTypeDefs = graphql4`
+  extend type Mutation {
+    voidWager(wagerId: ID!, reason: String!): ID!
+    refundDeposit(paymentId: ID!, reason: String!): ID!
+    confirmCageDeposit(reference: String!): ID!
+    rejectCageDeposit(reference: String!, reason: String!): ID!
+  }
+`;
+var reasonOf2 = (value) => {
+  const reason = String(value ?? "").trim();
+  if (reason.length < 3 || reason.length > 500) throw new Error("REASON_REQUIRED");
+  return reason;
+};
+async function lockedProjection2(tx, tenantId, accountId) {
+  const current = await tx.balanceProjection.findFirst({ where: { tenantId, accountId }, orderBy: { version: "desc" } });
+  if (!current) throw new Error("WALLET_UNAVAILABLE");
+  await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${current.id} FOR UPDATE`;
+  return tx.balanceProjection.findFirst({ where: { tenantId, accountId }, orderBy: { version: "desc" } });
+}
+var journalOf = (row) => ({
+  idempotencyKey: row.idempotencyKey,
+  type: row.type,
+  entries: row.from_JournalEntry_transaction.map((entry) => ({ accountId: entry.accountId, currency: entry.currency, side: entry.side, amount: BigInt(entry.amountMinor) }))
+});
+var sportsbookCheckoutResolvers = {
+  Mutation: {
+    voidWager: async (_r, a, context) => {
+      const tenantId = await requireTenant(context, "canManageRisk");
+      const reason = reasonOf2(a.reason);
+      return serializable2(context.prisma, async (tx) => {
+        const actorId = await assertCurrentActor(tx, context, tenantId, "canManageRisk");
+        await lockWagerForSettlement(tx, tenantId, a.wagerId);
+        const wager = await tx.wager.findFirst({ where: { id: a.wagerId, tenantId } });
+        if (!wager) throw new Error("Not found");
+        if (wager.status === "VOID") return wager.id;
+        if (!["ACCEPTED", "OPEN"].includes(String(wager.status))) throw new Error("WAGER_NOT_VOIDABLE");
+        if (wager.bonusAwardId) throw new Error("BONUS_WAGER_VOID_UNSUPPORTED");
+        if (await tx.settlement.findFirst({ where: { tenantId, wagerId: wager.id } })) throw new Error("WAGER_ALREADY_SETTLED");
+        const stakeJournal = await tx.journalTransaction.findFirst({ where: { tenantId, correlationId: wager.id, type: "WAGER_STAKE" }, include: { from_JournalEntry_transaction: true } });
+        if (!stakeJournal) throw new Error("STAKE_JOURNAL_NOT_FOUND");
+        const original = journalOf(stakeJournal);
+        const cashEntry = original.entries.find((entry) => entry.side === "DEBIT");
+        if (!cashEntry) throw new Error("STAKE_JOURNAL_NOT_FOUND");
+        const stake = BigInt(wager.stakeMinor);
+        const now = /* @__PURE__ */ new Date();
+        await postJournal(tx, tenantId, reverseJournal(original, `void:${wager.id}`), wager.id);
+        const projection = await lockedProjection2(tx, tenantId, cashEntry.accountId);
+        await tx.balanceProjection.create({ data: { tenantId, accountId: cashEntry.accountId, ...nextProjection(projection, postedChange(stake), now) } });
+        await tx.hold.updateMany({ where: { tenantId, purposeType: "WAGER", purposeId: wager.id }, data: { status: "RELEASED", version: { increment: 1 } } });
+        const allocations = await tx.wagerExposureAllocation.findMany({ where: { tenantId, wagerId: wager.id } });
+        for (const allocation of allocations) {
+          const position = await tx.exposurePosition.findFirst({ where: { tenantId, scopeType: "MARKET", scopeId: allocation.marketId, currency: wager.currency } });
+          if (position) {
+            const less = (value, by) => {
+              const next = BigInt(value) - BigInt(by);
+              return String(next < 0n ? 0n : next);
+            };
+            await tx.exposurePosition.update({ where: { id: position.id }, data: { stakeMinor: less(position.stakeMinor, allocation.remainingStakeMinor), liabilityMinor: less(position.liabilityMinor, allocation.remainingLiabilityMinor), version: { increment: 1 }, asOf: now } });
+          }
+          await tx.wagerExposureAllocation.update({ where: { id: allocation.id }, data: { remainingStakeMinor: "0", remainingLiabilityMinor: "0", status: "CLOSED", version: { increment: 1 } } });
+        }
+        await tx.wagerPart.updateMany({ where: { tenantId, wagerId: wager.id }, data: { status: "VOID" } });
+        await tx.wager.update({ where: { id: wager.id }, data: { status: "VOID" } });
+        await tx.wagerStatusEvent.create({ data: { tenantId, wagerId: wager.id, fromStatus: String(wager.status), toStatus: "VOID", reasonCode: "OPERATOR_VOID", actorId, effectiveAt: now } });
+        await appendAudit(tx, tenantId, actorId, "wager.voided", "Wager", wager.id, reason, { stakeMinor: wager.stakeMinor, currency: wager.currency, refundedToWallet: true });
+        return wager.id;
+      });
+    },
+    // Cash received at the cage: posts the deposit journal and credits the wallet exactly once.
+    confirmCageDeposit: async (_r, a, context) => {
+      const tenantId = await requireTenant(context, "canManageFinance");
+      const reference = String(a.reference ?? "").trim().toUpperCase();
+      if (!/^CG-[A-Z0-9]{6}$/.test(reference)) throw new Error("INVALID_REFERENCE");
+      return serializable2(context.prisma, async (tx) => {
+        const actorId = await assertCurrentActor(tx, context, tenantId, "canManageFinance");
+        const found = await tx.paymentIntent.findFirst({ where: { tenantId, type: "DEPOSIT", providerSessionReference: reference, paymentMethodReference: "cage-cash" } });
+        if (!found) throw new Error("Not found");
+        await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${found.id} AND tenant = ${tenantId} FOR UPDATE`;
+        const intent = await tx.paymentIntent.findFirst({ where: { id: found.id, tenantId } });
+        if (intent.status === "SUCCEEDED") return intent.id;
+        if (intent.status !== "PENDING") throw new Error("DEPOSIT_NOT_PENDING");
+        const result = await applyPaymentOutcome(tx, intent, { status: "SUCCEEDED", externalRef: reference, reasonCode: "CAGE_CASH_RECEIVED" }, /* @__PURE__ */ new Date());
+        await appendAudit(tx, tenantId, actorId, "cage_deposit.confirmed", "PaymentIntent", intent.id, "CASH_RECEIVED", { reference, amountMinor: intent.amountMinor, currency: intent.currency, status: result.status });
+        return intent.id;
+      });
+    },
+    rejectCageDeposit: async (_r, a, context) => {
+      const tenantId = await requireTenant(context, "canManageFinance");
+      const reference = String(a.reference ?? "").trim().toUpperCase();
+      const reason = reasonOf2(a.reason);
+      return serializable2(context.prisma, async (tx) => {
+        const actorId = await assertCurrentActor(tx, context, tenantId, "canManageFinance");
+        const found = await tx.paymentIntent.findFirst({ where: { tenantId, type: "DEPOSIT", providerSessionReference: reference, paymentMethodReference: "cage-cash" } });
+        if (!found) throw new Error("Not found");
+        await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${found.id} AND tenant = ${tenantId} FOR UPDATE`;
+        const intent = await tx.paymentIntent.findFirst({ where: { id: found.id, tenantId } });
+        if (intent.status === "FAILED") return intent.id;
+        if (intent.status !== "PENDING") throw new Error("DEPOSIT_NOT_PENDING");
+        await applyPaymentOutcome(tx, intent, { status: "FAILED", externalRef: reference, reasonCode: "CAGE_CASH_NOT_RECEIVED" }, /* @__PURE__ */ new Date());
+        await appendAudit(tx, tenantId, actorId, "cage_deposit.rejected", "PaymentIntent", intent.id, reason, { reference });
+        return intent.id;
+      });
+    },
+    refundDeposit: async (_r, a, context) => {
+      const tenantId = await requireTenant(context, "canManageFinance");
+      const reason = reasonOf2(a.reason);
+      const refundKey = `refund:${a.paymentId}`;
+      const prepared = await serializable2(context.prisma, async (tx) => {
+        const actorId = await assertCurrentActor(tx, context, tenantId, "canManageFinance");
+        await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${a.paymentId} AND tenant = ${tenantId} FOR UPDATE`;
+        const deposit = await tx.paymentIntent.findFirst({ where: { id: a.paymentId, tenantId, type: "DEPOSIT" }, include: { providerConnection: true } });
+        if (!deposit) throw new Error("Not found");
+        const existing = await tx.paymentIntent.findFirst({ where: { tenantId, idempotencyKey: refundKey } });
+        if (existing?.status === "SUCCEEDED") return { done: existing.id };
+        if (deposit.status !== "SUCCEEDED" && !(deposit.status === "CANCELLED" && existing)) throw new Error("DEPOSIT_NOT_REFUNDABLE");
+        if (!deposit.providerConnection || deposit.providerConnection.tenantId !== tenantId) throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
+        const cash = await tx.ledgerAccount.findFirst({ where: { tenantId, playerId: deposit.playerId, key: "PLAYER_CASH", currency: deposit.currency } });
+        if (!cash) throw new Error("WALLET_UNAVAILABLE");
+        const projection = await lockedProjection2(tx, tenantId, cash.id);
+        if (!existing && BigInt(projection.availableMinor) < BigInt(deposit.amountMinor)) throw new Error("INSUFFICIENT_WALLET_FUNDS");
+        const intent = existing ?? await tx.paymentIntent.create({ data: {
+          tenantId,
+          playerId: deposit.playerId,
+          providerConnectionId: deposit.providerConnectionId,
+          type: "REFUND",
+          amountMinor: deposit.amountMinor,
+          feeMinor: "0",
+          currency: deposit.currency,
+          idempotencyKey: refundKey,
+          paymentMethodReference: deposit.paymentMethodReference,
+          providerSessionReference: "",
+          status: "PROCESSING",
+          riskEvidence: { refundOf: deposit.id, reason, actorId }
+        } });
+        return { done: null, depositId: deposit.id, intentId: intent.id, provider: deposit.providerConnection, reference: String(deposit.providerSessionReference ?? ""), amountMinor: String(deposit.amountMinor), currency: String(deposit.currency), actorId };
+      });
+      if (prepared.done) return prepared.done;
+      const p2 = prepared;
+      let outcome = { status: "UNKNOWN", externalRef: "" };
+      try {
+        outcome = await refundPaymentProvider(p2.provider, p2.reference, p2.amountMinor, refundKey);
+      } catch {
+      }
+      if (outcome.status !== "SUCCEEDED") {
+        await context.prisma.paymentIntent.updateMany({ where: { id: p2.intentId, tenantId, status: { in: ["PROCESSING", "PENDING", "UNKNOWN"] } }, data: { status: outcome.status === "FAILED" ? "FAILED" : "UNKNOWN" } });
+        throw new Error("REFUND_NOT_CONFIRMED");
+      }
+      return serializable2(context.prisma, async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${p2.depositId} AND tenant = ${tenantId} FOR UPDATE`;
+        const refund = await tx.paymentIntent.findFirst({ where: { id: p2.intentId, tenantId } });
+        if (refund?.status === "SUCCEEDED") return refund.id;
+        const depositJournal = await tx.journalTransaction.findFirst({ where: { tenantId, correlationId: p2.depositId, type: "DEPOSIT" }, include: { from_JournalEntry_transaction: true } });
+        if (!depositJournal) throw new Error("DEPOSIT_JOURNAL_NOT_FOUND");
+        const original = journalOf(depositJournal);
+        const cashEntry = original.entries.find((entry) => entry.side === "CREDIT");
+        if (!cashEntry) throw new Error("DEPOSIT_JOURNAL_NOT_FOUND");
+        const now = /* @__PURE__ */ new Date();
+        await postJournal(tx, tenantId, reverseJournal(original, `deposit-refund:${p2.depositId}`), p2.depositId);
+        const projection = await lockedProjection2(tx, tenantId, cashEntry.accountId);
+        if (BigInt(projection.availableMinor) < BigInt(p2.amountMinor)) throw new Error("INSUFFICIENT_WALLET_FUNDS");
+        await tx.balanceProjection.create({ data: { tenantId, accountId: cashEntry.accountId, ...nextProjection(projection, postedChange(-BigInt(p2.amountMinor)), now) } });
+        await tx.paymentIntent.update({ where: { id: p2.intentId }, data: { status: "SUCCEEDED", completedAt: now, providerSessionReference: outcome.externalRef } });
+        await tx.paymentAttempt.create({ data: { tenantId, paymentIntentId: p2.intentId, attempt: 1, externalReference: outcome.externalRef, status: "SUCCEEDED", reasonCode: outcome.method === "void" ? "PROCESSOR_VOID" : "PROCESSOR_REFUND" } });
+        await tx.paymentIntent.update({ where: { id: p2.depositId }, data: { status: "CANCELLED" } });
+        await appendAudit(tx, tenantId, p2.actorId, "deposit.refunded", "PaymentIntent", p2.depositId, reason, { refundIntentId: p2.intentId, amountMinor: p2.amountMinor, currency: p2.currency, externalReference: outcome.externalRef });
+        return p2.intentId;
+      });
+    }
+  }
+};
+
+// features/keystone/mutations/index.ts
+var graphql5 = String.raw;
 function extendGraphqlSchema(baseSchema) {
   return (0, import_schema.mergeSchemas)({
     schemas: [baseSchema],
-    typeDefs: [graphql4`
+    typeDefs: [graphql5`
       type Query {
         redirectToInit: Boolean
       }
-    `, createInitialUserTypeDefs, sportsbookTypeDefs, sportsbookFullTypeDefs],
+    `, createInitialUserTypeDefs, sportsbookTypeDefs, sportsbookFullTypeDefs, sportsbookCheckoutTypeDefs],
     resolvers: [{
       Query: {
         redirectToInit: redirectToInit_default
@@ -4885,7 +6206,7 @@ function extendGraphqlSchema(baseSchema) {
       Mutation: {
         createInitialUser
       }
-    }, sportsbookResolvers, sportsbookFullResolvers]
+    }, sportsbookResolvers, sportsbookFullResolvers, sportsbookCheckoutResolvers]
   });
 }
 
@@ -4906,9 +6227,6 @@ var modelAttributes = {
   JournalTransaction: [
     '@@unique([tenantId, idempotencyKey], map: "JournalTransaction_tenant_idempotency_key")',
     '@@unique([tenantId, reversalOfId], map: "JournalTransaction_tenant_reversal_uq")'
-  ],
-  OutboxMessage: [
-    '@@index([status, availableAt, leaseUntil], map: "OutboxMessage_claim_idx")'
   ],
   PaymentIntent: [
     '@@unique([tenantId, idempotencyKey], map: "PaymentIntent_tenant_idempotency_key")'
@@ -5012,10 +6330,6 @@ var modelAttributes = {
   ScreeningHit: [
     '@@unique([tenantId, providerConnectionId, screeningType, matchToken], map: "ScreeningHit_provider_match_uq")'
   ],
-  ScheduledJob: [
-    '@@unique([tenantId, idempotencyKey], map: "ScheduledJob_idempotency_uq")',
-    '@@index([status, dueAt, leaseUntil], map: "ScheduledJob_claim_idx")'
-  ],
   AffiliateAttribution: [
     '@@unique([tenantId, playerId, campaignReference], map: "AffiliateAttribution_campaign_uq")'
   ],
@@ -5078,7 +6392,6 @@ var fullTenantModels = [
   "RetentionPolicyVersion",
   "SafeguardingAccount",
   "SafeguardingReconciliation",
-  "ScheduledJob",
   "Season",
   "SettlementLine",
   "SettlementRun",
@@ -5219,6 +6532,21 @@ function extendSportsbookPrismaSchema(input) {
 }
 
 // features/keystone/index.ts
+init_tenant_scope();
+init_identity_bootstrap();
+
+// features/keystone/database-url.ts
+var POOL_SIZES = { web: 20, worker: 8, feed: 3 };
+function pooledDatabaseUrl(url, role) {
+  if (!url || !/^postgres(ql)?:\/\//.test(url)) return url;
+  const parsed = new URL(url);
+  if (parsed.searchParams.has("connection_limit")) return url;
+  const override = Number(process.env[`DATABASE_POOL_${role.toUpperCase()}`]);
+  parsed.searchParams.set("connection_limit", String(Number.isInteger(override) && override > 0 ? override : POOL_SIZES[role]));
+  return parsed.toString();
+}
+
+// features/keystone/index.ts
 var databaseURL = process.env.DATABASE_URL;
 if (!databaseURL) throw new Error("DATABASE_URL is required");
 var sessionSecret = process.env.SESSION_SECRET;
@@ -5274,11 +6602,11 @@ var keystone_default = withAuth(
   (0, import_core7.config)({
     db: {
       provider: "postgresql",
-      url: databaseURL,
+      url: pooledDatabaseUrl(databaseURL, "web"),
       extendPrismaSchema: extendSportsbookPrismaSchema,
       extendPrismaClient: (client) => tenantScopedPrisma(client)
     },
-    lists: models,
+    lists: withItemViewAwareUi(withDeleteAwareUi(withCreateAwareUi(models))),
     ui: {
       isAccessAllowed: ({ session }) => session?.data.role?.canAccessDashboard ?? false
     },

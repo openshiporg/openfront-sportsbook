@@ -1,8 +1,0 @@
-# Use this config for the separately scaled continuous worker service.
-[build]
-buildCommand = "npm ci && keystone build --no-ui"
-
-[deploy]
-startCommand = "npm run worker"
-restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 10

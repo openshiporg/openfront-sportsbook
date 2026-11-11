@@ -163,8 +163,8 @@ The [model registry](features/keystone/models/index.ts) and [Prisma schema](sche
 
 Use a disposable development database for migration generation. Review the script before running it against any existing data.
 
-### Provider & Worker Integration
-The [sportsbook implementation](features/sportsbook) owns provider adapters, durable delivery, recovery, and operational controls. Run `npm run worker` as a separate long-running process. Review [production validation](features/sportsbook/operations/validate-env.ts) before deployment; sandbox settings do not authorize live wagering.
+### Provider Integration
+The [sportsbook implementation](features/sportsbook) owns provider adapters, durable delivery, recovery, and operational controls. Review [production validation](features/sportsbook/operations/validate-env.ts) before deployment; sandbox settings do not authorize live wagering.
 
 ## Documentation
 
