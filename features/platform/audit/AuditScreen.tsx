@@ -6,6 +6,8 @@ import { getOperatorContext, notFoundWhenForbidden } from "../lib/operator";
 import { pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { getAuditAnchors, getAuditEvents } from "./actions";
 import { AuditPageClient } from "./screens/AuditPageClient";
+import { keystoneContext } from "@/features/keystone/context";
+import { advanceAuditAnchor } from "@/features/sportsbook/operations/audit-anchor";
 
 /** Server screen: authorizes audit read, loads one page of the trail through GraphQL and checks its hash links. */
 export async function AuditScreen({ searchParams }: { searchParams?: PlatformSearchParams } = {}) {
@@ -14,6 +16,8 @@ export async function AuditScreen({ searchParams }: { searchParams?: PlatformSea
   if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Audit" eyebrow="Audit evidence" title="Audit trail"><TenantRequired /></OperatorShell>;
   if (!operator.capabilities.canReadAudit) return <OperatorShell active="Audit" eyebrow="Audit evidence" title="Audit trail" tenantName={operator.tenantName}><WorkflowNote title="Audit access denied" tone="warning">No audit-read capability.</WorkflowNote></OperatorShell>;
+  // Opening the audit trail seals the current chain head off-database when it moved (idempotent; no worker).
+  await advanceAuditAnchor(keystoneContext.prisma, operator.tenantId).catch(() => null);
   const [result, anchorResult] = await Promise.all([getAuditEvents({ page, pageSize: PLATFORM_PAGE_SIZE }), getAuditAnchors({ take: 20 })]);
   if (!result.success) return <OperatorShell active="Audit" eyebrow="Audit evidence" title="Audit trail" tenantName={operator.tenantName}><ReadFailed subject="audit events" /></OperatorShell>;
   const { events, total, operatorEvents, workerEvents } = result.data;

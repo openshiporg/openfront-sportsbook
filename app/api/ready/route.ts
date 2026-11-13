@@ -3,6 +3,7 @@ import { readdirSync } from 'node:fs'
 import path from 'node:path'
 import { keystoneContext } from '@/features/keystone/context'
 import { runWithTenantScope } from '@/features/keystone/tenant-scope'
+import { advanceAuditAnchors, auditAnchorSettings } from '@/features/sportsbook/operations/audit-anchor'
 export const dynamic = 'force-dynamic'
 
 const safeEqual = (left: string, right: string) => { const a = Buffer.from(left), b = Buffer.from(right); return a.length === b.length && timingSafeEqual(a, b) }
@@ -52,7 +53,9 @@ export async function GET(request: Request) {
       keystoneContext.prisma.$queryRaw<Array<{count:bigint}>>`SELECT count(*)::bigint AS count FROM "ExposurePosition" p WHERE p."scopeType"='MARKET' AND (p."stakeMinor"::numeric,p."liabilityMinor"::numeric)<>(SELECT coalesce(sum(a."remainingStakeMinor"::numeric) FILTER (WHERE a.status<>'CLOSED'),0),coalesce(sum(a."remainingLiabilityMinor"::numeric) FILTER (WHERE a.status<>'CLOSED'),0) FROM "WagerExposureAllocation" a WHERE a.tenant=p.tenant AND a.market=p."scopeId")`,
       keystoneContext.prisma.user.count({where:{tenantId:{not:null},operatorMfaEnabled:false,role:{is:{OR:[{canManageSportsbook:true},{canTrade:true},{canManageRisk:true},{canManageCompliance:true},{canManageFinance:true},{canManageIntegrations:true},{canApproveSensitiveActions:true},{canManageRoles:true}]}}}}),
     ])
-    const externalAnchoringConfigured = Boolean(process.env.AUDIT_ANCHOR_DIR && (process.env.AUDIT_ANCHOR_SECRET?.length ?? 0) >= 32)
+    const externalAnchoringConfigured = Boolean(auditAnchorSettings())
+    // Anchoring advances on this request (idempotent, rate-limited per tenant); no background worker.
+    if (externalAnchoringConfigured) await advanceAuditAnchors(keystoneContext.prisma, tenants.map((tenant: { id: string }) => tenant.id), now)
     const productionMoneyMode = process.env.NODE_ENV === 'production'
     // Migrations: no failed/in-progress rows, and every migration shipped with this build is applied.
     const applied = new Set(migration.filter(row => row.finished && !row.rolled_back).map(row => row.migration_name))
