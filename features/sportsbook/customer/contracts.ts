@@ -69,36 +69,6 @@ export type CatalogResponse = {
   events: CatalogEvent[]
 }
 
-export type CustomerQuote = {
-  state: 'QUOTED'
-  quoteId: string
-  eventId: string
-  marketId: string
-  selectionId: string
-  priceSnapshotId: string
-  eventName: string
-  marketName: string
-  selectionName: string
-  decimalOdds: string
-  stakeMinor: string
-  potentialReturnMinor: string
-  currency: string
-  termsHash: string
-  expiresAt: string
-}
-
-export type CustomerWagerResult = {
-  state: 'ACCEPTED' | 'REJECTED' | 'REQUOTE_REQUIRED' | 'SUSPENDED' | 'IN_PROGRESS'
-  accepted: boolean
-  duplicate: boolean
-  wagerId?: string
-  receiptId?: string
-  rejectionCode?: string | null
-  termsHash?: string
-  potentialReturnMinor?: string
-  quote?: CustomerQuote
-}
-
 export type FundingResult = {
   /** PENDING: provider outcome not yet definitive; reserved funds stay held and the same key recovers it. */
   state: 'SUCCEEDED' | 'REJECTED' | 'IN_PROGRESS' | 'PENDING'
