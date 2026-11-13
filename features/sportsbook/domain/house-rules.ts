@@ -8,7 +8,8 @@ export async function activeHouseRule(tx: Prisma.TransactionClient, tenantId: st
   const event = await tx.event.findFirst({ where: { id: market.eventId ?? '', tenantId }, include: { competition: { include: { sport: true } } } })
   const sportKey = event?.competition?.sport?.key ?? ''
   const candidates = await tx.houseRuleVersion.findMany({ where: { tenantId, status: 'ACTIVE', effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] } })
-  const eligible = candidates.filter(rule => (!specific(rule.sportKey) || rule.sportKey === sportKey) && (!specific(rule.marketDefinitionKey) || rule.marketDefinitionKey === market.definitionKey))
+  // Teaser pricing rules (teaser:<points>) are looked up by name for teaser slips; they are not a market's governing rule.
+  const eligible = candidates.filter(rule => !rule.name.startsWith('teaser:') && (!specific(rule.sportKey) || rule.sportKey === sportKey) && (!specific(rule.marketDefinitionKey) || rule.marketDefinitionKey === market.definitionKey))
   eligible.sort((left, right) => Number(specific(right.marketDefinitionKey)) - Number(specific(left.marketDefinitionKey)) || Number(specific(right.sportKey)) - Number(specific(left.sportKey)) || Number(right.version) - Number(left.version))
   if (eligible.length > 1) {
     const [left, right] = eligible
