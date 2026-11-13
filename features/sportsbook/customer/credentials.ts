@@ -6,6 +6,7 @@ import { evidenceHash } from '../domain/engine'
 import { isRetryableTransactionError, transactionBackoff } from '../domain/transaction'
 import { sendCustomerRecoveryEmail } from '../../keystone/lib/mail'
 import { appendCustomerAudit } from './audit'
+import { accountNumber } from '../domain/references'
 import {
   assertCurrentCustomerActor,
   CUSTOMER_SESSION_MAX_AGE_SECONDS,
@@ -182,7 +183,7 @@ export async function registerCredentialCustomer(
         await appendCustomerAudit(tx, { tenantId: tenant.id, playerId: player.id, action: 'customer.credential_registered', targetType: 'CustomerCredential', targetId: credential.id, reason: 'PASSWORD_REGISTRATION', payload: { emailDigest: digest, locale, timezone, marketingConsent, termsVersion: terms.termsVersion, termsContentHash: terms.termsContentHash, sessionId: owned.session.id } })
         return { ...owned, player, credential, currency: provisioned.currency }
       }, { isolationLevel: 'Serializable' })
-      return { token: created.token, actor: { sessionId: created.session.id, tenantId: tenant.id, playerId: created.player.id, accountReference: created.session.id.slice(-8).toUpperCase(), assuranceLevel: 'PASSWORD', currency: created.currency } satisfies CustomerActor, emailMasked: created.credential.emailMasked }
+      return { token: created.token, actor: { sessionId: created.session.id, tenantId: tenant.id, playerId: created.player.id, accountReference: accountNumber(created.player.id), assuranceLevel: 'PASSWORD', currency: created.currency } satisfies CustomerActor, emailMasked: created.credential.emailMasked }
     } catch (error) {
       if ((error as { code?: string })?.code === 'P2002') throw new CustomerError('ACCOUNT_EXISTS', 409)
       if (attempt < 4 && isRetryableTransactionError(error)) { await transactionBackoff(attempt); continue }
@@ -222,7 +223,7 @@ export async function loginCredentialCustomer(prisma: PrismaClient, request: Req
     const owned = await createOwnedSession(tx, tenant.id, current.player.id, request)
     await tx.customerCredential.update({ where: { id: current.id }, data: { status: current.status === 'LOCKED' ? 'ACTIVE' : current.status, failedAttempts: 0, lockedUntil: null, lastAuthenticatedAt: now } })
     await appendCustomerAudit(tx, { tenantId: tenant.id, playerId: current.player.id, action: 'customer.authenticated', targetType: 'CustomerSession', targetId: owned.session.id, reason: 'PASSWORD', payload: { deviceDigest: owned.session.deviceDigest } })
-    return { token: owned.token, actor: { sessionId: owned.session.id, tenantId: tenant.id, playerId: current.player.id, accountReference: owned.session.id.slice(-8).toUpperCase(), assuranceLevel: 'PASSWORD', currency: currency.code } satisfies CustomerActor, emailMasked: current.emailMasked }
+    return { token: owned.token, actor: { sessionId: owned.session.id, tenantId: tenant.id, playerId: current.player.id, accountReference: accountNumber(current.player.id), assuranceLevel: 'PASSWORD', currency: currency.code } satisfies CustomerActor, emailMasked: current.emailMasked }
   }, { isolationLevel: 'Serializable' })
 }
 

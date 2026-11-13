@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { CustomerShell } from '../../customer/components/CustomerShell'
 import { ClosedPanel, isClosedError } from '../../customer/components/AccountStates'
 import { Dot, Pill, PillLink, Track, checkClass, fieldClass, pillClass } from '../../customer/components/kit'
+import { betReference } from '@/features/sportsbook/domain/references'
 import { placementOutcome, resolvePlacementIntent, type PlacementIntent } from '../placement-intent'
 import { amountInputToMinor, currencyExponent, customerApi, CustomerApiError, formatDate, formatMinor, formatOdds, partLabel, useCustomerResource, customerMessage } from '../../customer/lib/customer-api'
 
@@ -124,7 +125,7 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
       </p>
       <h2 className="mt-1.5 break-words font-sb-display text-2xl font-bold uppercase leading-tight tracking-normal"><Link href={`/events/${event.eventId}`} className="hover:text-sb-brand">{live&&<Dot tone="live"/>}{event.name}</Link></h2>
      </div>
-     <button type="button" aria-label={`${favorite?'Remove':'Add'} ${event.name} favorite`} aria-pressed={favorite} onClick={()=>toggleFavorite(event.eventId)} className="-mr-1 grid size-10 shrink-0 place-items-center rounded-[2px] hover:bg-sb-well"><Heart className={cn('size-4',favorite?'fill-sb-live text-sb-live':'text-sb-mute')}/></button>
+     <button type="button" aria-label={`${favorite?'Remove':'Add'} ${event.name} favorite`} aria-pressed={favorite} onClick={()=>toggleFavorite(event.eventId)} className="-mr-1 grid size-11 shrink-0 place-items-center rounded-[2px] hover:bg-sb-well"><Heart className={cn('size-4',favorite?'fill-sb-live text-sb-live':'text-sb-mute')}/></button>
     </header>
     <div className="divide-y divide-sb-line border-t border-sb-line">{event.markets.map(market=><section key={market.marketId} className="grid gap-2.5 px-4 py-3 sm:px-5 md:grid-cols-[180px_minmax(0,1fr)] md:items-center">
      <p className="text-sm font-semibold">{market.state!=='OPEN'&&<Dot tone="wait"/>}{market.name}<span className="ml-2 tabular-nums text-xs font-normal uppercase text-sb-mute">{market.state==='OPEN'?(live?'In-play':'Pre-match'):stateLabel[market.state]}</span></p>
@@ -143,11 +144,11 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
     {selected.length===0?<p className="px-5 py-10 text-center text-sm text-sb-mute">{closed?'The slip opens when the board does.':'Pick a price to add it here.'}</p>:<>
      <ol className="max-h-72 divide-y divide-sb-line overflow-y-auto px-5">{selected.map(item=><li key={item.selection.selectionId} className="flex items-start justify-between gap-3 py-3">
       <div className="min-w-0"><p className="break-words text-sm font-semibold">{item.event.state==='LIVE'&&<Dot tone="live"/>}{item.selection.label}</p><p className="mt-0.5 truncate text-xs text-sb-mute">{item.market.name} · {item.event.name}</p></div>
-      <div className="flex shrink-0 items-center gap-1"><span className="tabular-nums text-base font-semibold ">{formatOdds(item.selection.decimalOdds)}</span><button type="button" aria-label={`Remove ${item.selection.label}`} disabled={placementLocked} onClick={()=>remove(item.selection.selectionId)} className="grid size-8 place-items-center rounded-[2px] text-sb-mute hover:bg-sb-well hover:text-sb-ink disabled:opacity-50"><X className="size-3.5"/></button></div>
+      <div className="flex shrink-0 items-center gap-1"><span className="tabular-nums text-base font-semibold ">{formatOdds(item.selection.decimalOdds)}</span><button type="button" aria-label={`Remove ${item.selection.label}`} disabled={placementLocked} onClick={()=>remove(item.selection.selectionId)} className="grid size-11 place-items-center rounded-[2px] text-sb-mute hover:bg-sb-well hover:text-sb-ink disabled:opacity-50"><X className="size-3.5"/></button></div>
      </li>)}</ol>
      <div className="sb-tear mx-0 mt-1"/>
      <div className="px-5 pb-5 pt-4">
-      <fieldset disabled={placementLocked} className="space-y-4 disabled:opacity-60"><legend className="sr-only">Reviewed wager configuration</legend>
+      <fieldset disabled={placementLocked} className="space-y-4 disabled:opacity-60"><legend className="sr-only">Bet options</legend>
        {eligibleStructures.length>1&&<div><p className="mb-1.5 text-xs font-semibold  text-sb-mute">Bet type</p><Track block label="Bet type">{eligibleStructures.map(item=><button key={item.value} type="button" aria-pressed={structure===item.value} onClick={()=>{setStructure(item.value);resetQuote()}} className={pillClass('flat','sm')}>{item.label}</button>)}</Track></div>}
        <div className="grid grid-cols-2 gap-3">
         {['SYSTEM','ROUND_ROBIN'].includes(structure)?<label className="grid gap-1.5 text-xs font-semibold  text-sb-mute">Combination size<select value={systemSize} onChange={e=>{setSystemSize(Number(e.target.value));resetQuote()}} className={fieldClass}>{Array.from({length:Math.max(1,selected.length-1)},(_,i)=>i+2).filter(n=>n<=selected.length).map(n=><option key={n}>{n}</option>)}</select></label>:<label className="grid gap-1.5 text-xs font-semibold  text-sb-mute">Price changes<select value={priceConsent} onChange={e=>{setPriceConsent(e.target.value);resetQuote()}} className={fieldClass}><option value="EXACT">Exact only</option><option value="ACCEPT_BETTER">Better only</option><option value="ACCEPT_WITHIN_TOLERANCE">Within policy</option></select></label>}
@@ -155,20 +156,19 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
        </div>
        {promotions.data?.promotions.some(item=>item.type==='ODDS_BOOST')&&<p className="text-xs text-sb-mute"><Dot tone="off"/>Odds boosts unavailable</p>}
        {activeAwards.length>0&&<label className="grid gap-1.5 text-xs font-semibold  text-sb-mute">Funding<select value={bonusAwardId} onChange={e=>{setBonusAwardId(e.target.value);resetQuote()}} className={fieldClass}><option value="">Cash wallet</option>{activeAwards.map(award=><option key={award.id} value={award.id}>{award.type.replaceAll('_',' ')} · {formatMinor(award.remainingMinor,award.currency)}</option>)}</select></label>}
-       <label className="flex items-start gap-2.5 text-sm"><input type="checkbox" checked={allowPartial} onChange={e=>setAllowPartial(e.target.checked)} className={checkClass}/><span className="font-medium">Allow partial acceptance</span></label>
+       <label className="flex min-h-11 items-center gap-2.5 text-sm"><input type="checkbox" checked={allowPartial} onChange={e=>setAllowPartial(e.target.checked)} className={checkClass}/><span className="font-medium">Allow partial acceptance</span></label>
       </fieldset>
 
       {quote&&<div className="mt-4 rounded-[2px] bg-sb-night p-4 text-white">
-       <div className="flex items-center justify-between gap-3 text-xs"><span className="font-semibold  text-white/95">{quote.structure.replaceAll('_',' ')} · {quote.parts.length} part{quote.parts.length===1?'':'s'}</span><span className={cn('tabular-nums ',quoteSeconds<=5?'text-sb-live':'text-white/70')}><Dot tone={quoteSeconds>0?'win':'alert'}/>{quoteSeconds}s</span></div>
+       <div className="flex items-center justify-between gap-3 text-xs"><span className="font-semibold  text-white/95">{structures.find(item=>item.value===quote.structure)?.label??'Bet'}{quote.parts.length>1?` · ${quote.parts.length} bets`:''}</span>{!receipt?.accepted&&<span className={cn('tabular-nums ',quoteSeconds<=5?'text-sb-live':'text-white/70')}><Dot tone={quoteSeconds>0?'win':'alert'}/>{quoteSeconds}s</span>}</div>
        <ul className="mt-3 space-y-1 tabular-nums text-xs text-white/75">{(receipt?.accepted&&receipt.acceptedParts?receipt.acceptedParts:quote.parts).map((part,_i,all)=><li key={part.index} className="flex justify-between gap-2"><span className="truncate">{partLabel(part.key,all.length)} · {formatMinor(part.stakeMinor,quote.currency)} @ {formatOdds(part.decimalOdds)}</span><span className="text-white">{formatMinor(part.potentialReturnMinor,quote.currency)}</span></li>)}</ul>
        <div className="mt-3 flex items-end justify-between gap-3 border-t border-white/10 pt-3"><span className="text-xs font-semibold  text-white/95">Potential return</span><span className="tabular-nums text-2xl font-semibold  text-sb-flood">{receipt?.accepted?formatMinor(receipt.potentialReturnMinor??'0',quote.currency):formatMinor(quote.potentialReturnMinor,quote.currency)}</span></div>
        {quote.liveDelayMs>0&&<p className="mt-2 text-xs text-white/70"><Dot tone="live"/>Live delay {quote.liveDelayMs/1000}s</p>}
-       <details className="mt-2 text-xs text-white/95"><summary className="cursor-pointer font-semibold">References</summary><p className="mt-1 break-all tabular-nums text-xs">Quote {quote.quoteId}<br/>Terms {quote.termsHash}<br/>Prices {quote.legs.map(leg=>leg.priceSnapshotId).join(', ')}</p></details>
       </div>}
 
       <div className="mt-4">{!session.data?.authenticated?<Track block><PillLink href="/account/auth" variant="primary" size="lg">Sign in to bet</PillLink></Track>:!quote||slipState==='REJECTED'?<Track block><Pill variant="primary" size="lg" onClick={requestQuote} disabled={slipState==='QUOTING'}>{slipState==='QUOTING'?'Getting quote…':'Get quote'}</Pill></Track>:!['ACCEPTED','PARTIALLY_ACCEPTED'].includes(slipState)&&<Track block><Pill variant="primary" size="lg" onClick={place} disabled={slipState==='PLACING'}>{slipState==='PLACING'?(quote.liveDelayMs?'Live bet delay…':'Placing bet…'):slipState==='UNRESOLVED'?'Retry original placement':quoteSeconds===0?'Quote expired · Requote':`Place bet · ${formatMinor(quote.stakeMinor??stakeMinor??'0',quote.currency)}`}</Pill></Track>}</div>
 
-      {(slipState==='UNRESOLVED'||(receipt&&!receipt.accepted))&&<div className="mt-3 text-xs text-sb-mute">{receipt?.receiptId&&<p className="break-all tabular-nums">Decision receipt {receipt.receiptId}</p>}<Link href="/account/bets" className="mt-1 inline-block min-h-10 py-2 font-semibold text-sb-ink underline underline-offset-4">Check My bets</Link></div>}
+      {(slipState==='UNRESOLVED'||(receipt&&!receipt.accepted))&&<div className="mt-3 text-xs text-sb-mute">{receipt?.receiptId&&<p className="tabular-nums">Bet reference {betReference(receipt.receiptId)}</p>}<Link href="/account/bets" className="mt-1 inline-block min-h-10 py-2 font-semibold text-sb-ink underline underline-offset-4">Check My bets</Link></div>}
       {message&&<p role="alert" className="mt-3 rounded-[2px] bg-amber-50 px-3.5 py-2.5 text-sm text-amber-950 ring-1 ring-amber-200"><Dot tone="wait"/>{message}</p>}
       {receipt?.accepted&&<div role="status" aria-live="polite" className="mt-3 rounded-[2px] bg-emerald-50 p-4 text-sm text-emerald-950 ring-1 ring-emerald-200">
        <p className="font-sb-display text-xl font-bold uppercase tracking-wide"><Dot tone="win"/>{receipt.state==='PARTIALLY_ACCEPTED'?'Partially accepted':'Bet accepted'}</p>
@@ -179,8 +179,8 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
         {receipt.acceptedPrices?.length?<div className="flex justify-between gap-3"><dt>Prices</dt><dd className="text-right">{receipt.acceptedPrices.map(price=>`#${price.legIndex+1} ${formatOdds(price.decimalOdds)}${price.line?` (${price.line})`:''}`).join(' · ')}</dd></div>:null}
         {receipt.rejectedPartIndexes?.length?<div className="flex justify-between gap-3"><dt>Rejected parts</dt><dd>{receipt.rejectedPartIndexes.join(', ')}</dd></div>:null}
        </dl>
-       <p className="mt-2 break-all tabular-nums text-xs text-emerald-900/70">Receipt {receipt.receiptId} · Terms {receipt.termsHash}</p>
-       <Link href="/account/bets" className="mt-2 inline-block font-semibold underline underline-offset-4">Open My bets</Link>
+       <p className="mt-2 tabular-nums text-xs text-emerald-900/70">Bet reference {betReference(receipt.receiptId)}</p>
+       <div className="mt-2 flex flex-wrap items-center gap-x-4"><Link href="/account/bets" className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4">Open My bets</Link><button type="button" onClick={()=>{setSelected([]);resetQuote()}} className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4">New bet</button></div>
       </div>}
      </div>
     </>}

@@ -58,7 +58,7 @@ export type PillVariant = 'raised' | 'primary' | 'flat' | 'danger' | 'flatDark'
 export function pillClass(variant: PillVariant = 'raised', size: 'sm' | 'md' | 'lg' = 'md') {
   return cn(
     'inline-flex min-w-0 select-none items-center justify-center gap-1.5 whitespace-nowrap font-semibold transition-colors duration-150 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0',
-    size === 'sm' ? 'min-h-9 px-3 text-xs' : size === 'lg' ? 'min-h-12 px-6 text-sm' : 'min-h-10 px-4 text-sm',
+    size === 'sm' ? 'min-h-11 px-3 text-xs md:min-h-9' : size === 'lg' ? 'min-h-12 px-6 text-sm' : 'min-h-10 px-4 text-sm',
     (variant === 'raised' || variant === 'primary' || variant === 'danger') && 'rounded-[2px] border',
     variant === 'raised' && 'border-sb-ink/25 bg-sb-card text-sb-ink hover:border-sb-ink',
     variant === 'primary' && 'border-sb-brand bg-sb-brand text-white hover:brightness-110',

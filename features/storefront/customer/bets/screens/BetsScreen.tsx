@@ -56,16 +56,9 @@ export function BetsScreen() {
           <summary className="cursor-pointer font-semibold text-sb-ink">References</summary>
           <Ledger className="mt-2 text-xs" rows={[
             ['Bet reference', betReference(bet.id)],
-            ['Wager', bet.id],
-            ['Quote', bet.quoteId || '—'],
-            ['Price snapshot', bet.priceSnapshotId || '—'],
-            ['Terms', bet.termsHash || '—'],
             ...(bet.settlementEvidence ? [
-              ['Settlement', `${bet.settlementEvidence.receiptId} · ${bet.settlementEvidence.outcome}`],
+              ['Settlement', label(bet.settlementEvidence.outcome)],
               ['Payout', formatMinor(bet.settlementEvidence.payoutMinor, bet.currency, bet.settlementEvidence.currencyExponent)],
-              ['Result / rule', `${bet.settlementEvidence.resultVersionId} · ${bet.settlementEvidence.ruleVersion}`],
-              ['Payment', `${bet.settlementEvidence.journalId} · ${bet.settlementEvidence.capturedHoldId}`],
-              ['Plan', bet.settlementEvidence.planHash],
             ] as Array<[string, string]> : bet.status === 'SETTLED' ? [['Settlement', 'Not recorded for this bet']] as Array<[string, string]> : []),
           ]} />
         </details>

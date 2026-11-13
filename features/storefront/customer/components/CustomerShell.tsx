@@ -151,9 +151,9 @@ export function CustomerShell({
         <div className="mx-auto flex max-w-[1560px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:px-2">
           <p className="">21+. Gambling problem? Call 1-800-GAMBLER.</p>
           <div className="flex flex-wrap gap-x-5 gap-y-2">
-            <Link href="/account/responsible-play" className="hover:text-white">Safer play</Link>
-            <Link href="/account/disputes" className="hover:text-white">Support</Link>
-            <a className="hover:text-white" href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noreferrer">Independent help</a>
+            <Link href="/account/responsible-play" className="inline-flex min-h-11 items-center hover:text-white">Safer play</Link>
+            <Link href="/account/disputes" className="inline-flex min-h-11 items-center hover:text-white">Support</Link>
+            <a className="inline-flex min-h-11 items-center hover:text-white" href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noreferrer">Independent help</a>
           </div>
         </div>
       </footer>
