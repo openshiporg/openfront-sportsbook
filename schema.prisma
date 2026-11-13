@@ -500,7 +500,7 @@ model ProviderConnection {
   dataResidencyRegion                             String                                     @default("")
   failoverPriority                                Int?                                       @default(100)
   capabilities                                    Json?
-  certificationStatus                             ProviderConnectionCertificationStatusType? @default(SANDBOX)
+  certificationStatus                             ProviderConnectionCertificationStatusType? @default(INTERNAL)
   status                                          ProviderConnectionStatusType?              @default(ACTIVE)
   createdAt                                       DateTime                                   @default(now())
   updatedAt                                       DateTime                                   @default(now()) @updatedAt
@@ -3363,7 +3363,7 @@ enum PriceSnapshotStatusType {
 }
 
 enum ProviderConnectionCertificationStatusType {
-  SANDBOX
+  INTERNAL
   PENDING
   CERTIFIED
   SUSPENDED

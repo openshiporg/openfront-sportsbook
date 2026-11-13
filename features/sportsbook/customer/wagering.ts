@@ -6,7 +6,7 @@ import { loadQuoteCandidate } from './catalog'
 import { isEventAcceptingBets, isLivePricing, maxPriceAgeMs } from '../domain/trading-eligibility'
 import { resolveCustomerPolicy } from './policy'
 import type { CustomerQuote, CustomerWagerResult } from './contracts'
-import { CustomerError, assertSandboxEnabled } from './errors'
+import { CustomerError } from './errors'
 import {
   claimCustomerCommand,
   commandResult,
@@ -64,7 +64,6 @@ export async function createCustomerQuote(
   actor: CustomerActor,
   input: { selectionId: unknown; stakeMinor: unknown },
 ): Promise<CustomerQuote> {
-  assertSandboxEnabled()
   const selectionId = String(input.selectionId ?? '')
   if (!selectionId) throw new CustomerError('SELECTION_REQUIRED', 400)
   const stake = validateStake(input.stakeMinor)
@@ -76,7 +75,7 @@ export async function createCustomerQuote(
   const potential=potentialReturn(stake,candidate.snapshot.decimalOdds)
   if(potential>policy.maxPayoutMinor)throw new CustomerError('MAX_PAYOUT_EXCEEDED',422)
   const expiresAt = new Date(Date.now() + QUOTE_LIFETIME_MS)
-  const policyVersion = 'sandbox-customer-v1'
+  const policyVersion = 'customer-v1'
   const baseTermsHash = evidenceHash({
     eventId: candidate.event.id,
     eventName: candidate.event.name,
@@ -213,7 +212,6 @@ export async function placeCustomerWager(
   actor: CustomerActor,
   input: { quoteId: unknown; idempotencyKey: unknown },
 ): Promise<CustomerWagerResult> {
-  assertSandboxEnabled()
   const quoteId = String(input.quoteId ?? '')
   if (!quoteId) throw new CustomerError('QUOTE_REQUIRED', 400)
   const idempotencyKey = validateIdempotencyKey(input.idempotencyKey)

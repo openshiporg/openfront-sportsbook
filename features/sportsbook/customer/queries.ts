@@ -6,7 +6,8 @@ import { currentGeoApproved } from './acceptance-gates'
 import { projectCashOutState } from '../domain/cashout-economics'
 import { CustomerError } from './errors'
 import { resolveTenantCurrency } from './currency'
-import { fundingBoundsMinor } from './funding'
+import { activeCardProcessor, fundingBoundsMinor } from './funding'
+import { stripePublishableKey } from '../../integrations/payment/stripe'
 import type {
   BetsResponse,
   CustomerSessionSummary,
@@ -70,7 +71,6 @@ async function getCustomerSessionSummaryUnderAuthority(prisma: Prisma.Transactio
   ])
   return {
     authenticated: true,
-    mode: 'sandbox',
     accountReference: actor.accountReference,
     assuranceLevel: actor.assuranceLevel ?? 'GUEST',
     currency: walletCurrency.code,
@@ -119,7 +119,6 @@ async function getCustomerWalletUnderAuthority(prisma: Prisma.TransactionClient,
   const heldMinor = holds.reduce((total, hold) => total + BigInt(hold.amountMinor), 0n)
 
   return {
-    mode: 'sandbox',
     currency: walletCurrency.code,
     currencyExponent: walletCurrency.exponent,
     fundingMinMinor: String(fundingBoundsMinor(walletCurrency.exponent).minMinor),
@@ -151,13 +150,18 @@ async function getCustomerWalletUnderAuthority(prisma: Prisma.TransactionClient,
   }
 }
 
-/** Card entry is offered only when an ACTIVE Authorize.net installation exists and the processor keys are configured on the server. */
+/** Card entry follows the operator's active card processor (the same installation the deposit dispatches to). */
 async function cardDepositConfig(prisma: Prisma.TransactionClient, tenantId: string): Promise<WalletResponse['card']> {
+  const installed = await activeCardProcessor(prisma, tenantId)
+  if (!installed) return null
+  if (installed.adapterId === 'stripe') {
+    const publishableKey = stripePublishableKey()
+    return publishableKey ? { processor: 'stripe', publishableKey } : null
+  }
   const apiLoginId = process.env.AUTHORIZENET_API_LOGIN_ID ?? ''
   const clientKey = process.env.AUTHORIZENET_CLIENT_KEY || process.env.NEXT_PUBLIC_AUTHORIZENET_CLIENT_KEY || ''
-  if (!apiLoginId || !clientKey || !process.env.AUTHORIZENET_TRANSACTION_KEY) return null
-  const installed = await prisma.providerConnection.findFirst({ where: { tenantId, adapterId: 'authorizenet', status: 'ACTIVE' }, select: { id: true } })
-  return installed ? { apiLoginId, clientKey, env: process.env.AUTHORIZENET_ENV === 'production' ? 'production' : 'sandbox' } : null
+  if (!apiLoginId || !clientKey) return null
+  return { processor: 'authorizenet', apiLoginId, clientKey, env: process.env.AUTHORIZENET_ENV === 'production' ? 'production' : 'test' }
 }
 
 const BETS_PAGE_SIZE = 20

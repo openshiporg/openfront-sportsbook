@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 declare global { interface Window { Accept?: { dispatchData: (data: any, callback: (response: any) => void) => void } } }
-export default function AuthorizeNetCardForm({ apiLoginId, clientKey, env, onToken }: { apiLoginId: string; clientKey: string; env: "sandbox" | "production"; onToken: (opaqueData: { dataDescriptor: string; dataValue: string }) => void }) {
+export default function AuthorizeNetCardForm({ apiLoginId, clientKey, env, onToken }: { apiLoginId: string; clientKey: string; env: "test" | "production"; onToken: (opaqueData: { dataDescriptor: string; dataValue: string }) => void }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => { const existing = document.querySelector<HTMLScriptElement>(`script[data-anet="${env}"]`); if (existing) { if (window.Accept) queueMicrotask(() => setLoaded(true)); else existing.addEventListener("load", () => setLoaded(true), { once: true }); return; } const script = document.createElement("script"); script.src = env === "production" ? "https://js.authorize.net/v1/Accept.js" : "https://jstest.authorize.net/v1/Accept.js"; script.dataset.anet = env; script.onload = () => setLoaded(true); script.onerror = () => setError("Unable to load secure card entry."); document.head.appendChild(script); }, [env]);

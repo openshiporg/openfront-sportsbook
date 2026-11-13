@@ -23,8 +23,8 @@ An open-source sportsbook core where every price, result and settlement goes thr
 
 ## Operating Context
 
-- Demo book: **Northline Sports** (Northline Gaming), sandbox jurisdiction, four sports, twelve priced events, twenty-five markets, three promotions.
-- **Sandbox use is not authorization to accept real-money wagers.** "Practice play · no real money" and "Not approved for real-money operation" are deliberate non-claims and must stay visible.
+- Live book: **Northline Sports** (Northline Gaming) at sportsbook.openship.org: four sports, twelve priced events, twenty-five markets, three promotions. Customers register, verify, deposit by card (Stripe test keys on the live site) or at the cage, wager and get paid on settlement.
+- "Not approved for real-money operation" stays visible on the operator dashboard until the operator records its licence, contracted providers, jurisdiction policy and certification.
 
 ## Capabilities and Constraints
 
@@ -32,7 +32,7 @@ An open-source sportsbook core where every price, result and settlement goes thr
 
 ## Evidence on Hand
 
-- No real teams, leagues, odds history, testimonials or volumes. Teams and events are fictional demo data; never invent real fixtures or win claims.
+- No real teams, leagues, odds history, testimonials or volumes. Teams and events are fictional catalog data; never invent real fixtures or win claims.
 
 ## Product Principles
 

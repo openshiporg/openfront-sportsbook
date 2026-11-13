@@ -2223,7 +2223,7 @@ type ProviderConnection {
 }
 
 enum ProviderConnectionCertificationStatusType {
-  SANDBOX
+  INTERNAL
   PENDING
   CERTIFIED
   SUSPENDED
@@ -14028,10 +14028,9 @@ type Mutation {
   acceptStraightWager(quoteId: ID!, idempotencyKey: String!): WagerCommandResult!
   applySportsbookOnboarding(slug: String!, operatorName: String!, brandName: String!, domain: String!, currency: String!, currencyExponent: Int!, jurisdictionCode: String!, timezone: String!): OnboardingPreview!
   createCatalogEvent(competitionId: ID!, externalKey: String!, name: String!, startAt: String!, marketDefinition: String!, selections: String!): ID!
-  ingestSandboxPrice(selectionId: ID!, decimalOdds: String!, line: String, sequence: String!, externalId: String!): Boolean!
   setMarketPrices(marketId: ID!, prices: String!, line: String): Int!
   setMarketStatus(marketId: ID!, status: String!, reason: String!, expectedVersion: Int!, expectedStatus: String!): Boolean!
-  ingestSandboxResult(eventId: ID!, payload: String!): ID!
+  enterEventResult(eventId: ID!, payload: String!): ID!
   requestResultApproval(resultVersionId: ID!, reason: String!): ID!
   withdrawResultVersion(resultVersionId: ID!, reason: String!): Boolean!
   approveResultVersion(resultVersionId: ID!, approvalId: ID!, reason: String!): Boolean!
@@ -14040,7 +14039,6 @@ type Mutation {
   gradeMarketSelection(marketId: ID!, selectionId: ID!, resultVersionId: ID!, reason: String!): ID!
   createRiskLimit(profileId: ID!, scopeType: String!, scopeId: String!, maxStakeMinor: String!, maxPayoutMinor: String!, maxLiabilityMinor: String!, currency: String!): ID!
   openWagerInvestigation(wagerId: ID!, category: String!, reason: String!): ID!
-  sandboxPayment(playerId: ID!, type: String!, amountMinor: String!, currency: String!, idempotencyKey: String!): ID!
   setResponsibleGamingLimit(playerId: ID!, type: String!, period: String!, amountMinor: String!, currency: String!): ID!
   selfExclude(playerId: ID!, scope: String!, endsAt: String): ID!
   openVerificationCase(playerId: ID!, type: String!, evidenceReference: String!): ID!

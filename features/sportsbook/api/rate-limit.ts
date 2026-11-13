@@ -4,7 +4,7 @@ import { enforceDurableRate, trustedClientKey } from './durable-abuse'
 import { isRetryableTransactionError, transactionBackoff } from '../domain/transaction'
 
 /** PostgreSQL-backed customer limiter shared by every web replica. */
-export async function sandboxRateLimit(
+export async function customerRateLimit(
   prisma: PrismaClient,
   request: Request,
   limit = 30,

@@ -4,10 +4,10 @@
     "slug": "northline",
     "operatorName": "Northline Gaming",
     "brandName": "Northline Sports",
-    "domain": "sportsbook.local",
+    "domain": "sportsbook.openship.org",
     "currency": "USD",
     "currencyExponent": 2,
-    "jurisdictionCode": "SANDBOX",
+    "jurisdictionCode": "US-NJ",
     "timezone": "America/New_York"
   },
   "dependencyOrder": [

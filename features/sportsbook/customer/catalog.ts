@@ -1,7 +1,7 @@
 import type { PrismaClient } from '../../keystone/prisma'
 import type { CatalogEvent, CatalogFilters, CatalogResponse } from './contracts'
-import { CustomerError, assertSandboxEnabled } from './errors'
-import { resolveSandboxTenant } from '../api/sandbox-tenant'
+import { CustomerError } from './errors'
+import { resolvePublicTenant } from '../api/public-tenant'
 import { resolveTenantCurrency } from './currency'
 import { isEventAcceptingBets, isLivePricing, maxPriceAgeMs, pastStartScheduledExclusion } from '../domain/trading-eligibility'
 export const PUBLIC_EVENT_STATUSES = ['SCHEDULED', 'LIVE', 'SUSPENDED'] as const
@@ -47,9 +47,8 @@ export function parseCatalogFilters(params: URLSearchParams): CatalogFilters {
  * renews price observations or moves event schedules. Every filter is applied in the database before the page
  * limit, children are complete for the returned page and each selection carries its own latest price.
  */
-export async function getSandboxCatalog(prisma: PrismaClient, filters: CatalogFilters = {}): Promise<CatalogResponse> {
-  assertSandboxEnabled()
-  const tenant = await resolveSandboxTenant(prisma)
+export async function getCustomerCatalog(prisma: PrismaClient, filters: CatalogFilters = {}): Promise<CatalogResponse> {
+  const tenant = await resolvePublicTenant(prisma)
   const tenantId: string = tenant.id
   const currency = (await resolveTenantCurrency(prisma, tenantId)).code
   const now = new Date()
@@ -111,7 +110,6 @@ export async function getSandboxCatalog(prisma: PrismaClient, filters: CatalogFi
   for (const competition of competitions) if (competition.sport?.key) sports.set(competition.sport.key, { key: competition.sport.key, name: competition.sport.name })
 
   return {
-    mode: 'sandbox',
     currency,
     generatedAt: now.toISOString(),
     total,

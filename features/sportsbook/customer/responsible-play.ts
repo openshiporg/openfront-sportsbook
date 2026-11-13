@@ -1,7 +1,7 @@
 import type { PrismaClient } from '../../keystone/prisma'
 import { assertCurrentCustomerActor, type CustomerActor } from './auth'
 import type { ExclusionActionResult, LimitActionResult } from './contracts'
-import { CustomerError, assertSandboxEnabled } from './errors'
+import { CustomerError } from './errors'
 import { appendCustomerAudit } from './audit'
 import {
   claimCustomerCommand,
@@ -19,7 +19,6 @@ export async function setCustomerLimit(
   actor: CustomerActor,
   input: { type: unknown; period: unknown; amountMinor: unknown; idempotencyKey: unknown },
 ): Promise<LimitActionResult> {
-  assertSandboxEnabled()
   const type = String(input.type ?? '')
   const period = String(input.period ?? '')
   const amountText = String(input.amountMinor ?? '')
@@ -104,7 +103,6 @@ export async function selfExcludeCustomer(
   actor: CustomerActor,
   input: { durationDays: unknown; idempotencyKey: unknown },
 ): Promise<ExclusionActionResult> {
-  assertSandboxEnabled()
   const rawDuration = input.durationDays
   const durationDays = rawDuration === null ? null : Number(rawDuration)
   if (durationDays !== null && ![1, 7, 42].includes(durationDays)) throw new CustomerError('INVALID_EXCLUSION_DURATION', 400)

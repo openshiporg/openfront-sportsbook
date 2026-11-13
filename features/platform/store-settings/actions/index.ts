@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getOperatorContext, platformPrisma as prisma } from '@/features/platform/lib/operator';
-import { sandboxPublicDomain } from '@/features/sportsbook/api/sandbox-tenant';
+import { publicStorefrontDomain } from '@/features/sportsbook/api/public-tenant';
 import { normalizeStoreLogoColor } from '../lib/store-logo';
 import { sanitizeStoreLogoSvg } from '@/features/keystone/utils/storeLogo';
 
@@ -10,8 +10,7 @@ const brandSelect = { id: true, name: true, logoIcon: true, logoColor: true, upd
 
 /** The operator tenant's storefront brand: the brand served on the storefront domain, else its first brand. */
 async function findStorefrontBrand(tenantId: string) {
-  let domain = '';
-  try { domain = sandboxPublicDomain(); } catch {}
+  const domain = publicStorefrontDomain();
   return (domain ? await prisma.brand.findFirst({ where: { tenantId, domain }, orderBy: { createdAt: 'asc' }, select: brandSelect }) : null)
     ?? await prisma.brand.findFirst({ where: { tenantId }, orderBy: { createdAt: 'asc' }, select: brandSelect });
 }

@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { MutationForm } from "../components/MutationForm";
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { ReadFailed } from "../components/ReadFailed";
-import { WorkflowNote } from "../components/WorkflowUI";
 import { dateTime, displayTimeZone, money, moneyTotals, shortId } from "../lib/format";
 import { getOperatorContext, notFoundWhenForbidden } from "../lib/operator";
 import { playerLabels, playerLabelText } from "../lib/players";
@@ -11,7 +10,6 @@ import { getFinanceOverview } from "./actions";
 import { journalSideTotals, playerAvailableTotals, runDifferenceTotals } from "../lib/aggregates";
 import { FinancePageClient } from "./screens/FinancePageClient";
 
-const paymentMutation = `mutation Payment($playerId:ID!,$type:String!,$amountMinor:String!,$currency:String!,$idempotencyKey:String!){sandboxPayment(playerId:$playerId,type:$type,amountMinor:$amountMinor,currency:$currency,idempotencyKey:$idempotencyKey)}`;
 const reconMutation = `mutation Reconcile($type:String!,$windowFrom:String!,$windowTo:String!){runReconciliation(type:$type,windowFrom:$windowFrom,windowTo:$windowTo)}`;
 
 // Debits and credits are compared per currency: a USD debit never balances a EUR credit.
@@ -42,9 +40,7 @@ export async function FinanceScreen({ searchParams }: { searchParams?: PlatformS
   const unprojected = cash.accounts - cash.projected;
   const journalRows = data.journals.map((journal) => { const sides = journalSides(sidesByJournal.get(journal.id) ?? []); return { id: journal.id, reference: shortId(journal.id), effectiveAt: dateTime(journal.effectiveAt), type: journal.type || "—", amounts: [...sides.entries()].map(([currency, side]) => `${money(side.debit, currency || null)} / ${money(side.credit, currency || null)}`).join(" · ") || "No entries", state: journalIsBalanced(sides) ? journal.status || "UNKNOWN" : "UNBALANCED", balanced: journalIsBalanced(sides) }; });
   const canFinance = operator.capabilities.canManageFinance;
-  const currencies = [...new Set([...cash.currencies])];
-  const playerPickerMessage = data.players.length ? null : operator.capabilities.canManageCompliance ? "Needs a player with ledger accounts" : "Compliance access required to choose a player";
-  const forms = <div className="grid gap-4 xl:grid-cols-2">{data.players.length ? <MutationForm title="Run sandbox payment" description="Sandbox only" mutation={paymentMutation} fields={[{ name: "playerId", label: "Player", type: "select", options: data.players.map((player) => ({ label: playerLabelText(financePlayers.get(player.id)), value: player.id })), help: data.players.length >= 100 ? "First 100 active players" : undefined }, { name: "type", label: "Type", type: "select", options: [{ label: "Deposit", value: "DEPOSIT" }, { label: "Withdrawal", value: "WITHDRAWAL" }] }, { name: "amountMinor", label: "Amount", transform: "money", defaultValue: 1000 }, { name: "currency", label: "Currency (player cash account)", type: "select", options: currencies.map((code) => ({ label: code, value: code })) }, { name: "idempotencyKey", label: "Request key (reuse only to retry this payment)", defaultValue: `payment:${crypto.randomUUID()}` }]} submitLabel="Post sandbox payment" successMessage="Sandbox payment recorded." disabledReason={canFinance ? undefined : "Your role does not include finance capability."} /> : <WorkflowNote title="No player available">{playerPickerMessage}</WorkflowNote>}
+  const forms = <div className="grid gap-4 xl:grid-cols-2">
       <MutationForm title="Run ledger reconciliation" mutation={reconMutation} fields={[{ name: "type", label: "Control", type: "select", options: [{ label: "Journal balance", value: "JOURNAL_BALANCE" }, { label: "Daily close", value: "DAILY_CLOSE" }] }, { name: "windowFrom", label: `From (${displayTimeZone()})`, type: "datetime-local" }, { name: "windowTo", label: `To (${displayTimeZone()})`, type: "datetime-local", help: "No DST-gap times; repeated DST times need an offset" }]} submitLabel="Run reconciliation" successMessage="Reconciliation run completed." disabledReason={canFinance ? undefined : "Your role does not include finance capability."} /></div>;
   const unbalanced = journalRows.filter((row) => !row.balanced).length;
   const financeState = { tone: data.openReconItems || unbalanced ? "alert" as const : "ok" as const, meta: `${data.openReconItems} recon exceptions · ${unbalanced} unbalanced on page · ${data.paymentTotal} payments` };

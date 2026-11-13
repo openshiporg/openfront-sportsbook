@@ -1,4 +1,4 @@
-import { assertSameOrigin, assertOperatorReady } from '../api/sandbox-policy'
+import { assertSameOrigin, assertOperatorReady } from '../api/operator-policy'
 import { constraintRefusal } from '../../keystone/lib/constraint-errors'
 
 export class CustomerError extends Error {
@@ -10,10 +10,6 @@ export class CustomerError extends Error {
     super(code)
     this.name = 'CustomerError'
   }
-}
-
-export function assertSandboxEnabled() {
-  // Operator readiness is checked asynchronously at the request boundary once the tenant is known.
 }
 
 export async function assertCustomerOperatorReady(prisma: any, tenantId: string, request?: Request) {
@@ -55,7 +51,7 @@ export function assertCustomerMutationRequest(request: Request) {
   // request.url is the server's own bind address (http://localhost:<port>) behind a proxy, so the browser's
   // Origin is compared with the Host it addressed; a cross-site page cannot set either header.
   const origin = request.headers.get('origin')
-  if (origin && !process.env.SANDBOX_PUBLIC_ORIGIN && !sameHost(origin, request)) {
+  if (origin && !sameHost(origin, request)) {
     throw new CustomerError('ORIGIN_DENIED', 403)
   }
 

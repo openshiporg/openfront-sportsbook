@@ -5,7 +5,7 @@ import { loadQuoteCandidate } from './catalog'
 import { isEventAcceptingBets, isLivePricing, maxPriceAgeMs } from '../domain/trading-eligibility'
 import { assertCurrentCustomerActor, type CustomerActor } from './auth'
 import { appendCustomerAudit } from './audit'
-import { CustomerError, assertSandboxEnabled } from './errors'
+import { CustomerError } from './errors'
 import { claimCustomerCommand, commandResult, finishCustomerCommand, validateIdempotencyKey } from './idempotency'
 import { wagerLimitViolation } from './limit-enforcement'
 import { currentGeoApproved, currentKycApproved, currentWagerProvenance, riskLimitViolation, splitAcrossMarkets } from './acceptance-gates'
@@ -125,7 +125,6 @@ export async function createCombinationQuote(prisma: PrismaClient, actor: Custom
   priceChangeConsent?: unknown
   promotionId?: unknown
 }): Promise<CombinationQuoteResponse> {
-  assertSandboxEnabled()
   await assertCurrentCustomerActor(prisma, actor)
   const selectionIds = parseSelectionIds(input.selectionIds)
   const structure = parseStructure(input.structure)
@@ -201,7 +200,7 @@ export async function createCombinationQuote(prisma: PrismaClient, actor: Custom
       structure, promotionId: promotion?.id, legCount: candidates.length, partCount: parts.length,
       stakeMinor: String(stakeMinor), potentialReturnMinor: String(potentialReturnMinor), currency: currency,
       decimalOdds: parts[0].decimalOdds, priceChangeConsent, liveDelayMs,
-      expiresAt, termsHash, policyVersion: 'sandbox-full-v1',
+      expiresAt, termsHash, policyVersion: 'combination-v1',
     } })
     await tx.customerQuoteTerms.create({ data: {
       tenantId: actor.tenantId, playerId: actor.playerId, quoteId: quote.id, quoteKey: quote.id,
@@ -236,7 +235,6 @@ async function serializable<T>(prisma: PrismaClient, work: (tx: any) => Promise<
 }
 
 export async function placeCombinationWager(prisma: PrismaClient, actor: CustomerActor, input: { quoteId: unknown; idempotencyKey: unknown; allowPartial?: unknown; bonusAwardId?: unknown }): Promise<CombinationPlacementResponse> {
-  assertSandboxEnabled()
   await assertCurrentCustomerActor(prisma, actor)
   const quoteId = String(input.quoteId ?? '')
   const idempotencyKey = validateIdempotencyKey(input.idempotencyKey)

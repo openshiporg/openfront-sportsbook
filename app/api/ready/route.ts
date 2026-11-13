@@ -53,7 +53,7 @@ export async function GET(request: Request) {
       keystoneContext.prisma.user.count({where:{tenantId:{not:null},operatorMfaEnabled:false,role:{is:{OR:[{canManageSportsbook:true},{canTrade:true},{canManageRisk:true},{canManageCompliance:true},{canManageFinance:true},{canManageIntegrations:true},{canApproveSensitiveActions:true},{canManageRoles:true}]}}}}),
     ])
     const externalAnchoringConfigured = Boolean(process.env.AUDIT_ANCHOR_DIR && (process.env.AUDIT_ANCHOR_SECRET?.length ?? 0) >= 32)
-    const productionMoneyMode = process.env.NODE_ENV === 'production' && process.env.SPORTSBOOK_DEPLOYMENT_MODE !== 'sandbox'
+    const productionMoneyMode = process.env.NODE_ENV === 'production'
     // Migrations: no failed/in-progress rows, and every migration shipped with this build is applied.
     const applied = new Set(migration.filter(row => row.finished && !row.rolled_back).map(row => row.migration_name))
     const failedMigrations = migration.filter(row => !row.finished && !row.rolled_back).length

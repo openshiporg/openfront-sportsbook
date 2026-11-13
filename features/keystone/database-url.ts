@@ -2,7 +2,7 @@
  * Postgres URL with a bounded Prisma pool.
  *
  * Prisma's default pool is cpus*2+1. On a 48-core Railway host that is 97 connections per client, and the web
- * service runs three clients (Keystone, the sandbox fixture feed and the embedded queue worker), which is far more
+ * service runs three clients (Keystone, the catalog rollover and the embedded queue worker), which is far more
  * than Postgres's default max_connections of 100. Once the server is full, Keystone's access-control queries fail
  * and pages degrade. Each client therefore gets an explicit share. A connection_limit already in the URL wins.
  */

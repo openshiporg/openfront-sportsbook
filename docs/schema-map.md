@@ -195,7 +195,7 @@ States read left to right as the usual lifecycle; terminal states are last. "Cre
 
 | List | Purpose | Key fields | States | Relations | Created by | Platform page (before this pass) |
 |---|---|---|---|---|---|---|
-| ProviderConnection | Installed provider adapter with certification. | adapterVersion, configReference, secretReference, dataResidencyRegion, failoverPriority, capabilities | certificationStatus: SANDBOX, PENDING, CERTIFIED, SUSPENDED; status: ACTIVE → DEGRADED → DISABLED | LegalEntity, Jurisdiction | Merchant (onboarding, Providers) | catalog, integrations, onboarding, providers |
+| ProviderConnection | Installed provider adapter with certification. | adapterVersion, configReference, secretReference, dataResidencyRegion, failoverPriority, capabilities | certificationStatus: INTERNAL, PENDING, CERTIFIED, SUSPENDED; status: ACTIVE → DEGRADED → DISABLED | LegalEntity, Jurisdiction | Merchant (onboarding, Providers) | catalog, integrations, onboarding, providers |
 | ProviderHealthSample | Provider health probe sample. | capability, latencyMs, errorRateBasisPoints, sequenceLag, oldestWebhookAgeMs, reconciliationDifferenceMinor, c | status: HEALTHY → DEGRADED → DOWN | ProviderConnection | System | providers |
 | ProviderEntityMapping | Provider entity to canonical mapping review. | entityType, canonicalType, confidence | status: PENDING → APPROVED → REJECTED | ProviderConnection | System / Merchant (Integrations) | catalog, integrations |
 | AdapterCertificationRun | Conformance suite run for an adapter. | adapterVersion, suiteVersion, scenarios, passed, failed, inputHash, artifactReference, startedAt, completedAt | status: PENDING → RUNNING → PASSED → FAILED | ProviderConnection | Merchant (Providers) | providers |

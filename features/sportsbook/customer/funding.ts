@@ -2,7 +2,7 @@ import type { PrismaClient } from '../../keystone/prisma'
 import { executePaymentProvider, getPaymentProviderStatus } from '../../keystone/utils/paymentProviderAdapter'
 import { assertCurrentCustomerActor, type CustomerActor } from './auth'
 import type { FundingResult } from './contracts'
-import { CustomerError, assertSandboxEnabled } from './errors'
+import { CustomerError } from './errors'
 import { isRetryableTransactionError, transactionBackoff } from '../domain/transaction'
 import { appendCustomerAudit } from './audit'
 import { resolveTenantCurrency } from './currency'
@@ -15,8 +15,21 @@ import {
   validateIdempotencyKey,
 } from './idempotency'
 
+/** Card processors a customer deposit can dispatch to, in no particular preference (failoverPriority decides). */
+export const CARD_PROCESSORS = ['stripe', 'authorizenet'] as const
+
 /**
- * Sandbox funding bounds are 5 to 500 major units of the wallet currency, scaled by the currency's
+ * The operator's card processor for customer deposits: the first ACTIVE card installation (by failover priority)
+ * whose server credential is present. One lookup serves both the wallet's card form and the deposit dispatch,
+ * so the form always tokenizes for the processor that will charge it.
+ */
+export async function activeCardProcessor(tx: any, tenantId: string) {
+  const installed = await tx.providerConnection.findMany({ where: { tenantId, adapterId: { in: [...CARD_PROCESSORS] }, status: 'ACTIVE' }, orderBy: [{ failoverPriority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] })
+  return installed.find((connection: any) => !connection.secretReference || Boolean(process.env[connection.secretReference])) ?? null
+}
+
+/**
+ * Funding bounds are 5 to 500 major units of the wallet currency, scaled by the currency's
  * stored CurrencyDefinition.exponent (never an assumed two decimals).
  */
 export function fundingBoundsMinor(exponent: number) {
@@ -92,7 +105,7 @@ const PRE_DISPATCH_REFUSALS = new Set(['PAYMENT_PROVIDER_UNAVAILABLE', 'PAYMENT_
 function fundingResultFor(intent: any, duplicate: boolean, availableMinor: string | undefined, currencyExponent: number): FundingResult {
   const base = { duplicate, paymentId: intent.id, amountMinor: intent.amountMinor, currency: intent.currency, currencyExponent, ...(availableMinor === undefined ? {} : { availableMinor }) }
   if (intent.status === 'SUCCEEDED') return { state: 'SUCCEEDED', ...base }
-  if (IN_FLIGHT.has(intent.status ?? '')) return { state: 'PENDING', ...base, pendingCode: intent.type === 'WITHDRAWAL' ? (intent.status === 'PROCESSING' && intent.paymentMethodReference === 'sandbox-tokenized-payout' && (intent.riskEvidence as any)?.provider?.adapterId === 'manual' ? 'WITHDRAWAL_PAYOUT_IN_PROGRESS' : 'WITHDRAWAL_OUTCOME_PENDING') : 'DEPOSIT_OUTCOME_PENDING' }
+  if (IN_FLIGHT.has(intent.status ?? '')) return { state: 'PENDING', ...base, pendingCode: intent.type === 'WITHDRAWAL' ? (intent.status === 'PROCESSING' && intent.paymentMethodReference === 'manual-bank-payout' && (intent.riskEvidence as any)?.provider?.adapterId === 'manual' ? 'WITHDRAWAL_PAYOUT_IN_PROGRESS' : 'WITHDRAWAL_OUTCOME_PENDING') : 'DEPOSIT_OUTCOME_PENDING' }
   return { state: 'REJECTED', ...base, rejectionCode: intent.type === 'WITHDRAWAL' ? 'WITHDRAWAL_FAILED' : 'PAYMENT_FAILED' }
 }
 
@@ -248,7 +261,7 @@ export async function reconcileUnknownPayment(
 }
 
 /**
- * Customer funding lifecycle (sandbox-payments only):
+ * Customer funding lifecycle (card processor deposits, manual bank payouts):
  * 1. prepare under current customer authority: validate restriction, funds and limits, reserve funds
  *    (withdrawal hold) and persist the attempt pinned to one provider installation BEFORE any I/O;
  * 2. dispatch to that pinned installation;
@@ -262,7 +275,6 @@ async function runFundingCommand(
   kind: FundingKind,
   input: { amountMinor: unknown; idempotencyKey: unknown; currency?: unknown; opaqueData?: { dataDescriptor: string; dataValue: string } },
 ): Promise<FundingResult> {
-  assertSandboxEnabled()
   const currency = await resolveTenantCurrency(prisma, actor.tenantId, kind)
   if (actor.currency && actor.currency !== currency.code) throw new CustomerError('CUSTOMER_CURRENCY_CHANGED', 409)
   // A client-declared currency must equal the wallet currency; an amount is never re-denominated.
@@ -303,7 +315,9 @@ async function runFundingCommand(
       if (!projection) throw new CustomerError(unavailable, 409)
       if (kind === 'DEPOSIT') await assertDepositLimits(tx, actor, amount, new Date())
       if (kind === 'WITHDRAWAL' && BigInt(projection.availableMinor) < amount) throw new CustomerError('INSUFFICIENT_FUNDS', 422)
-      const provider = await tx.providerConnection.findFirst({ where: { tenantId: actor.tenantId, adapterId: kind === 'DEPOSIT' ? 'authorizenet' : 'manual', status: 'ACTIVE' }, orderBy: [{ failoverPriority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] })
+      const provider = kind === 'DEPOSIT'
+        ? await activeCardProcessor(tx, actor.tenantId)
+        : await tx.providerConnection.findFirst({ where: { tenantId: actor.tenantId, adapterId: 'manual', status: 'ACTIVE' }, orderBy: [{ failoverPriority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] })
       if (!provider) throw new CustomerError(unavailable, 409)
       let holdId: string | null = null
       if (kind === 'WITHDRAWAL') {
@@ -314,13 +328,13 @@ async function runFundingCommand(
       }
       const intent = await tx.paymentIntent.create({ data: {
         tenantId: actor.tenantId, playerId: actor.playerId, providerConnectionId: provider.id, holdId, type: kind, amountMinor: String(amount), feeMinor: '0', currency: currency.code, idempotencyKey: paymentKey,
-        paymentMethodReference: kind === 'DEPOSIT' ? 'sandbox-hosted-token' : 'sandbox-tokenized-payout', providerSessionReference: '',
-        riskEvidence: { mode: 'SANDBOX', requestHash: claimed.command.requestHash, currencyExponent: currency.exponent, provider: { connectionId: provider.id, adapterId: provider.adapterId, adapterVersion: provider.adapterVersion, configReference: provider.configReference, certificationStatus: provider.certificationStatus } },
+        paymentMethodReference: kind === 'DEPOSIT' ? `${provider.adapterId}-card-token` : 'manual-bank-payout', providerSessionReference: '',
+        riskEvidence: { requestHash: claimed.command.requestHash, currencyExponent: currency.exponent, provider: { connectionId: provider.id, adapterId: provider.adapterId, adapterVersion: provider.adapterVersion, configReference: provider.configReference, certificationStatus: provider.certificationStatus } },
         status: 'PROCESSING', completedAt: null,
       } })
       await tx.paymentAttempt.create({ data: { tenantId: actor.tenantId, paymentIntentId: intent.id, attempt: 1, externalReference: '', status: 'PENDING', reasonCode: 'PREPARED' } })
       await recordCustomerCommandProgress(tx, commandId, { state: 'PENDING', paymentId: intent.id, amountMinor: String(amount), currency: currency.code, currencyExponent: currency.exponent })
-      await appendCustomerAudit(tx, { tenantId: actor.tenantId, playerId: actor.playerId, action: kind === 'DEPOSIT' ? 'customer.deposit_prepared' : 'customer.withdrawal_prepared', targetType: 'PaymentIntent', targetId: intent.id, reason: 'SANDBOX_PAYMENT_PREPARED', payload: { amountMinor: String(amount), currency: currency.code, holdId, providerConnectionId: provider.id } })
+      await appendCustomerAudit(tx, { tenantId: actor.tenantId, playerId: actor.playerId, action: kind === 'DEPOSIT' ? 'customer.deposit_prepared' : 'customer.withdrawal_prepared', targetType: 'PaymentIntent', targetId: intent.id, reason: 'CUSTOMER_PAYMENT_PREPARED', payload: { amountMinor: String(amount), currency: currency.code, holdId, providerConnectionId: provider.id } })
       return { kind: 'ATTEMPT', intent, provider, fresh: true }
     })
   } catch (error) {
@@ -359,7 +373,7 @@ async function runFundingCommand(
     }
     const now = new Date()
     const { status, intent } = await applyPaymentOutcome(tx, current, outcome, now)
-    await appendCustomerAudit(tx, { tenantId: actor.tenantId, playerId: actor.playerId, action: current.type === 'DEPOSIT' ? 'customer.wallet_funded' : 'customer.withdrawal_requested', targetType: 'PaymentIntent', targetId: current.id, reason: status === 'SUCCEEDED' ? 'SANDBOX_CONFIRMED' : status === 'FAILED' ? 'SANDBOX_PROVIDER_FAILED' : status === 'PROCESSING' ? 'OPERATOR_PAYOUT_REQUIRED' : 'PROVIDER_OUTCOME_UNKNOWN', payload: { amountMinor: current.amountMinor, currency: current.currency, holdId: current.holdId, externalReference: outcome.externalRef, reasonCode: outcome.reasonCode } })
+    await appendCustomerAudit(tx, { tenantId: actor.tenantId, playerId: actor.playerId, action: current.type === 'DEPOSIT' ? 'customer.wallet_funded' : 'customer.withdrawal_requested', targetType: 'PaymentIntent', targetId: current.id, reason: status === 'SUCCEEDED' ? 'PROVIDER_CONFIRMED' : status === 'FAILED' ? 'PROVIDER_DECLINED' : status === 'PROCESSING' ? 'OPERATOR_PAYOUT_REQUIRED' : 'PROVIDER_OUTCOME_UNKNOWN', payload: { amountMinor: current.amountMinor, currency: current.currency, holdId: current.holdId, externalReference: outcome.externalRef, reasonCode: outcome.reasonCode } })
     const result = fundingResultFor(intent, duplicate, await availableFor(tx, actor, current.currency), currency.exponent)
     if (status !== 'SUCCEEDED' && status !== 'FAILED') await recordCustomerCommandProgress(tx, commandId, result)
     else await finishCustomerCommand(tx, commandId, status === 'SUCCEEDED' ? 'SUCCEEDED' : 'REJECTED', result)

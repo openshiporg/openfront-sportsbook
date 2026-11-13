@@ -1,7 +1,9 @@
 "use strict";
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
@@ -18,6 +20,14 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // features/keystone/session-assurance.ts
@@ -53,6 +63,248 @@ var init_session_assurance = __esm({
   }
 });
 
+// features/keystone/access.ts
+function isSignedIn({ session }) {
+  return Boolean(session);
+}
+async function currentUser({ session, context }) {
+  if (!session?.itemId || !context?.prisma) return null;
+  return context.prisma.user.findUnique({ where: { id: session.itemId }, include: { role: true } });
+}
+var isOperatorSessionAssured, currentOperatorPermission, currentCapability, currentTenantId, currentTenantScope, currentTenantItemScope, assuredPermission, permissions, rules;
+var init_access = __esm({
+  "features/keystone/access.ts"() {
+    "use strict";
+    init_session_assurance();
+    isOperatorSessionAssured = (session) => hasOperatorMfaAssurance(session);
+    currentOperatorPermission = (capability) => async (args) => {
+      if (!isOperatorSessionAssured(args.session)) return false;
+      const user = await currentUser(args);
+      return Boolean(user?.role?.[capability]);
+    };
+    currentCapability = (capability) => async (args) => {
+      if (!isOperatorSessionAssured(args.session)) return false;
+      const user = await currentUser(args);
+      return Boolean(user?.tenantId && user.role?.[capability]);
+    };
+    currentTenantId = async (args) => {
+      const user = await currentUser(args);
+      return user?.tenantId ?? null;
+    };
+    currentTenantScope = async (args) => {
+      const tenantId = await currentTenantId(args);
+      return tenantId ? { tenant: { id: { equals: tenantId } } } : false;
+    };
+    currentTenantItemScope = async (args) => {
+      const tenantId = await currentTenantId(args);
+      return tenantId ? { id: { equals: tenantId } } : false;
+    };
+    assuredPermission = (capability) => ({ session }) => isOperatorSessionAssured(session) && Boolean(session?.data.role?.[capability]);
+    permissions = {
+      canManagePeople: assuredPermission("canManagePeople"),
+      canManageRoles: assuredPermission("canManageRoles"),
+      canManageSportsbook: assuredPermission("canManageSportsbook"),
+      canTrade: assuredPermission("canTrade"),
+      canManageRisk: assuredPermission("canManageRisk"),
+      canManageCompliance: assuredPermission("canManageCompliance"),
+      canManageFinance: assuredPermission("canManageFinance"),
+      canManageIntegrations: assuredPermission("canManageIntegrations"),
+      canApproveSensitiveActions: assuredPermission("canApproveSensitiveActions"),
+      canReadAudit: assuredPermission("canReadAudit")
+    };
+    rules = {
+      sameTenant: ({ session }) => session?.data.tenant?.id ? { tenant: { id: { equals: session.data.tenant.id } } } : false,
+      canReadPeople: async (args) => {
+        const { session } = args;
+        if (!session) return false;
+        const user = await currentUser(args);
+        if (isOperatorSessionAssured(session) && user?.tenantId && user.role?.canSeeOtherPeople) {
+          return { OR: [{ id: { equals: session.itemId } }, { tenant: { id: { equals: user.tenantId } } }] };
+        }
+        return { id: { equals: session.itemId } };
+      },
+      canUpdatePeople: async (args) => {
+        const { session } = args;
+        if (!session) return false;
+        const user = await currentUser(args);
+        if (isOperatorSessionAssured(session) && user?.tenantId && user.role?.canEditOtherPeople) {
+          return { OR: [{ id: { equals: session.itemId } }, { tenant: { id: { equals: user.tenantId } } }] };
+        }
+        return { id: { equals: session.itemId } };
+      },
+      canDeletePeople: async (args) => {
+        const { session } = args;
+        if (!session || !isOperatorSessionAssured(session)) return false;
+        const user = await currentUser(args);
+        if (!user?.tenantId || !user.role?.canManagePeople) return false;
+        return { AND: [{ tenant: { id: { equals: user.tenantId } } }, { id: { not: { equals: session.itemId } } }] };
+      }
+    };
+  }
+});
+
+// features/keystone/models/trackingFields.ts
+var import_fields, trackingFields;
+var init_trackingFields = __esm({
+  "features/keystone/models/trackingFields.ts"() {
+    "use strict";
+    import_fields = require("@keystone-6/core/fields");
+    trackingFields = {
+      createdAt: (0, import_fields.timestamp)({ access: { read: () => true, create: () => false, update: () => false }, validation: { isRequired: true }, defaultValue: { kind: "now" }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "read" } } }),
+      updatedAt: (0, import_fields.timestamp)({ access: { read: () => true, create: () => false, update: () => false }, validation: { isRequired: true }, defaultValue: { kind: "now" }, db: { updatedAt: true }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "read" } } })
+    };
+  }
+});
+
+// features/keystone/models/User.ts
+var import_core, import_access, import_fields2, userOwnershipAccess, User;
+var init_User = __esm({
+  "features/keystone/models/User.ts"() {
+    "use strict";
+    import_core = require("@keystone-6/core");
+    import_access = require("@keystone-6/core/access");
+    import_fields2 = require("@keystone-6/core/fields");
+    init_access();
+    init_trackingFields();
+    userOwnershipAccess = { create: import_access.denyAll, update: import_access.denyAll };
+    User = (0, import_core.list)({
+      access: {
+        operation: {
+          ...(0, import_access.allOperations)(isSignedIn),
+          create: (args) => {
+            if (process.env.PUBLIC_SIGNUPS_ALLOWED === "true") {
+              return true;
+            }
+            return currentOperatorPermission("canManagePeople")(args);
+          },
+          delete: currentOperatorPermission("canManagePeople")
+        },
+        filter: {
+          query: rules.canReadPeople,
+          update: rules.canUpdatePeople,
+          delete: rules.canDeletePeople
+        }
+      },
+      ui: {
+        hideCreate: (args) => !permissions.canManagePeople(args),
+        hideDelete: (args) => !permissions.canManagePeople(args),
+        listView: {
+          initialColumns: ["name", "email", "role", "tenant"]
+        },
+        itemView: {
+          defaultFieldMode: ({ session, item }) => session?.data.role?.canEditOtherPeople || session?.itemId === item?.id ? "edit" : "read"
+        }
+      },
+      fields: {
+        name: (0, import_fields2.text)({
+          validation: {
+            isRequired: true
+          }
+        }),
+        email: (0, import_fields2.text)({
+          isIndexed: "unique",
+          validation: {
+            isRequired: true
+          }
+        }),
+        passwordResetToken: (0, import_fields2.text)({ defaultValue: null, db: { isNullable: true }, access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
+        passwordResetIssuedAt: (0, import_fields2.timestamp)({ access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
+        passwordResetRedeemedAt: (0, import_fields2.timestamp)({ access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
+        operatorMfaEnabled: (0, import_fields2.checkbox)({ defaultValue: false, access: { create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "read" } } }),
+        operatorMfaSecret: (0, import_fields2.text)({ defaultValue: null, db: { isNullable: true }, access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
+        operatorMfaRecoveryHashes: (0, import_fields2.json)({ access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
+        operatorMfaFailedAttempts: (0, import_fields2.integer)({ defaultValue: 0, access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
+        operatorMfaLockedUntil: (0, import_fields2.timestamp)({ access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
+        operatorMfaEnrolledAt: (0, import_fields2.timestamp)({ access: { create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "read" } } }),
+        password: (0, import_fields2.password)({
+          access: {
+            read: import_access.denyAll,
+            update: async ({ session, item, context }) => await currentOperatorPermission("canManagePeople")({ session, context }) || session?.itemId === item.id
+          },
+          validation: { isRequired: true }
+        }),
+        tenant: (0, import_fields2.relationship)({
+          ref: "Tenant",
+          access: userOwnershipAccess
+        }),
+        ...trackingFields,
+        onboardingStatus: (0, import_fields2.select)({
+          options: [
+            { label: "Not Started", value: "not_started" },
+            { label: "In Progress", value: "in_progress" },
+            { label: "Completed", value: "completed" },
+            { label: "Dismissed", value: "dismissed" }
+          ],
+          defaultValue: "not_started",
+          access: { update: import_access.denyAll }
+        }),
+        role: (0, import_fields2.relationship)({
+          ref: "Role.assignedTo",
+          access: userOwnershipAccess,
+          ui: {
+            itemView: {
+              fieldMode: (args) => permissions.canManagePeople(args) ? "edit" : "read"
+            }
+          }
+        })
+      }
+    });
+  }
+});
+
+// features/keystone/models/Role.ts
+var import_core2, import_access3, import_fields3, Role;
+var init_Role = __esm({
+  "features/keystone/models/Role.ts"() {
+    "use strict";
+    import_core2 = require("@keystone-6/core");
+    import_access3 = require("@keystone-6/core/access");
+    import_fields3 = require("@keystone-6/core/fields");
+    init_access();
+    init_trackingFields();
+    Role = (0, import_core2.list)({
+      access: {
+        operation: { query: isSignedIn, create: import_access3.denyAll, update: import_access3.denyAll, delete: import_access3.denyAll },
+        filter: { query: ({ session }) => session?.data.tenant?.id ? { OR: [{ tenant: { id: { equals: session.data.tenant.id } } }, { assignedTo: { some: { id: { equals: session.itemId } } } }] } : { assignedTo: { some: { id: { equals: session?.itemId ?? "" } } } } }
+      },
+      ui: {
+        hideCreate: true,
+        hideDelete: true,
+        listView: {
+          initialColumns: ["name", "assignedTo"]
+        },
+        itemView: { defaultFieldMode: "read" }
+      },
+      fields: {
+        tenant: (0, import_fields3.relationship)({ ref: "Tenant", access: { create: import_access3.denyAll, update: import_access3.denyAll } }),
+        name: (0, import_fields3.text)({ validation: { isRequired: true } }),
+        canSeeOtherPeople: (0, import_fields3.checkbox)({ defaultValue: false }),
+        canEditOtherPeople: (0, import_fields3.checkbox)({ defaultValue: false }),
+        canManagePeople: (0, import_fields3.checkbox)({ defaultValue: false }),
+        canManageRoles: (0, import_fields3.checkbox)({ defaultValue: false }),
+        canAccessDashboard: (0, import_fields3.checkbox)({ defaultValue: false }),
+        canManageOnboarding: (0, import_fields3.checkbox)({ defaultValue: false }),
+        canManageSportsbook: (0, import_fields3.checkbox)({ defaultValue: false }),
+        canTrade: (0, import_fields3.checkbox)({ defaultValue: false }),
+        canManageRisk: (0, import_fields3.checkbox)({ defaultValue: false }),
+        canManageCompliance: (0, import_fields3.checkbox)({ defaultValue: false }),
+        canManageFinance: (0, import_fields3.checkbox)({ defaultValue: false }),
+        canManageIntegrations: (0, import_fields3.checkbox)({ defaultValue: false }),
+        canApproveSensitiveActions: (0, import_fields3.checkbox)({ defaultValue: false }),
+        canReadAudit: (0, import_fields3.checkbox)({ defaultValue: false }),
+        ...trackingFields,
+        assignedTo: (0, import_fields3.relationship)({
+          ref: "User.role",
+          many: true,
+          ui: {
+            itemView: { fieldMode: "read" }
+          }
+        })
+      }
+    });
+  }
+});
+
 // features/platform/store-settings/lib/store-logo.ts
 function normalizeStoreLogoColor(value) {
   const numeric = Number.parseFloat(String(value ?? DEFAULT_STORE_LOGO_COLOR));
@@ -65,6 +317,855 @@ var init_store_logo = __esm({
     "use strict";
     DEFAULT_STORE_LOGO_ICON = '<svg fill="none" height="100%" viewBox="0 0 36 48" width="100%" xmlns="http://www.w3.org/2000/svg"><g fill="#155eef"><path d="m0 7.5h28.8c2.5202 0 3.7804 0 4.743.49047.8467.43143 1.5351 1.11984 1.9665 1.96657.4905.96256.4905 2.22276.4905 4.74296v1.8h-28.8c-2.52024 0-3.78035 0-4.74296-.4905-.84673-.4314-1.535139-1.1198-1.966569-1.9665-.490471-.9626-.490471-2.2228-.490471-4.743z"/><path d="m0 28.5h28.8c2.5202 0 3.7804 0 4.743-.4905.8467-.4314 1.5351-1.1198 1.9665-1.9665.4905-.9626.4905-2.2228.4905-4.743v-1.8h-28.8c-2.52024 0-3.78035 0-4.74296.4905-.84673.4314-1.535139 1.1198-1.966569 1.9665-.490471.9626-.490471 2.2228-.490471 4.743z"/><path d="m14 31.5h14.8c2.5202 0 3.7804 0 4.743.4905.8467.4314 1.5351 1.1198 1.9665 1.9665.4905.9626.4905 2.2228.4905 4.743v1.8h-14.8c-2.5202 0-3.7804 0-4.743-.4905-.8467-.4314-1.5351-1.1198-1.9665-1.9665-.4905-.9626-.4905-2.2228-.4905-4.743z"/></g></svg>';
     DEFAULT_STORE_LOGO_COLOR = "0";
+  }
+});
+
+// features/keystone/utils/storeLogo.ts
+function sanitizeStoreLogoSvg(svg) {
+  const source = svg.trim();
+  if (!source.startsWith("<svg") || !source.endsWith("</svg>") || source.length > 1e5) {
+    return "";
+  }
+  if (/<!|<\?|\b(?:javascript|data|vbscript):|\bon[a-z]+\s*=|\b(?:href|src|style)\s*=/i.test(source)) {
+    return "";
+  }
+  let tagCount = 0;
+  let match;
+  TAG_PATTERN.lastIndex = 0;
+  while (match = TAG_PATTERN.exec(source)) {
+    tagCount += 1;
+    const element = match[1].toLowerCase();
+    if (!ALLOWED_ELEMENTS.has(element)) return "";
+    if (match[0].startsWith("</")) continue;
+    const attributes = match[2];
+    let consumed = "";
+    ATTRIBUTE_PATTERN.lastIndex = 0;
+    let attributeMatch;
+    while (attributeMatch = ATTRIBUTE_PATTERN.exec(attributes)) {
+      consumed += attributeMatch[0];
+      const attribute = attributeMatch[1].toLowerCase();
+      const value = attributeMatch[2].slice(1, -1);
+      if (!ALLOWED_ATTRIBUTES.has(attribute)) return "";
+      if (attribute === "id" && !/^[A-Za-z_][\w:.-]*$/.test(value)) return "";
+      if (/url\(/i.test(value) && !/^url\(#[A-Za-z_][\w:.-]*\)$/.test(value)) return "";
+    }
+    const remainder = attributes.replace(consumed, "").replace(/\//g, "").trim();
+    if (remainder) return "";
+  }
+  TAG_PATTERN.lastIndex = 0;
+  if (tagCount === 0 || source.replace(TAG_PATTERN, "").trim()) return "";
+  return source;
+}
+var ALLOWED_ELEMENTS, ALLOWED_ATTRIBUTES, ATTRIBUTE_PATTERN, TAG_PATTERN;
+var init_storeLogo = __esm({
+  "features/keystone/utils/storeLogo.ts"() {
+    "use strict";
+    ALLOWED_ELEMENTS = /* @__PURE__ */ new Set([
+      "svg",
+      "g",
+      "path",
+      "defs",
+      "lineargradient",
+      "radialgradient",
+      "stop",
+      "clippath",
+      "rect",
+      "circle",
+      "ellipse",
+      "line",
+      "polyline",
+      "polygon",
+      "title",
+      "desc"
+    ]);
+    ALLOWED_ATTRIBUTES = /* @__PURE__ */ new Set([
+      "xmlns",
+      "fill",
+      "fill-rule",
+      "clip-rule",
+      "height",
+      "width",
+      "viewbox",
+      "d",
+      "clip-path",
+      "id",
+      "x1",
+      "x2",
+      "y1",
+      "y2",
+      "gradientunits",
+      "gradienttransform",
+      "offset",
+      "stop-color",
+      "stop-opacity",
+      "opacity",
+      "cx",
+      "cy",
+      "r",
+      "rx",
+      "ry",
+      "x",
+      "y",
+      "transform",
+      "stroke",
+      "stroke-width",
+      "stroke-linecap",
+      "stroke-linejoin",
+      "points",
+      "role",
+      "aria-hidden",
+      "aria-label",
+      "preserveaspectratio"
+    ]);
+    ATTRIBUTE_PATTERN = /\s+([A-Za-z_:][\w:.-]*)\s*=\s*("[^"]*"|'[^']*')/g;
+    TAG_PATTERN = /<\/?\s*([A-Za-z][\w:-]*)([^<>]*)>/g;
+  }
+});
+
+// features/keystone/models/Sportsbook.ts
+var Sportsbook_exports = {};
+__export(Sportsbook_exports, {
+  AcceptanceDecision: () => AcceptanceDecision,
+  AuditEvent: () => AuditEvent,
+  Brand: () => Brand,
+  Competition: () => Competition,
+  Event: () => Event,
+  Hold: () => Hold,
+  InboxMessage: () => InboxMessage,
+  JournalEntry: () => JournalEntry,
+  JournalTransaction: () => JournalTransaction,
+  Jurisdiction: () => Jurisdiction,
+  LedgerAccount: () => LedgerAccount,
+  Market: () => Market,
+  OperatorJurisdiction: () => OperatorJurisdiction,
+  OperatorLicence: () => OperatorLicence,
+  Player: () => Player,
+  PlayerLimit: () => PlayerLimit,
+  PriceSnapshot: () => PriceSnapshot,
+  ProviderConnection: () => ProviderConnection,
+  Quote: () => Quote,
+  RawEnvelope: () => RawEnvelope,
+  ResultVersion: () => ResultVersion,
+  Selection: () => Selection,
+  SelfExclusion: () => SelfExclusion,
+  Settlement: () => Settlement,
+  Sport: () => Sport,
+  Tenant: () => Tenant,
+  Wager: () => Wager,
+  WagerLeg: () => WagerLeg
+});
+var import_core3, import_access5, import_fields4, list3, requiredText, status, tenant, scopedAccess, tenantAccess, Tenant, Brand, Jurisdiction, OperatorJurisdiction, OperatorLicence, Player, PlayerLimit, SelfExclusion, Sport, Competition, Event, Market, Selection, PriceSnapshot, Quote, Wager, WagerLeg, AcceptanceDecision, ResultVersion, Settlement, LedgerAccount, JournalTransaction, JournalEntry, Hold, ProviderConnection, RawEnvelope, InboxMessage, AuditEvent;
+var init_Sportsbook = __esm({
+  "features/keystone/models/Sportsbook.ts"() {
+    "use strict";
+    import_core3 = require("@keystone-6/core");
+    import_access5 = require("@keystone-6/core/access");
+    import_fields4 = require("@keystone-6/core/fields");
+    init_access();
+    init_trackingFields();
+    init_store_logo();
+    init_storeLogo();
+    list3 = (config2) => (0, import_core3.list)({ ...config2, ui: { hideNavigation: true, hideCreate: true, hideDelete: true, ...config2.ui }, graphql: { ...config2.graphql, maxTake: 100 } });
+    requiredText = () => (0, import_fields4.text)({ validation: { isRequired: true } });
+    status = (values, defaultValue = values[0]) => (0, import_fields4.select)({ type: "enum", options: values.map((value) => ({ label: value, value })), defaultValue });
+    tenant = () => (0, import_fields4.relationship)({ ref: "Tenant", many: false, access: { create: import_access5.denyAll, update: import_access5.denyAll } });
+    scopedAccess = (capability) => ({ operation: { query: currentCapability(capability), create: import_access5.denyAll, update: import_access5.denyAll, delete: import_access5.denyAll }, filter: { query: currentTenantScope } });
+    tenantAccess = scopedAccess("canManageSportsbook");
+    Tenant = list3({ access: { operation: { query: isSignedIn, create: import_access5.denyAll, update: import_access5.denyAll, delete: import_access5.denyAll }, filter: { query: currentTenantItemScope } }, fields: { name: requiredText(), slug: (0, import_fields4.text)({ isIndexed: "unique" }), status: status(["ACTIVE", "SUSPENDED", "CLOSED"]), defaultTimezone: requiredText(), supportedLocales: (0, import_fields4.json)(), dataResidencyRegion: (0, import_fields4.text)(), ...trackingFields } });
+    Brand = list3({ access: tenantAccess, fields: { tenant: tenant(), name: requiredText(), domain: requiredText(), defaultLocale: requiredText(), defaultTimezone: (0, import_fields4.text)(), supportedLocales: (0, import_fields4.json)(), designTokens: (0, import_fields4.json)(), termsReference: (0, import_fields4.text)(), logoIcon: (0, import_fields4.text)({ defaultValue: DEFAULT_STORE_LOGO_ICON, hooks: { resolveInput: ({ resolvedData, fieldKey }) => {
+      const value = resolvedData[fieldKey];
+      if (value === void 0 || value === null || value === "") return value;
+      return typeof value === "string" ? sanitizeStoreLogoSvg(value) : "";
+    }, validate: ({ inputData, resolvedData, fieldKey, addValidationError }) => {
+      const submitted = inputData?.[fieldKey];
+      if (typeof submitted === "string" && submitted.trim() && !resolvedData?.[fieldKey]) addValidationError("Logo must be a valid, safe SVG document");
+    } } }), logoColor: (0, import_fields4.text)({ defaultValue: DEFAULT_STORE_LOGO_COLOR, hooks: { resolveInput: ({ resolvedData, fieldKey }) => {
+      const value = resolvedData[fieldKey];
+      return value === void 0 ? value : normalizeStoreLogoColor(value);
+    } } }), status: status(["ACTIVE", "INACTIVE"]), ...trackingFields } });
+    Jurisdiction = list3({ access: { operation: { query: currentCapability("canManageSportsbook"), create: import_access5.denyAll, update: import_access5.denyAll, delete: import_access5.denyAll } }, fields: { code: (0, import_fields4.text)({ isIndexed: "unique" }), authority: requiredText(), status: status(["PENDING", "ACTIVE", "INACTIVE"]), ...trackingFields } });
+    OperatorJurisdiction = list3({ access: tenantAccess, fields: { tenant: tenant(), jurisdiction: (0, import_fields4.relationship)({ ref: "Jurisdiction" }), licenseReference: requiredText(), policyVersion: requiredText(), effectiveFrom: (0, import_fields4.timestamp)(), effectiveTo: (0, import_fields4.timestamp)(), status: status(["PENDING", "ACTIVE", "SUSPENDED"]), ...trackingFields } });
+    OperatorLicence = list3({ access: scopedAccess("canManageCompliance"), fields: { tenant: tenant(), jurisdiction: (0, import_fields4.relationship)({ ref: "Jurisdiction" }), licenceNumber: requiredText(), regulator: requiredText(), expiresAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), permittedRegions: (0, import_fields4.json)({ defaultValue: [] }), status: status(["ACTIVE", "SUSPENDED"]), ...trackingFields } });
+    Player = list3({ access: scopedAccess("canManageCompliance"), fields: { tenant: tenant(), brand: (0, import_fields4.relationship)({ ref: "Brand" }), subject: requiredText(), status: status(["PENDING", "ACTIVE", "SUSPENDED", "CLOSED"]), kycStatus: status(["REQUIRED", "PENDING", "APPROVED", "REJECTED"]), locale: requiredText(), timezone: (0, import_fields4.text)(), preferredOddsFormat: status(["DECIMAL", "AMERICAN", "FRACTIONAL"]), marketingAllowed: (0, import_fields4.checkbox)({ defaultValue: false }), riskBand: status(["LOW", "MEDIUM", "HIGH"]), ...trackingFields } });
+    PlayerLimit = list3({ access: scopedAccess("canManageCompliance"), fields: { tenant: tenant(), player: (0, import_fields4.relationship)({ ref: "Player" }), type: status(["DEPOSIT", "STAKE", "LOSS", "SESSION"]), period: status(["DAILY", "WEEKLY", "MONTHLY"]), amountMinor: requiredText(), currency: requiredText(), effectiveFrom: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), effectiveTo: (0, import_fields4.timestamp)(), ...trackingFields } });
+    SelfExclusion = list3({ access: scopedAccess("canManageCompliance"), fields: { tenant: tenant(), player: (0, import_fields4.relationship)({ ref: "Player" }), scope: requiredText(), startsAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), endsAt: (0, import_fields4.timestamp)(), status: status(["ACTIVE", "EXPIRED", "REVOKED"]), source: requiredText(), ...trackingFields } });
+    Sport = list3({ access: scopedAccess("canTrade"), fields: { tenant: tenant(), key: requiredText(), name: requiredText(), active: (0, import_fields4.checkbox)({ defaultValue: true }), ...trackingFields } });
+    Competition = list3({ access: scopedAccess("canTrade"), fields: { tenant: tenant(), sport: (0, import_fields4.relationship)({ ref: "Sport" }), region: (0, import_fields4.relationship)({ ref: "Region" }), key: requiredText(), name: requiredText(), timezone: (0, import_fields4.text)(), status: status(["ACTIVE", "INACTIVE"]), ...trackingFields } });
+    Event = list3({ access: scopedAccess("canTrade"), fields: { tenant: tenant(), competition: (0, import_fields4.relationship)({ ref: "Competition" }), season: (0, import_fields4.relationship)({ ref: "Season" }), stage: (0, import_fields4.relationship)({ ref: "CompetitionStage" }), venue: (0, import_fields4.relationship)({ ref: "Venue" }), externalKey: requiredText(), name: requiredText(), startAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), status: status(["SCHEDULED", "LIVE", "ENDED", "CANCELLED", "SUSPENDED"]), livePhase: (0, import_fields4.text)(), clockSeconds: (0, import_fields4.integer)(), officialResultStatus: status(["NONE", "PROVISIONAL", "APPROVED", "DISPUTED"]), version: (0, import_fields4.integer)({ defaultValue: 1 }), ...trackingFields } });
+    Market = list3({ access: scopedAccess("canTrade"), fields: { tenant: tenant(), event: (0, import_fields4.relationship)({ ref: "Event" }), definition: (0, import_fields4.relationship)({ ref: "MarketDefinition" }), definitionKey: requiredText(), parameters: (0, import_fields4.json)(), tradingMode: status(["PREMATCH", "LIVE"]), line: (0, import_fields4.text)(), marginBasisPoints: (0, import_fields4.integer)(), cashOutEnabled: (0, import_fields4.checkbox)({ defaultValue: false }), status: status(["OPEN", "SUSPENDED", "CLOSED", "GRADED"]), version: (0, import_fields4.integer)({ defaultValue: 1 }), ...trackingFields } });
+    Selection = list3({ access: scopedAccess("canTrade"), fields: { tenant: tenant(), market: (0, import_fields4.relationship)({ ref: "Market" }), key: requiredText(), label: requiredText(), status: status(["OPEN", "SUSPENDED", "CLOSED"]), ...trackingFields } });
+    PriceSnapshot = list3({ access: scopedAccess("canTrade"), fields: { tenant: tenant(), selection: (0, import_fields4.relationship)({ ref: "Selection" }), providerConnection: (0, import_fields4.relationship)({ ref: "ProviderConnection" }), decimalOdds: requiredText(), line: (0, import_fields4.text)(), sequence: requiredText(), effectiveAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), receivedAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), rawEnvelope: (0, import_fields4.relationship)({ ref: "RawEnvelope" }), status: status(["OPEN", "SUSPENDED"]), ...trackingFields } });
+    Quote = list3({ access: scopedAccess("canManageRisk"), fields: { tenant: tenant(), player: (0, import_fields4.relationship)({ ref: "Player" }), selection: (0, import_fields4.relationship)({ ref: "Selection" }), priceSnapshot: (0, import_fields4.relationship)({ ref: "PriceSnapshot" }), structure: status(["STRAIGHT", "PARLAY", "SYSTEM", "ROUND_ROBIN", "TEASER", "EACH_WAY"]), promotion: (0, import_fields4.relationship)({ ref: "Promotion" }), legCount: (0, import_fields4.integer)({ defaultValue: 1 }), partCount: (0, import_fields4.integer)({ defaultValue: 1 }), stakeMinor: requiredText(), potentialReturnMinor: (0, import_fields4.text)(), currency: requiredText(), decimalOdds: requiredText(), priceChangeConsent: status(["EXACT", "ACCEPT_BETTER", "ACCEPT_WITHIN_TOLERANCE"]), liveDelayMs: (0, import_fields4.integer)({ defaultValue: 0 }), expiresAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), termsHash: requiredText(), policyVersion: requiredText(), ...trackingFields } });
+    Wager = list3({ access: scopedAccess("canManageRisk"), fields: { tenant: tenant(), player: (0, import_fields4.relationship)({ ref: "Player" }), quote: (0, import_fields4.relationship)({ ref: "Quote" }), legalEntity: (0, import_fields4.relationship)({ ref: "LegalEntity" }), operatorJurisdiction: (0, import_fields4.relationship)({ ref: "OperatorJurisdiction" }), brand: (0, import_fields4.relationship)({ ref: "Brand" }), channel: (0, import_fields4.relationship)({ ref: "OperatorChannel" }), structure: status(["STRAIGHT", "PARLAY", "SYSTEM", "ROUND_ROBIN", "TEASER", "EACH_WAY"]), promotion: (0, import_fields4.relationship)({ ref: "Promotion" }), bonusAward: (0, import_fields4.relationship)({ ref: "BonusAward" }), version: (0, import_fields4.integer)({ defaultValue: 1 }), idempotencyKey: requiredText(), stakeMinor: requiredText(), potentialReturnMinor: requiredText(), maxPayoutMinor: (0, import_fields4.text)(), currency: requiredText(), termsHash: requiredText(), priceChangeConsent: status(["EXACT", "ACCEPT_BETTER", "ACCEPT_WITHIN_TOLERANCE"]), liveDelayMs: (0, import_fields4.integer)({ defaultValue: 0 }), requestedAt: (0, import_fields4.timestamp)(), status: status(["PENDING", "DELAYED", "ACCEPTED", "REJECTED", "OPEN", "PARTIALLY_CASHED_OUT", "CASHED_OUT", "GRADED", "SETTLED", "VOID"]), acceptedAt: (0, import_fields4.timestamp)(), ...trackingFields } });
+    WagerLeg = list3({ access: scopedAccess("canManageRisk"), fields: { tenant: tenant(), wager: (0, import_fields4.relationship)({ ref: "Wager" }), wagerPart: (0, import_fields4.relationship)({ ref: "WagerPart" }), legIndex: (0, import_fields4.integer)(), eventKey: requiredText(), marketKey: requiredText(), selectionKey: requiredText(), snapshotId: requiredText(), decimalOdds: requiredText(), line: (0, import_fields4.text)(), ruleVersion: requiredText(), correlationGroupKey: (0, import_fields4.text)(), live: (0, import_fields4.checkbox)({ defaultValue: false }), ...trackingFields } });
+    AcceptanceDecision = list3({ access: scopedAccess("canManageRisk"), fields: { tenant: tenant(), wager: (0, import_fields4.relationship)({ ref: "Wager" }), quote: (0, import_fields4.relationship)({ ref: "Quote" }), accepted: (0, import_fields4.checkbox)({ defaultValue: false }), rejectionCode: (0, import_fields4.text)(), gateResults: (0, import_fields4.json)(), inputHash: requiredText(), ...trackingFields } });
+    ResultVersion = list3({ access: scopedAccess("canManageRisk"), fields: { tenant: tenant(), event: (0, import_fields4.relationship)({ ref: "Event" }), providerConnection: (0, import_fields4.relationship)({ ref: "ProviderConnection" }), version: (0, import_fields4.integer)({ validation: { isRequired: true } }), status: status(["PENDING", "APPROVED", "REJECTED", "SUPERSEDED"]), payload: (0, import_fields4.json)(), payloadHash: requiredText(), approvedAt: (0, import_fields4.timestamp)(), ...trackingFields } });
+    Settlement = list3({ access: scopedAccess("canManageRisk"), fields: { tenant: tenant(), wager: (0, import_fields4.relationship)({ ref: "Wager" }), resultVersion: (0, import_fields4.relationship)({ ref: "ResultVersion" }), settlementRun: (0, import_fields4.relationship)({ ref: "SettlementRun" }), version: (0, import_fields4.integer)({ validation: { isRequired: true } }), outcome: status(["WIN", "LOSS", "PUSH", "VOID", "DEAD_HEAT", "PARTIAL"]), grossPayoutMinor: (0, import_fields4.text)(), taxMinor: (0, import_fields4.text)(), payoutMinor: requiredText(), inputHash: requiredText(), journalTransaction: (0, import_fields4.relationship)({ ref: "JournalTransaction" }), reversalOf: (0, import_fields4.relationship)({ ref: "Settlement" }), ...trackingFields } });
+    LedgerAccount = list3({ access: scopedAccess("canManageFinance"), fields: { tenant: tenant(), player: (0, import_fields4.relationship)({ ref: "Player" }), key: requiredText(), accountClass: status(["ASSET", "LIABILITY", "REVENUE", "EXPENSE", "EQUITY"]), currency: requiredText(), status: status(["ACTIVE", "FROZEN", "CLOSED"]), ...trackingFields } });
+    JournalTransaction = list3({ access: scopedAccess("canManageFinance"), fields: { tenant: tenant(), type: requiredText(), idempotencyKey: requiredText(), correlationId: requiredText(), status: status(["POSTED", "REVERSED"]), reversalOf: (0, import_fields4.relationship)({ ref: "JournalTransaction" }), effectiveAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), ...trackingFields } });
+    JournalEntry = list3({ access: scopedAccess("canManageFinance"), fields: { tenant: tenant(), transaction: (0, import_fields4.relationship)({ ref: "JournalTransaction" }), account: (0, import_fields4.relationship)({ ref: "LedgerAccount" }), side: status(["DEBIT", "CREDIT"]), amountMinor: requiredText(), currency: requiredText(), ...trackingFields } });
+    Hold = list3({ access: scopedAccess("canManageFinance"), fields: { tenant: tenant(), account: (0, import_fields4.relationship)({ ref: "LedgerAccount" }), purposeType: requiredText(), purposeId: requiredText(), amountMinor: requiredText(), status: status(["ACTIVE", "CAPTURED", "RELEASED", "EXPIRED"]), expiresAt: (0, import_fields4.timestamp)(), version: (0, import_fields4.integer)({ defaultValue: 1 }), ...trackingFields } });
+    ProviderConnection = list3({ access: scopedAccess("canManageIntegrations"), fields: { tenant: tenant(), legalEntity: (0, import_fields4.relationship)({ ref: "LegalEntity" }), jurisdiction: (0, import_fields4.relationship)({ ref: "Jurisdiction" }), adapterId: requiredText(), adapterVersion: requiredText(), configReference: requiredText(), secretReference: (0, import_fields4.text)(), dataResidencyRegion: (0, import_fields4.text)(), failoverPriority: (0, import_fields4.integer)({ defaultValue: 100 }), capabilities: (0, import_fields4.json)(), certificationStatus: status(["INTERNAL", "PENDING", "CERTIFIED", "SUSPENDED"]), status: status(["ACTIVE", "DEGRADED", "DISABLED"]), ...trackingFields } });
+    RawEnvelope = list3({ access: scopedAccess("canManageIntegrations"), fields: { tenant: tenant(), providerConnection: (0, import_fields4.relationship)({ ref: "ProviderConnection" }), direction: status(["INBOUND", "OUTBOUND"]), externalId: requiredText(), schemaVersion: requiredText(), installationRevision: (0, import_fields4.text)(), payload: (0, import_fields4.json)(), payloadHash: requiredText(), receivedAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), ...trackingFields } });
+    InboxMessage = list3({ access: scopedAccess("canManageIntegrations"), fields: { tenant: tenant(), rawEnvelope: (0, import_fields4.relationship)({ ref: "RawEnvelope" }), messageKey: requiredText(), type: requiredText(), status: status(["PENDING", "PROCESSING", "COMPLETED", "DEAD"]), attempts: (0, import_fields4.integer)({ defaultValue: 0 }), availableAt: (0, import_fields4.timestamp)(), leaseUntil: (0, import_fields4.timestamp)(), leaseOwner: (0, import_fields4.text)(), lastError: (0, import_fields4.text)(), ...trackingFields } });
+    AuditEvent = list3({ access: scopedAccess("canReadAudit"), fields: { tenant: tenant(), actorId: requiredText(), action: requiredText(), targetType: requiredText(), targetId: requiredText(), reason: (0, import_fields4.text)(), payloadHash: requiredText(), previousHash: (0, import_fields4.text)(), hash: requiredText(), ...trackingFields } });
+  }
+});
+
+// features/keystone/models/SportsbookP0.ts
+var SportsbookP0_exports = {};
+__export(SportsbookP0_exports, {
+  AMLCase: () => AMLCase,
+  AccountRestriction: () => AccountRestriction,
+  ApiRateBucket: () => ApiRateBucket,
+  ApprovalRequest: () => ApprovalRequest,
+  AuditAnchor: () => AuditAnchor,
+  BalanceProjection: () => BalanceProjection,
+  BetSlip: () => BetSlip,
+  BetSlipItem: () => BetSlipItem,
+  CashOutOffer: () => CashOutOffer,
+  Competitor: () => Competitor,
+  ComplianceReport: () => ComplianceReport,
+  ConfigValue: () => ConfigValue,
+  Consent: () => Consent,
+  DataCorrectionCase: () => DataCorrectionCase,
+  Dispute: () => Dispute,
+  DisputeEvent: () => DisputeEvent,
+  EventParticipant: () => EventParticipant,
+  ExposurePosition: () => ExposurePosition,
+  GeoCheck: () => GeoCheck,
+  GeoSession: () => GeoSession,
+  Incident: () => Incident,
+  LegGrade: () => LegGrade,
+  LegalHold: () => LegalHold,
+  LimitProfile: () => LimitProfile,
+  LimitRule: () => LimitRule,
+  MarketGrade: () => MarketGrade,
+  OnboardingProgress: () => OnboardingProgress,
+  PaymentAttempt: () => PaymentAttempt,
+  PaymentIntent: () => PaymentIntent,
+  PlayerIdentity: () => PlayerIdentity,
+  ProviderEntityMapping: () => ProviderEntityMapping,
+  ReconciliationItem: () => ReconciliationItem,
+  ReconciliationRun: () => ReconciliationRun,
+  ResettlementCase: () => ResettlementCase,
+  RoleGrant: () => RoleGrant,
+  TaxAssessment: () => TaxAssessment,
+  Team: () => Team,
+  TradingStatusChange: () => TradingStatusChange,
+  VerificationCase: () => VerificationCase,
+  VerificationCheck: () => VerificationCheck,
+  WagerStatusEvent: () => WagerStatusEvent,
+  WebhookReplay: () => WebhookReplay
+});
+var import_core4, import_access7, import_fields5, list4, t, rel, tenant2, st, scopedAccess2, immutable, f, Team, RoleGrant, ApprovalRequest, ConfigValue, PlayerIdentity, VerificationCase, VerificationCheck, AMLCase, GeoSession, GeoCheck, AccountRestriction, Consent, Competitor, EventParticipant, ProviderEntityMapping, TradingStatusChange, LimitProfile, LimitRule, ExposurePosition, BetSlip, BetSlipItem, WagerStatusEvent, MarketGrade, LegGrade, ResettlementCase, CashOutOffer, Dispute, DisputeEvent, BalanceProjection, PaymentIntent, PaymentAttempt, ReconciliationRun, ReconciliationItem, TaxAssessment, Incident, ComplianceReport, LegalHold, DataCorrectionCase, ApiRateBucket, WebhookReplay, AuditAnchor, OnboardingProgress;
+var init_SportsbookP0 = __esm({
+  "features/keystone/models/SportsbookP0.ts"() {
+    "use strict";
+    import_core4 = require("@keystone-6/core");
+    import_access7 = require("@keystone-6/core/access");
+    import_fields5 = require("@keystone-6/core/fields");
+    init_access();
+    init_trackingFields();
+    list4 = (config2) => (0, import_core4.list)({ ...config2, ui: { hideNavigation: true, hideCreate: true, hideDelete: true, ...config2.ui }, graphql: { ...config2.graphql, maxTake: 100 } });
+    t = () => (0, import_fields5.text)({ validation: { isRequired: true } });
+    rel = (ref2) => (0, import_fields5.relationship)({ ref: ref2 });
+    tenant2 = () => (0, import_fields5.relationship)({ ref: "Tenant", access: { create: import_access7.denyAll, update: import_access7.denyAll } });
+    st = (v) => (0, import_fields5.select)({ type: "enum", options: v.map((value) => ({ label: value, value })), defaultValue: v[0] });
+    scopedAccess2 = (capability) => ({ operation: { query: currentCapability(capability), create: import_access7.denyAll, update: import_access7.denyAll, delete: import_access7.denyAll }, filter: { query: currentTenantScope } });
+    immutable = scopedAccess2("canManageSportsbook");
+    f = (fields, access = immutable) => list4({ access, fields: { tenant: tenant2(), ...fields, ...trackingFields } });
+    Team = f({ name: t(), status: st(["ACTIVE", "INACTIVE"]), members: (0, import_fields5.relationship)({ ref: "User", many: true }) }, scopedAccess2("canManageRoles"));
+    RoleGrant = f({ user: rel("User"), role: rel("Role"), team: rel("Team"), scope: (0, import_fields5.json)(), effectiveFrom: (0, import_fields5.timestamp)(), effectiveTo: (0, import_fields5.timestamp)(), status: st(["ACTIVE", "REVOKED"]) }, scopedAccess2("canManageRoles"));
+    ApprovalRequest = f({ action: t(), payloadHash: t(), requesterId: t(), approverId: (0, import_fields5.text)(), status: st(["PENDING", "APPROVED", "REJECTED", "EXPIRED"]), reason: (0, import_fields5.text)(), decidedAt: (0, import_fields5.timestamp)(), requestPayload: (0, import_fields5.json)(), expiresAt: (0, import_fields5.timestamp)(), consumedAt: (0, import_fields5.timestamp)(), consumedById: (0, import_fields5.text)(), consumedKey: (0, import_fields5.text)() }, scopedAccess2("canManageRoles"));
+    ConfigValue = f({ key: t(), value: (0, import_fields5.json)(), valueType: t(), scopeType: t(), scopeId: (0, import_fields5.text)(), policyVersion: t(), effectiveFrom: (0, import_fields5.timestamp)(), effectiveTo: (0, import_fields5.timestamp)() }, scopedAccess2("canManageSportsbook"));
+    PlayerIdentity = f({ player: rel("Player"), encryptedPayload: t(), tokenizedIdentifiers: (0, import_fields5.json)(), encryptionKeyRef: t(), classification: st(["RESTRICTED_PII"]) }, scopedAccess2("canManageCompliance"));
+    VerificationCase = f({ player: rel("Player"), providerConnection: rel("ProviderConnection"), type: st(["KYC", "AGE", "ADDRESS"]), status: st(["PENDING", "APPROVED", "REJECTED", "EXPIRED"]), evidenceReference: (0, import_fields5.text)(), expiresAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageCompliance"));
+    VerificationCheck = f({ verificationCase: rel("VerificationCase"), attempt: (0, import_fields5.integer)(), decision: st(["PENDING", "PASS", "FAIL", "REVIEW"]), reasonCode: (0, import_fields5.text)(), rawEnvelope: rel("RawEnvelope") }, scopedAccess2("canManageCompliance"));
+    AMLCase = f({ player: rel("Player"), status: st(["OPEN", "REVIEW", "CLOSED"]), riskBand: st(["LOW", "MEDIUM", "HIGH"]), restrictedEvidence: (0, import_fields5.json)(), ownerId: (0, import_fields5.text)() }, scopedAccess2("canManageCompliance"));
+    GeoSession = f({ player: rel("Player"), sessionKey: t(), status: st(["ACTIVE", "EXPIRED", "REVOKED"]), expiresAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageCompliance"));
+    GeoCheck = f({ geoSession: rel("GeoSession"), providerConnection: rel("ProviderConnection"), decision: st(["ALLOW", "DENY", "UNKNOWN"]), reasonCode: (0, import_fields5.text)(), coarseEvidence: (0, import_fields5.json)(), checkedAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageCompliance"));
+    AccountRestriction = f({ player: rel("Player"), capability: t(), reasonCode: t(), startsAt: (0, import_fields5.timestamp)(), endsAt: (0, import_fields5.timestamp)(), status: st(["ACTIVE", "EXPIRED", "REVOKED"]) }, scopedAccess2("canManageCompliance"));
+    Consent = f({ player: rel("Player"), type: t(), policyVersion: t(), givenAt: (0, import_fields5.timestamp)(), withdrawnAt: (0, import_fields5.timestamp)(), evidenceHash: t() }, scopedAccess2("canManageCompliance"));
+    Competitor = f({ key: t(), name: t(), status: st(["ACTIVE", "INACTIVE"]) }, scopedAccess2("canTrade"));
+    EventParticipant = f({ event: rel("Event"), competitor: rel("Competitor"), role: t(), sortOrder: (0, import_fields5.integer)() }, scopedAccess2("canTrade"));
+    ProviderEntityMapping = f({ providerConnection: rel("ProviderConnection"), entityType: t(), externalId: t(), canonicalType: t(), canonicalId: t(), confidence: (0, import_fields5.text)(), status: st(["PENDING", "APPROVED", "REJECTED"]) }, scopedAccess2("canTrade"));
+    TradingStatusChange = f({ scopeType: t(), scopeId: t(), fromStatus: t(), toStatus: t(), reason: t(), source: t(), actorId: (0, import_fields5.text)(), effectiveAt: (0, import_fields5.timestamp)() }, scopedAccess2("canTrade"));
+    LimitProfile = f({ name: t(), version: (0, import_fields5.integer)(), status: st(["DRAFT", "ACTIVE", "RETIRED"]), effectiveFrom: (0, import_fields5.timestamp)(), effectiveTo: (0, import_fields5.timestamp)() }, scopedAccess2("canManageRisk"));
+    LimitRule = f({ profile: rel("LimitProfile"), scopeType: t(), scopeId: (0, import_fields5.text)(), maxStakeMinor: (0, import_fields5.text)(), maxPayoutMinor: (0, import_fields5.text)(), maxLiabilityMinor: (0, import_fields5.text)(), currency: t(), priority: (0, import_fields5.integer)() }, scopedAccess2("canManageRisk"));
+    ExposurePosition = f({ scopeType: t(), scopeId: t(), currency: t(), stakeMinor: t(), liabilityMinor: t(), version: (0, import_fields5.integer)(), asOf: (0, import_fields5.timestamp)() }, scopedAccess2("canManageRisk"));
+    BetSlip = f({ player: rel("Player"), currency: t(), status: st(["OPEN", "QUOTED", "EXPIRED", "ACCEPTED"]), expiresAt: (0, import_fields5.timestamp)(), version: (0, import_fields5.integer)(), quoteKey: (0, import_fields5.text)() }, scopedAccess2("canManageRisk"));
+    BetSlipItem = f({ betSlip: rel("BetSlip"), selection: rel("Selection"), priceSnapshot: rel("PriceSnapshot"), requestedOdds: t(), line: (0, import_fields5.text)() }, scopedAccess2("canManageRisk"));
+    WagerStatusEvent = f({ wager: rel("Wager"), fromStatus: (0, import_fields5.text)(), toStatus: t(), reasonCode: t(), actorId: (0, import_fields5.text)(), effectiveAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageRisk"));
+    MarketGrade = f({ market: rel("Market"), resultVersion: rel("ResultVersion"), ruleVersion: t(), outcome: t(), factorNumerator: (0, import_fields5.text)(), factorDenominator: (0, import_fields5.text)(), trace: (0, import_fields5.json)(), inputHash: t() }, scopedAccess2("canManageRisk"));
+    LegGrade = f({ wagerLeg: rel("WagerLeg"), marketGrade: rel("MarketGrade"), outcome: t(), factorNumerator: (0, import_fields5.text)(), factorDenominator: (0, import_fields5.text)(), inputHash: t() }, scopedAccess2("canManageRisk"));
+    ResettlementCase = f({ wager: rel("Wager"), oldSettlement: rel("Settlement"), newResultVersion: rel("ResultVersion"), reason: t(), approvalRequest: rel("ApprovalRequest"), status: st(["PENDING", "APPROVED", "COMPLETED", "REJECTED"]) }, scopedAccess2("canManageRisk"));
+    CashOutOffer = f({ wager: rel("Wager"), amountMinor: t(), currency: t(), portionNumerator: t(), portionDenominator: t(), feeMinor: (0, import_fields5.text)(), marginBasisPoints: (0, import_fields5.integer)(), valuationInputs: (0, import_fields5.json)(), valuationHash: t(), wagerVersion: (0, import_fields5.integer)(), offeredAt: (0, import_fields5.timestamp)(), expiresAt: (0, import_fields5.timestamp)(), status: st(["OPEN", "ACCEPTED", "EXPIRED", "WITHDRAWN"]) }, scopedAccess2("canManageRisk"));
+    Dispute = f({ player: rel("Player"), wager: rel("Wager"), category: t(), status: st(["OPEN", "TRIAGED", "INVESTIGATING", "PROPOSED_RESOLUTION", "RESOLVED", "REJECTED", "APPEALED"]), evidence: (0, import_fields5.json)(), resolution: (0, import_fields5.text)(), approvalRequest: rel("ApprovalRequest"), resolvedAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageRisk"));
+    DisputeEvent = f({ dispute: rel("Dispute"), type: t(), actorId: t(), evidenceHash: t(), details: (0, import_fields5.json)() }, scopedAccess2("canManageRisk"));
+    BalanceProjection = f({ account: rel("LedgerAccount"), postedMinor: t(), pendingMinor: t(), availableMinor: t(), version: (0, import_fields5.integer)(), asOf: (0, import_fields5.timestamp)() }, scopedAccess2("canManageFinance"));
+    PaymentIntent = f({ player: rel("Player"), type: st(["DEPOSIT", "WITHDRAWAL", "REFUND", "CHARGEBACK", "ADJUSTMENT"]), amountMinor: t(), feeMinor: (0, import_fields5.text)(), currency: t(), idempotencyKey: t(), status: st(["PENDING", "REVIEW", "PROCESSING", "SUCCEEDED", "FAILED", "UNKNOWN", "CANCELLED"]), providerConnection: rel("ProviderConnection"), paymentMethodReference: (0, import_fields5.text)(), providerSessionReference: (0, import_fields5.text)(), hold: rel("Hold"), riskEvidence: (0, import_fields5.json)(), completedAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageFinance"));
+    PaymentAttempt = f({ paymentIntent: rel("PaymentIntent"), attempt: (0, import_fields5.integer)(), externalReference: (0, import_fields5.text)(), status: st(["PENDING", "SUCCEEDED", "FAILED", "UNKNOWN"]), rawEnvelope: rel("RawEnvelope"), reasonCode: (0, import_fields5.text)() }, scopedAccess2("canManageFinance"));
+    ReconciliationRun = f({ type: t(), windowFrom: (0, import_fields5.timestamp)(), windowTo: (0, import_fields5.timestamp)(), status: st(["PENDING", "RUNNING", "COMPLETED", "FAILED"]), inputHash: t(), differenceMinor: (0, import_fields5.text)() }, scopedAccess2("canManageFinance"));
+    ReconciliationItem = f({ run: rel("ReconciliationRun"), internalReference: t(), providerReference: (0, import_fields5.text)(), differenceMinor: t(), currency: t(), status: st(["MATCHED", "OPEN", "RESOLVED"]), resolutionJournal: rel("JournalTransaction") }, scopedAccess2("canManageFinance"));
+    TaxAssessment = f({ wager: rel("Wager"), ruleVersion: t(), basisMinor: t(), amountMinor: t(), currency: t(), status: st(["CALCULATED", "POSTED", "REVERSED"]) }, scopedAccess2("canManageFinance"));
+    Incident = f({ severity: st(["SEV1", "SEV2", "SEV3", "SEV4"]), title: t(), status: st(["OPEN", "MITIGATING", "RESOLVED"]), commanderId: (0, import_fields5.text)(), evidence: (0, import_fields5.json)(), resolvedAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageIntegrations"));
+    ComplianceReport = f({ type: t(), periodStart: (0, import_fields5.timestamp)(), periodEnd: (0, import_fields5.timestamp)(), version: (0, import_fields5.integer)(), artifactHash: t(), artifactReference: t(), status: st(["DRAFT", "APPROVED", "SUBMITTED"]), submittedAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageCompliance"));
+    LegalHold = f({ scopeType: t(), scopeId: t(), reason: t(), startsAt: (0, import_fields5.timestamp)(), endsAt: (0, import_fields5.timestamp)(), status: st(["ACTIVE", "RELEASED"]), approvalRequest: rel("ApprovalRequest") }, scopedAccess2("canManageCompliance"));
+    DataCorrectionCase = f({ scopeType: t(), scopeId: t(), reason: t(), dryRunHash: t(), approvalRequest: rel("ApprovalRequest"), status: st(["PENDING", "APPROVED", "APPLIED", "REJECTED"]) }, scopedAccess2("canManageRisk"));
+    ApiRateBucket = f({ keyHash: t(), scope: t(), windowStartedAt: (0, import_fields5.timestamp)(), count: (0, import_fields5.integer)({ defaultValue: 0 }), expiresAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageIntegrations"));
+    WebhookReplay = f({ providerConnection: rel("ProviderConnection"), messageHash: t(), occurredAt: (0, import_fields5.timestamp)(), expiresAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageIntegrations"));
+    AuditAnchor = f({ chainHeadHash: t(), eventCount: (0, import_fields5.integer)(), anchoredAt: (0, import_fields5.timestamp)(), externalReference: t(), status: st(["PENDING", "ANCHORED", "FAILED"]) }, scopedAccess2("canReadAudit"));
+    OnboardingProgress = f({ stage: t(), status: st(["PENDING", "COMPLETE", "BLOCKED"]), evidenceHash: t(), completedAt: (0, import_fields5.timestamp)(), details: (0, import_fields5.json)() }, scopedAccess2("canManageSportsbook"));
+  }
+});
+
+// features/keystone/models/Customer.ts
+var Customer_exports = {};
+__export(Customer_exports, {
+  CustomerCommand: () => CustomerCommand,
+  CustomerQuoteLegTerms: () => CustomerQuoteLegTerms,
+  CustomerQuoteTerms: () => CustomerQuoteTerms,
+  CustomerSession: () => CustomerSession
+});
+var import_core5, import_access9, import_fields6, list5, internalAccess, requiredText2, internalList, CustomerSession, CustomerCommand, CustomerQuoteTerms, CustomerQuoteLegTerms;
+var init_Customer = __esm({
+  "features/keystone/models/Customer.ts"() {
+    "use strict";
+    import_core5 = require("@keystone-6/core");
+    import_access9 = require("@keystone-6/core/access");
+    import_fields6 = require("@keystone-6/core/fields");
+    init_trackingFields();
+    list5 = (config2) => (0, import_core5.list)({ ...config2, ui: { hideNavigation: true, hideCreate: true, hideDelete: true, ...config2.ui }, graphql: { ...config2.graphql, maxTake: 100 } });
+    internalAccess = {
+      operation: {
+        query: import_access9.denyAll,
+        create: import_access9.denyAll,
+        update: import_access9.denyAll,
+        delete: import_access9.denyAll
+      }
+    };
+    requiredText2 = (isIndexed) => (0, import_fields6.text)({
+      validation: { isRequired: true },
+      ...isIndexed ? { isIndexed } : {}
+    });
+    internalList = (fields, graphql6 = {}) => list5({
+      access: internalAccess,
+      graphql: { omit: true, ...graphql6 },
+      ui: { hideNavigation: true, hideCreate: true, hideDelete: true },
+      fields: {
+        ...fields,
+        ...trackingFields
+      }
+    });
+    CustomerSession = internalList({
+      tenant: (0, import_fields6.relationship)({ ref: "Tenant" }),
+      player: (0, import_fields6.relationship)({ ref: "Player" }),
+      tokenDigest: requiredText2("unique"),
+      expiresAt: (0, import_fields6.timestamp)({ validation: { isRequired: true } }),
+      assuranceLevel: (0, import_fields6.select)({ type: "enum", options: ["GUEST", "PASSWORD", "MFA"].map((value) => ({ label: value, value })), defaultValue: "GUEST" }),
+      deviceDigest: (0, import_fields6.text)(),
+      lastSeenAt: (0, import_fields6.timestamp)(),
+      revokedAt: (0, import_fields6.timestamp)()
+    });
+    CustomerCommand = internalList({
+      tenant: (0, import_fields6.relationship)({ ref: "Tenant" }),
+      player: (0, import_fields6.relationship)({ ref: "Player" }),
+      commandKey: requiredText2("unique"),
+      idempotencyKey: requiredText2(),
+      type: (0, import_fields6.select)({
+        type: "enum",
+        options: ["WAGER", "FUND", "LIMIT", "EXCLUSION", "AUTH", "CASH_OUT", "PROMOTION", "DISPUTE", "PROFILE", "PRIVACY"].map((value) => ({ label: value, value })),
+        defaultValue: "WAGER"
+      }),
+      requestHash: requiredText2(),
+      status: (0, import_fields6.select)({
+        type: "enum",
+        options: ["IN_PROGRESS", "SUCCEEDED", "REJECTED"].map((value) => ({ label: value, value })),
+        defaultValue: "IN_PROGRESS"
+      }),
+      result: (0, import_fields6.json)()
+    });
+    CustomerQuoteTerms = internalList({
+      tenant: (0, import_fields6.relationship)({ ref: "Tenant" }),
+      player: (0, import_fields6.relationship)({ ref: "Player" }),
+      quote: (0, import_fields6.relationship)({ ref: "Quote" }),
+      quoteKey: requiredText2("unique"),
+      structure: (0, import_fields6.select)({ type: "enum", options: ["STRAIGHT", "PARLAY", "SYSTEM", "ROUND_ROBIN", "TEASER", "EACH_WAY"].map((value) => ({ label: value, value })), defaultValue: "STRAIGHT" }),
+      legCount: (0, import_fields6.text)({ validation: { isRequired: true }, defaultValue: "1" }),
+      partCount: (0, import_fields6.text)({ validation: { isRequired: true }, defaultValue: "1" }),
+      partPlan: (0, import_fields6.json)(),
+      priceChangeConsent: (0, import_fields6.text)({ defaultValue: "EXACT" }),
+      liveDelayMs: (0, import_fields6.text)({ defaultValue: "0" }),
+      bonusEconomics: (0, import_fields6.json)(),
+      eventId: requiredText2(),
+      marketId: requiredText2(),
+      selectionId: requiredText2(),
+      priceSnapshotId: requiredText2(),
+      eventName: requiredText2(),
+      marketName: requiredText2(),
+      selectionName: requiredText2(),
+      decimalOdds: requiredText2(),
+      stakeMinor: requiredText2(),
+      potentialReturnMinor: requiredText2(),
+      currency: requiredText2(),
+      termsHash: requiredText2(),
+      expiresAt: (0, import_fields6.timestamp)({ validation: { isRequired: true } })
+    }, { plural: "CustomerQuoteTermRecords" });
+    CustomerQuoteLegTerms = internalList({
+      tenant: (0, import_fields6.relationship)({ ref: "Tenant" }),
+      player: (0, import_fields6.relationship)({ ref: "Player" }),
+      quote: (0, import_fields6.relationship)({ ref: "Quote" }),
+      quoteKey: requiredText2(),
+      legIndex: (0, import_fields6.text)({ validation: { isRequired: true } }),
+      eventId: requiredText2(),
+      marketId: requiredText2(),
+      selectionId: requiredText2(),
+      priceSnapshotId: requiredText2(),
+      eventName: requiredText2(),
+      marketName: requiredText2(),
+      selectionName: requiredText2(),
+      decimalOdds: requiredText2(),
+      line: (0, import_fields6.text)(),
+      live: (0, import_fields6.select)({ type: "enum", options: ["PREMATCH", "LIVE"].map((value) => ({ label: value, value })), defaultValue: "PREMATCH" }),
+      correlationGroupKey: (0, import_fields6.text)(),
+      ruleVersion: requiredText2(),
+      evidenceHash: requiredText2()
+    }, { plural: "CustomerQuoteLegTermRecords" });
+  }
+});
+
+// features/keystone/models/SportsbookFull.ts
+var SportsbookFull_exports = {};
+__export(SportsbookFull_exports, {
+  AccessReview: () => AccessReview,
+  AccountClosure: () => AccountClosure,
+  AdapterCertificationRun: () => AdapterCertificationRun,
+  AffiliateAttribution: () => AffiliateAttribution,
+  AffordabilityAssessment: () => AffordabilityAssessment,
+  BonusAward: () => BonusAward,
+  BonusTransaction: () => BonusTransaction,
+  BrandLocale: () => BrandLocale,
+  CampaignBudget: () => CampaignBudget,
+  CashOutAcceptance: () => CashOutAcceptance,
+  CompetitionStage: () => CompetitionStage,
+  ConfigDefinition: () => ConfigDefinition,
+  CorrelationGroup: () => CorrelationGroup,
+  CorrelationRule: () => CorrelationRule,
+  CurrencyDefinition: () => CurrencyDefinition,
+  CustomerCredential: () => CustomerCredential,
+  CustomerDevice: () => CustomerDevice,
+  CustomerFavorite: () => CustomerFavorite,
+  CustomerPrivacyRequest: () => CustomerPrivacyRequest,
+  CustomerRecoveryToken: () => CustomerRecoveryToken,
+  DataExport: () => DataExport,
+  EventScheduleChange: () => EventScheduleChange,
+  FeatureFlag: () => FeatureFlag,
+  FeedHealthSnapshot: () => FeedHealthSnapshot,
+  HouseRuleVersion: () => HouseRuleVersion,
+  IntegrationDeliveryAttempt: () => IntegrationDeliveryAttempt,
+  IntegrityCase: () => IntegrityCase,
+  JurisdictionPolicyVersion: () => JurisdictionPolicyVersion,
+  LedgerAdjustmentRequest: () => LedgerAdjustmentRequest,
+  LegalEntity: () => LegalEntity,
+  MarketDefinition: () => MarketDefinition,
+  Notification: () => Notification,
+  OperatorChannel: () => OperatorChannel,
+  PamSubjectMapping: () => PamSubjectMapping,
+  PlayerStatement: () => PlayerStatement,
+  Promotion: () => Promotion,
+  PromotionRedemption: () => PromotionRedemption,
+  PromotionRuleVersion: () => PromotionRuleVersion,
+  ProviderHealthSample: () => ProviderHealthSample,
+  Region: () => Region,
+  ReportArtifact: () => ReportArtifact,
+  RetentionExecution: () => RetentionExecution,
+  RetentionPolicyVersion: () => RetentionPolicyVersion,
+  SafeguardingAccount: () => SafeguardingAccount,
+  SafeguardingReconciliation: () => SafeguardingReconciliation,
+  ScreeningHit: () => ScreeningHit,
+  Season: () => Season,
+  SettlementLine: () => SettlementLine,
+  SettlementRun: () => SettlementRun,
+  SupportCase: () => SupportCase,
+  SupportCaseEvent: () => SupportCaseEvent,
+  TaxRuleVersion: () => TaxRuleVersion,
+  TenantCurrency: () => TenantCurrency,
+  TraderOverride: () => TraderOverride,
+  TradingReplayRun: () => TradingReplayRun,
+  Venue: () => Venue,
+  WagerExposureAllocation: () => WagerExposureAllocation,
+  WagerPart: () => WagerPart,
+  WebhookDelivery: () => WebhookDelivery,
+  WebhookEndpoint: () => WebhookEndpoint
+});
+var import_core6, import_access10, import_fields7, list6, requiredText3, optionalText, requiredTime, relation, optionalRelation, tenant3, status2, scopedAccess3, scoped, internal, LegalEntity, CurrencyDefinition, TenantCurrency, JurisdictionPolicyVersion, HouseRuleVersion, FeatureFlag, ConfigDefinition, BrandLocale, OperatorChannel, AccessReview, Region, Season, CompetitionStage, Venue, MarketDefinition, EventScheduleChange, FeedHealthSnapshot, CorrelationGroup, CorrelationRule, TraderOverride, TradingReplayRun, WagerExposureAllocation, WagerPart, SettlementRun, SettlementLine, CashOutAcceptance, SafeguardingAccount, SafeguardingReconciliation, LedgerAdjustmentRequest, TaxRuleVersion, PlayerStatement, Promotion, PromotionRuleVersion, CampaignBudget, BonusAward, BonusTransaction, PromotionRedemption, CustomerCredential, CustomerDevice, CustomerRecoveryToken, CustomerFavorite, CustomerPrivacyRequest, ScreeningHit, AffordabilityAssessment, AccountClosure, SupportCase, SupportCaseEvent, IntegrityCase, WebhookEndpoint, WebhookDelivery, IntegrationDeliveryAttempt, ProviderHealthSample, AdapterCertificationRun, Notification, RetentionPolicyVersion, RetentionExecution, ReportArtifact, AffiliateAttribution, PamSubjectMapping, DataExport;
+var init_SportsbookFull = __esm({
+  "features/keystone/models/SportsbookFull.ts"() {
+    "use strict";
+    import_core6 = require("@keystone-6/core");
+    import_access10 = require("@keystone-6/core/access");
+    import_fields7 = require("@keystone-6/core/fields");
+    init_access();
+    init_trackingFields();
+    list6 = (config2) => (0, import_core6.list)({ ...config2, ui: { hideNavigation: true, hideCreate: true, hideDelete: true, ...config2.ui }, graphql: { ...config2.graphql, maxTake: 100 } });
+    requiredText3 = () => (0, import_fields7.text)({ validation: { isRequired: true } });
+    optionalText = () => (0, import_fields7.text)();
+    requiredTime = () => (0, import_fields7.timestamp)({ validation: { isRequired: true } });
+    relation = (ref2) => (0, import_fields7.relationship)({ ref: ref2, many: false, validation: { isRequired: true } });
+    optionalRelation = (ref2) => (0, import_fields7.relationship)({ ref: ref2, many: false });
+    tenant3 = () => (0, import_fields7.relationship)({ ref: "Tenant", many: false, validation: { isRequired: true }, access: { create: import_access10.denyAll, update: import_access10.denyAll } });
+    status2 = (values, defaultValue = values[0]) => (0, import_fields7.select)({ type: "enum", options: values.map((value) => ({ label: value, value })), defaultValue });
+    scopedAccess3 = (capability) => ({ operation: { query: currentCapability(capability), create: import_access10.denyAll, update: import_access10.denyAll, delete: import_access10.denyAll }, filter: { query: currentTenantScope } });
+    scoped = (capability, fields) => list6({ access: scopedAccess3(capability), fields: { tenant: tenant3(), ...fields, ...trackingFields } });
+    internal = (fields) => list6({ access: { operation: { query: import_access10.denyAll, create: import_access10.denyAll, update: import_access10.denyAll, delete: import_access10.denyAll } }, graphql: { omit: true }, ui: { isHidden: true }, fields: { ...fields, ...trackingFields } });
+    LegalEntity = scoped("canManageSportsbook", {
+      name: requiredText3(),
+      countryCode: requiredText3(),
+      registrationReference: requiredText3(),
+      status: status2(["PENDING", "ACTIVE", "SUSPENDED", "CLOSED"])
+    });
+    CurrencyDefinition = list6({
+      access: { operation: { query: currentCapability("canManageSportsbook"), create: import_access10.denyAll, update: import_access10.denyAll, delete: import_access10.denyAll } },
+      fields: { code: (0, import_fields7.text)({ validation: { isRequired: true }, isIndexed: "unique" }), exponent: (0, import_fields7.integer)({ validation: { isRequired: true } }), name: requiredText3(), status: status2(["ACTIVE", "INACTIVE"]), ...trackingFields }
+    });
+    TenantCurrency = scoped("canManageSportsbook", {
+      currency: relation("CurrencyDefinition"),
+      depositsEnabled: (0, import_fields7.checkbox)({ defaultValue: false }),
+      withdrawalsEnabled: (0, import_fields7.checkbox)({ defaultValue: false }),
+      wageringEnabled: (0, import_fields7.checkbox)({ defaultValue: false }),
+      defaultForBrand: (0, import_fields7.checkbox)({ defaultValue: false }),
+      status: status2(["PENDING", "ACTIVE", "SUSPENDED"])
+    });
+    JurisdictionPolicyVersion = scoped("canManageSportsbook", {
+      jurisdiction: relation("Jurisdiction"),
+      version: (0, import_fields7.integer)({ validation: { isRequired: true } }),
+      authorityCitation: requiredText3(),
+      policyDocument: (0, import_fields7.json)(),
+      effectiveFrom: requiredTime(),
+      effectiveTo: (0, import_fields7.timestamp)(),
+      status: status2(["DRAFT", "APPROVED", "ACTIVE", "RETIRED"]),
+      approvedBy: optionalText(),
+      approvedAt: (0, import_fields7.timestamp)(),
+      evidenceHash: requiredText3()
+    });
+    HouseRuleVersion = scoped("canManageSportsbook", {
+      name: requiredText3(),
+      version: (0, import_fields7.integer)({ validation: { isRequired: true } }),
+      sportKey: optionalText(),
+      marketDefinitionKey: optionalText(),
+      rules: (0, import_fields7.json)(),
+      semanticHash: requiredText3(),
+      effectiveFrom: requiredTime(),
+      effectiveTo: (0, import_fields7.timestamp)(),
+      status: status2(["DRAFT", "APPROVED", "ACTIVE", "RETIRED"]),
+      approvalRequest: optionalRelation("ApprovalRequest")
+    });
+    FeatureFlag = scoped("canManageSportsbook", {
+      key: requiredText3(),
+      description: requiredText3(),
+      enabled: (0, import_fields7.checkbox)({ defaultValue: false }),
+      scopeType: status2(["TENANT", "BRAND", "JURISDICTION", "CHANNEL"]),
+      scopeId: requiredText3(),
+      safeDefault: (0, import_fields7.checkbox)({ defaultValue: false }),
+      ownerId: requiredText3(),
+      expiresAt: (0, import_fields7.timestamp)(),
+      approvalRequest: optionalRelation("ApprovalRequest")
+    });
+    ConfigDefinition = scoped("canManageSportsbook", {
+      key: requiredText3(),
+      valueType: status2(["STRING", "INTEGER", "MONEY", "BOOLEAN", "JSON"]),
+      mergeStrategy: status2(["REPLACE", "MIN", "MAX", "UNION", "DENY_WINS"]),
+      allowedScopes: (0, import_fields7.json)(),
+      validationSchema: (0, import_fields7.json)(),
+      secret: (0, import_fields7.checkbox)({ defaultValue: false }),
+      description: requiredText3()
+    });
+    BrandLocale = scoped("canManageSportsbook", {
+      brand: relation("Brand"),
+      locale: requiredText3(),
+      language: requiredText3(),
+      timezone: requiredText3(),
+      termsVersion: requiredText3(),
+      termsContentHash: requiredText3(),
+      default: (0, import_fields7.checkbox)({ defaultValue: false }),
+      status: status2(["DRAFT", "ACTIVE", "RETIRED"])
+    });
+    OperatorChannel = scoped("canManageSportsbook", {
+      legalEntity: relation("LegalEntity"),
+      operatorJurisdiction: relation("OperatorJurisdiction"),
+      brand: relation("Brand"),
+      key: requiredText3(),
+      type: status2(["WEB", "MOBILE_WEB", "NATIVE", "RETAIL", "PAM"]),
+      status: status2(["PENDING", "ACTIVE", "SUSPENDED"]),
+      capabilities: (0, import_fields7.json)()
+    });
+    AccessReview = scoped("canManageRoles", {
+      scopeType: requiredText3(),
+      scopeId: requiredText3(),
+      status: status2(["OPEN", "IN_REVIEW", "APPROVED", "REMEDIATION", "CLOSED"]),
+      openedBy: requiredText3(),
+      reviewerId: optionalText(),
+      findings: (0, import_fields7.json)(),
+      dueAt: requiredTime(),
+      completedAt: (0, import_fields7.timestamp)()
+    });
+    Region = scoped("canTrade", { key: requiredText3(), name: requiredText3(), countryCodes: (0, import_fields7.json)(), status: status2(["ACTIVE", "INACTIVE"]) });
+    Season = scoped("canTrade", { competition: relation("Competition"), key: requiredText3(), name: requiredText3(), startsAt: requiredTime(), endsAt: requiredTime(), status: status2(["SCHEDULED", "ACTIVE", "COMPLETE", "CANCELLED"]) });
+    CompetitionStage = scoped("canTrade", { season: relation("Season"), key: requiredText3(), name: requiredText3(), sortOrder: (0, import_fields7.integer)({ validation: { isRequired: true } }), status: status2(["SCHEDULED", "ACTIVE", "COMPLETE"]) });
+    Venue = scoped("canTrade", { key: requiredText3(), name: requiredText3(), countryCode: requiredText3(), timezone: requiredText3(), address: (0, import_fields7.json)(), status: status2(["ACTIVE", "INACTIVE"]) });
+    MarketDefinition = scoped("canTrade", { key: requiredText3(), name: requiredText3(), sportKey: requiredText3(), parametersSchema: (0, import_fields7.json)(), gradingRuleFamily: requiredText3(), allowedPhases: (0, import_fields7.json)(), status: status2(["DRAFT", "ACTIVE", "RETIRED"]), version: (0, import_fields7.integer)({ validation: { isRequired: true } }) });
+    EventScheduleChange = scoped("canTrade", { event: relation("Event"), fromStartAt: requiredTime(), toStartAt: requiredTime(), reasonCode: requiredText3(), source: requiredText3(), actorId: requiredText3(), evidenceHash: requiredText3() });
+    FeedHealthSnapshot = scoped("canManageIntegrations", { providerConnection: relation("ProviderConnection"), scopeType: requiredText3(), scopeId: requiredText3(), status: status2(["HEALTHY", "DEGRADED", "STALE", "GAPPED", "DOWN"]), heartbeatAt: (0, import_fields7.timestamp)(), lagMs: (0, import_fields7.integer)(), lastSequence: optionalText(), gapFrom: optionalText(), gapTo: optionalText(), checkedAt: requiredTime(), actionTaken: optionalText() });
+    CorrelationGroup = scoped("canManageRisk", { key: requiredText3(), name: requiredText3(), sportKey: requiredText3(), status: status2(["DRAFT", "ACTIVE", "RETIRED"]), version: (0, import_fields7.integer)({ validation: { isRequired: true } }) });
+    CorrelationRule = scoped("canManageRisk", { group: relation("CorrelationGroup"), leftPattern: (0, import_fields7.json)(), rightPattern: (0, import_fields7.json)(), decision: status2(["ALLOW", "DENY", "PROVIDER_PRICE_REQUIRED"]), reasonCode: requiredText3(), priority: (0, import_fields7.integer)({ validation: { isRequired: true } }) });
+    TraderOverride = scoped("canTrade", { targetType: requiredText3(), targetId: requiredText3(), overrideType: status2(["PRICE", "LINE", "STATUS", "MAX_STAKE", "MAX_PAYOUT", "MAX_LIABILITY", "CASH_OUT"]), value: (0, import_fields7.json)(), reasonCode: requiredText3(), startsAt: requiredTime(), expiresAt: requiredTime(), status: status2(["PENDING", "ACTIVE", "EXPIRED", "REVOKED"]), requesterId: requiredText3(), approvalRequest: optionalRelation("ApprovalRequest") });
+    TradingReplayRun = scoped("canManageIntegrations", { providerConnection: relation("ProviderConnection"), scopeType: requiredText3(), scopeId: requiredText3(), frontier: requiredText3(), adapterVersion: requiredText3(), normalizerVersion: requiredText3(), ruleVersion: requiredText3(), inputHash: requiredText3(), outputHash: optionalText(), comparison: (0, import_fields7.json)(), dryRun: (0, import_fields7.checkbox)({ defaultValue: true }), status: status2(["PENDING", "RUNNING", "MATCHED", "DIFFERENT", "FAILED"]), completedAt: (0, import_fields7.timestamp)() });
+    WagerExposureAllocation = scoped("canManageRisk", { wager: relation("Wager"), market: relation("Market"), stakeMinor: requiredText3(), liabilityMinor: requiredText3(), remainingStakeMinor: requiredText3(), remainingLiabilityMinor: requiredText3(), version: (0, import_fields7.integer)({ validation: { isRequired: true } }), status: status2(["OPEN", "PARTIALLY_CLOSED", "CLOSED"]) });
+    WagerPart = scoped("canManageRisk", { wager: relation("Wager"), partIndex: (0, import_fields7.integer)({ validation: { isRequired: true } }), combinationKey: requiredText3(), stakeMinor: requiredText3(), decimalOdds: requiredText3(), potentialReturnMinor: requiredText3(), status: status2(["OPEN", "GRADED", "SETTLED", "CASHED_OUT", "VOID"]), gradeSummary: (0, import_fields7.json)(), settlement: optionalRelation("Settlement") });
+    SettlementRun = scoped("canManageRisk", { triggerType: status2(["RESULT_APPROVED", "CORRECTION", "MANUAL_REPLAY"]), resultVersion: relation("ResultVersion"), inputHash: requiredText3(), status: status2(["PENDING", "RUNNING", "COMPLETED", "FAILED"]), wagersConsidered: (0, import_fields7.integer)({ defaultValue: 0 }), wagersSettled: (0, import_fields7.integer)({ defaultValue: 0 }), startedAt: requiredTime(), completedAt: (0, import_fields7.timestamp)(), errorSummary: optionalText() });
+    SettlementLine = scoped("canManageRisk", { settlement: relation("Settlement"), wagerPart: optionalRelation("WagerPart"), wagerLeg: optionalRelation("WagerLeg"), lineType: status2(["STAKE_RETURN", "PROFIT", "LOSS", "VOID", "PUSH", "DEAD_HEAT", "TAX", "ROUNDING"]), amountMinor: requiredText3(), unroundedValue: requiredText3(), scale: (0, import_fields7.integer)({ validation: { isRequired: true } }), roundingRule: requiredText3(), residualMinor: requiredText3(), trace: (0, import_fields7.json)() });
+    CashOutAcceptance = scoped("canManageRisk", { offer: relation("CashOutOffer"), wager: relation("Wager"), player: relation("Player"), amountMinor: requiredText3(), currency: requiredText3(), portionNumerator: requiredText3(), portionDenominator: requiredText3(), wagerVersion: (0, import_fields7.integer)({ validation: { isRequired: true } }), acceptedAt: requiredTime(), journalTransaction: relation("JournalTransaction"), status: status2(["ACCEPTED", "REVERSED"]), reversalOf: optionalRelation("CashOutAcceptance"), idempotencyKey: requiredText3(), evidenceHash: requiredText3() });
+    SafeguardingAccount = scoped("canManageFinance", { legalEntity: relation("LegalEntity"), providerConnection: optionalRelation("ProviderConnection"), accountReference: requiredText3(), classification: status2(["NOT_PROTECTED", "MEDIUM_PROTECTION", "HIGH_PROTECTION", "TRUST"]), currency: requiredText3(), status: status2(["ACTIVE", "SUSPENDED", "CLOSED"]), disclosureVersion: requiredText3() });
+    SafeguardingReconciliation = scoped("canManageFinance", { safeguardingAccount: relation("SafeguardingAccount"), asOf: requiredTime(), safeguardedAssetMinor: requiredText3(), playerLiabilityMinor: requiredText3(), differenceMinor: requiredText3(), status: status2(["MATCHED", "SHORTFALL", "SURPLUS", "RESOLVED"]), evidenceHash: requiredText3(), reconciliationRun: optionalRelation("ReconciliationRun") });
+    LedgerAdjustmentRequest = scoped("canManageFinance", { player: optionalRelation("Player"), account: relation("LedgerAccount"), amountMinor: requiredText3(), currency: requiredText3(), direction: status2(["DEBIT", "CREDIT"]), reasonCode: requiredText3(), evidence: (0, import_fields7.json)(), status: status2(["PENDING", "APPROVED", "POSTED", "REJECTED"]), requesterId: requiredText3(), approvalRequest: relation("ApprovalRequest"), journalTransaction: optionalRelation("JournalTransaction") });
+    TaxRuleVersion = scoped("canManageFinance", { jurisdiction: relation("Jurisdiction"), key: requiredText3(), version: (0, import_fields7.integer)({ validation: { isRequired: true } }), basis: status2(["STAKE", "WINNINGS", "GGR", "PLAYER_WITHHOLDING", "PROMOTION"]), rateNumerator: requiredText3(), rateDenominator: requiredText3(), roundingRule: requiredText3(), effectiveFrom: requiredTime(), effectiveTo: (0, import_fields7.timestamp)(), status: status2(["DRAFT", "ACTIVE", "RETIRED"]), evidenceHash: requiredText3() });
+    PlayerStatement = scoped("canManageFinance", { player: relation("Player"), periodStart: requiredTime(), periodEnd: requiredTime(), openingMinor: requiredText3(), closingMinor: requiredText3(), currency: requiredText3(), journalHash: requiredText3(), artifactReference: requiredText3(), status: status2(["GENERATING", "READY", "FAILED"]) });
+    Promotion = scoped("canManageSportsbook", { key: requiredText3(), name: requiredText3(), description: requiredText3(), type: status2(["FREE_BET", "ODDS_BOOST", "DEPOSIT_MATCH", "CASHBACK"]), status: status2(["DRAFT", "SCHEDULED", "ACTIVE", "PAUSED", "ENDED"]), startsAt: requiredTime(), endsAt: requiredTime(), jurisdiction: optionalRelation("Jurisdiction"), brand: optionalRelation("Brand"), budgetMinor: requiredText3(), currency: requiredText3(), termsVersion: requiredText3(), termsHash: requiredText3(), approvalRequest: optionalRelation("ApprovalRequest") });
+    PromotionRuleVersion = scoped("canManageSportsbook", { promotion: relation("Promotion"), version: (0, import_fields7.integer)({ validation: { isRequired: true } }), eligibility: (0, import_fields7.json)(), economics: (0, import_fields7.json)(), wageringRequirements: (0, import_fields7.json)(), abuseControls: (0, import_fields7.json)(), contributionRules: (0, import_fields7.json)(), status: status2(["DRAFT", "ACTIVE", "RETIRED"]), effectiveFrom: requiredTime(), effectiveTo: (0, import_fields7.timestamp)(), evidenceHash: requiredText3() });
+    CampaignBudget = scoped("canManageFinance", { promotion: relation("Promotion"), allocatedMinor: requiredText3(), awardedMinor: requiredText3(), redeemedMinor: requiredText3(), forfeitedMinor: requiredText3(), currency: requiredText3(), version: (0, import_fields7.integer)({ validation: { isRequired: true } }), status: status2(["ACTIVE", "EXHAUSTED", "CLOSED"]) });
+    BonusAward = scoped("canManageFinance", { promotion: relation("Promotion"), ruleVersion: relation("PromotionRuleVersion"), player: relation("Player"), amountMinor: requiredText3(), remainingMinor: requiredText3(), currency: requiredText3(), awardType: status2(["FREE_BET", "BONUS_CASH", "ODDS_BOOST"]), stakeReturned: (0, import_fields7.checkbox)({ defaultValue: false }), status: status2(["AWARDED", "ACTIVE", "CONSUMED", "CONVERTED", "EXPIRED", "FORFEITED"]), awardedAt: requiredTime(), activatedAt: (0, import_fields7.timestamp)(), expiresAt: requiredTime(), idempotencyKey: requiredText3(), evidenceHash: requiredText3() });
+    BonusTransaction = scoped("canManageFinance", { award: relation("BonusAward"), type: status2(["AWARD", "ACTIVATE", "RESERVE", "CONSUME", "RELEASE", "CONVERT", "EXPIRE", "FORFEIT", "REVERSE"]), amountMinor: requiredText3(), remainingMinor: requiredText3(), currency: requiredText3(), wager: optionalRelation("Wager"), journalTransaction: optionalRelation("JournalTransaction"), idempotencyKey: requiredText3(), evidenceHash: requiredText3() });
+    PromotionRedemption = scoped("canManageSportsbook", { promotion: relation("Promotion"), ruleVersion: relation("PromotionRuleVersion"), player: relation("Player"), bonusAward: optionalRelation("BonusAward"), status: status2(["ELIGIBLE", "CLAIMED", "REJECTED", "REVERSED"]), reasonCode: optionalText(), idempotencyKey: requiredText3(), evidenceHash: requiredText3(), redeemedAt: requiredTime() });
+    CustomerCredential = internal({ tenant: relation("Tenant"), player: relation("Player"), emailDigest: (0, import_fields7.text)({ validation: { isRequired: true }, isIndexed: "unique" }), emailMasked: requiredText3(), passwordHash: requiredText3(), passwordVersion: (0, import_fields7.integer)({ defaultValue: 1 }), status: status2(["PENDING_VERIFICATION", "ACTIVE", "LOCKED", "CLOSED"]), failedAttempts: (0, import_fields7.integer)({ defaultValue: 0 }), lockedUntil: (0, import_fields7.timestamp)(), verifiedAt: (0, import_fields7.timestamp)(), lastAuthenticatedAt: (0, import_fields7.timestamp)() });
+    CustomerDevice = internal({ tenant: relation("Tenant"), player: relation("Player"), session: optionalRelation("CustomerSession"), deviceDigest: requiredText3(), label: requiredText3(), firstSeenAt: requiredTime(), lastSeenAt: requiredTime(), revokedAt: (0, import_fields7.timestamp)(), riskSignals: (0, import_fields7.json)() });
+    CustomerRecoveryToken = internal({ tenant: relation("Tenant"), player: relation("Player"), tokenDigest: (0, import_fields7.text)({ validation: { isRequired: true }, isIndexed: "unique" }), purpose: status2(["VERIFY_EMAIL", "RESET_PASSWORD", "RECOVER_ACCOUNT"]), expiresAt: requiredTime(), consumedAt: (0, import_fields7.timestamp)(), attempts: (0, import_fields7.integer)({ defaultValue: 0 }) });
+    CustomerFavorite = internal({ tenant: relation("Tenant"), player: relation("Player"), targetType: status2(["SPORT", "COMPETITION", "EVENT", "COMPETITOR"]), targetId: requiredText3(), createdByDevice: optionalText() });
+    CustomerPrivacyRequest = scoped("canManageCompliance", { player: relation("Player"), type: status2(["ACCESS", "EXPORT", "CORRECT", "DELETE", "RESTRICT", "PORTABILITY"]), status: status2(["OPEN", "VERIFYING", "IN_PROGRESS", "COMPLETED", "DENIED"]), requestedAt: requiredTime(), dueAt: requiredTime(), completedAt: (0, import_fields7.timestamp)(), identityEvidenceHash: requiredText3(), artifactReference: optionalText(), decisionReason: optionalText() });
+    ScreeningHit = scoped("canManageCompliance", { amlCase: relation("AMLCase"), providerConnection: relation("ProviderConnection"), screeningType: status2(["SANCTIONS", "PEP", "ADVERSE_MEDIA", "SOURCE_OF_FUNDS"]), matchToken: requiredText3(), status: status2(["POTENTIAL", "REVIEW", "CONFIRMED", "CLEARED", "FALSE_POSITIVE"]), dispositionReason: optionalText(), evidenceReference: requiredText3(), screenedAt: requiredTime(), resolvedAt: (0, import_fields7.timestamp)(), ownerId: optionalText() });
+    AffordabilityAssessment = scoped("canManageCompliance", { player: relation("Player"), source: requiredText3(), riskBand: status2(["LOW", "MEDIUM", "HIGH", "PROHIBITED"]), evidenceReference: requiredText3(), assessedAt: requiredTime(), expiresAt: requiredTime(), decision: status2(["ALLOW", "RESTRICT", "REVIEW"]), reasonCode: requiredText3() });
+    AccountClosure = scoped("canManageCompliance", { player: relation("Player"), requestedBy: requiredText3(), reasonCode: requiredText3(), requestedAt: requiredTime(), coolingEndsAt: (0, import_fields7.timestamp)(), status: status2(["REQUESTED", "REVIEW", "BLOCKED_FUNDS", "CLOSED", "CANCELLED"]), completedAt: (0, import_fields7.timestamp)(), evidenceHash: requiredText3() });
+    SupportCase = scoped("canManageCompliance", { player: relation("Player"), wager: optionalRelation("Wager"), paymentIntent: optionalRelation("PaymentIntent"), dispute: optionalRelation("Dispute"), category: status2(["ACCOUNT", "WAGER", "PAYMENT", "RESPONSIBLE_GAMING", "PRIVACY", "TECHNICAL"]), priority: status2(["LOW", "NORMAL", "HIGH", "URGENT"]), status: status2(["OPEN", "TRIAGED", "WAITING_CUSTOMER", "WAITING_OPERATOR", "RESOLVED", "CLOSED"]), subject: requiredText3(), ownerId: optionalText(), openedAt: requiredTime(), resolvedAt: (0, import_fields7.timestamp)(), slaDueAt: requiredTime() });
+    SupportCaseEvent = scoped("canManageCompliance", { supportCase: relation("SupportCase"), type: status2(["OPENED", "NOTE", "CUSTOMER_MESSAGE", "OPERATOR_MESSAGE", "ESCALATED", "LINKED", "RESOLVED", "REOPENED"]), actorType: status2(["PLAYER", "STAFF", "SYSTEM", "PROVIDER"]), actorId: requiredText3(), body: requiredText3(), evidenceHash: requiredText3(), visibility: status2(["CUSTOMER", "INTERNAL", "RESTRICTED"]) });
+    IntegrityCase = scoped("canManageCompliance", { player: optionalRelation("Player"), event: optionalRelation("Event"), wager: optionalRelation("Wager"), providerConnection: optionalRelation("ProviderConnection"), type: status2(["SUSPICIOUS_BETTING", "COLLUSION", "INSIDER", "RESULT_DISAGREEMENT", "PROHIBITED_PARTICIPANT"]), status: status2(["OPEN", "INVESTIGATING", "REPORTED", "CLEARED", "CLOSED"]), severity: status2(["LOW", "MEDIUM", "HIGH", "CRITICAL"]), restrictedEvidence: (0, import_fields7.json)(), ownerId: optionalText(), reportedAt: (0, import_fields7.timestamp)(), closedAt: (0, import_fields7.timestamp)() });
+    WebhookEndpoint = scoped("canManageIntegrations", { name: requiredText3(), url: requiredText3(), secretReference: requiredText3(), eventTypes: (0, import_fields7.json)(), status: status2(["PENDING", "ACTIVE", "DEGRADED", "DISABLED"]), failureCount: (0, import_fields7.integer)({ defaultValue: 0 }), disabledAt: (0, import_fields7.timestamp)(), approvalRequest: optionalRelation("ApprovalRequest") });
+    WebhookDelivery = scoped("canManageIntegrations", { endpoint: relation("WebhookEndpoint"), deliveryId: requiredText3(), eventType: requiredText3(), eventVersion: requiredText3(), payloadHash: requiredText3(), signatureKeyId: requiredText3(), status: status2(["PENDING", "PROCESSING", "DELIVERED", "FAILED", "DEAD"]), attempts: (0, import_fields7.integer)({ defaultValue: 0 }), availableAt: requiredTime(), deliveredAt: (0, import_fields7.timestamp)(), lastResponseCode: (0, import_fields7.integer)(), lastError: optionalText() });
+    IntegrationDeliveryAttempt = scoped("canManageIntegrations", { delivery: relation("WebhookDelivery"), attempt: (0, import_fields7.integer)({ validation: { isRequired: true } }), requestedAt: requiredTime(), completedAt: (0, import_fields7.timestamp)(), responseCode: (0, import_fields7.integer)(), latencyMs: (0, import_fields7.integer)(), responseHash: optionalText(), errorClass: optionalText() });
+    ProviderHealthSample = scoped("canManageIntegrations", { providerConnection: relation("ProviderConnection"), capability: requiredText3(), status: status2(["HEALTHY", "DEGRADED", "DOWN"]), latencyMs: (0, import_fields7.integer)(), errorRateBasisPoints: (0, import_fields7.integer)(), sequenceLag: (0, import_fields7.integer)(), oldestWebhookAgeMs: (0, import_fields7.integer)(), reconciliationDifferenceMinor: optionalText(), checkedAt: requiredTime(), details: (0, import_fields7.json)() });
+    AdapterCertificationRun = scoped("canManageIntegrations", { providerConnection: relation("ProviderConnection"), adapterId: requiredText3(), adapterVersion: requiredText3(), suiteVersion: requiredText3(), scenarios: (0, import_fields7.json)(), passed: (0, import_fields7.integer)({ defaultValue: 0 }), failed: (0, import_fields7.integer)({ defaultValue: 0 }), status: status2(["PENDING", "RUNNING", "PASSED", "FAILED"]), inputHash: requiredText3(), artifactReference: optionalText(), startedAt: requiredTime(), completedAt: (0, import_fields7.timestamp)() });
+    Notification = scoped("canManageIntegrations", { player: optionalRelation("Player"), user: optionalRelation("User"), channel: status2(["EMAIL", "SMS", "PUSH", "IN_APP", "WEBHOOK"]), templateKey: requiredText3(), templateVersion: requiredText3(), locale: requiredText3(), payload: (0, import_fields7.json)(), status: status2(["PENDING", "SENT", "DELIVERED", "FAILED", "SUPPRESSED"]), consentEvidenceHash: optionalText(), providerConnection: optionalRelation("ProviderConnection"), externalReference: optionalText(), sentAt: (0, import_fields7.timestamp)() });
+    RetentionPolicyVersion = scoped("canManageCompliance", { recordClass: requiredText3(), jurisdiction: optionalRelation("Jurisdiction"), version: (0, import_fields7.integer)({ validation: { isRequired: true } }), retentionDays: (0, import_fields7.integer)({ validation: { isRequired: true } }), archiveDays: (0, import_fields7.integer)(), deletionMode: status2(["DELETE", "TOKENIZE", "CRYPTO_SHRED", "PRESERVE"]), legalHoldWins: (0, import_fields7.checkbox)({ defaultValue: true }), effectiveFrom: requiredTime(), effectiveTo: (0, import_fields7.timestamp)(), status: status2(["DRAFT", "ACTIVE", "RETIRED"]), evidenceHash: requiredText3() });
+    RetentionExecution = scoped("canManageCompliance", { policyVersion: relation("RetentionPolicyVersion"), windowFrom: requiredTime(), windowTo: requiredTime(), candidateCount: (0, import_fields7.integer)({ defaultValue: 0 }), heldCount: (0, import_fields7.integer)({ defaultValue: 0 }), archivedCount: (0, import_fields7.integer)({ defaultValue: 0 }), deletedCount: (0, import_fields7.integer)({ defaultValue: 0 }), status: status2(["DRY_RUN", "PENDING_APPROVAL", "APPROVED", "COMPLETED", "FAILED"]), dryRunHash: requiredText3(), approvalRequest: optionalRelation("ApprovalRequest"), artifactReference: optionalText(), completedAt: (0, import_fields7.timestamp)() });
+    ReportArtifact = scoped("canManageCompliance", { report: optionalRelation("ComplianceReport"), type: requiredText3(), format: status2(["JSON", "CSV", "PDF", "XML"]), schemaVersion: requiredText3(), rowCount: (0, import_fields7.integer)({ defaultValue: 0 }), contentHash: requiredText3(), storageReference: requiredText3(), encryptionKeyReference: requiredText3(), generatedAt: requiredTime(), expiresAt: (0, import_fields7.timestamp)(), status: status2(["READY", "EXPIRED", "REVOKED"]) });
+    AffiliateAttribution = scoped("canManageSportsbook", { player: relation("Player"), affiliateReference: requiredText3(), campaignReference: requiredText3(), clickReference: optionalText(), attributedAt: requiredTime(), status: status2(["PENDING", "ATTRIBUTED", "REJECTED", "REVERSED"]), evidenceHash: requiredText3() });
+    PamSubjectMapping = scoped("canManageIntegrations", { providerConnection: relation("ProviderConnection"), externalSubjectDigest: requiredText3(), player: relation("Player"), walletMode: status2(["OPENFRONT", "PAM", "TRANSFER"]), status: status2(["ACTIVE", "SUSPENDED", "REVOKED"]), evidenceHash: requiredText3() });
+    DataExport = scoped("canReadAudit", { requestedBy: requiredText3(), type: status2(["AUDIT", "WAGERS", "FINANCE", "CUSTOMERS", "REGULATORY", "PRIVACY"]), scope: (0, import_fields7.json)(), classification: status2(["INTERNAL", "CONFIDENTIAL", "RESTRICTED_PII", "RESTRICTED_FINANCIAL", "RESTRICTED_REGULATORY"]), status: status2(["PENDING", "GENERATING", "READY", "EXPIRED", "REVOKED"]), rowCount: (0, import_fields7.integer)({ defaultValue: 0 }), contentHash: optionalText(), storageReference: optionalText(), expiresAt: requiredTime(), approvalRequest: optionalRelation("ApprovalRequest") });
+  }
+});
+
+// features/keystone/models/index.ts
+var rawModels, userLookups, sharedUserContext, models;
+var init_models = __esm({
+  "features/keystone/models/index.ts"() {
+    "use strict";
+    init_User();
+    init_Role();
+    init_Sportsbook();
+    init_SportsbookP0();
+    init_Customer();
+    init_SportsbookFull();
+    rawModels = {
+      User,
+      Role,
+      ...Sportsbook_exports,
+      ...SportsbookP0_exports,
+      ...Customer_exports,
+      ...SportsbookFull_exports
+    };
+    userLookups = /* @__PURE__ */ new WeakMap();
+    sharedUserContext = (context) => {
+      const cache = userLookups.get(context) ?? /* @__PURE__ */ new Map();
+      userLookups.set(context, cache);
+      const findUnique = (args) => {
+        const key2 = JSON.stringify(args);
+        if (!cache.has(key2)) cache.set(key2, context.prisma.user.findUnique(args));
+        return cache.get(key2);
+      };
+      return { ...context, prisma: { user: { findUnique } } };
+    };
+    models = Object.fromEntries(Object.entries(rawModels).map(([key2, config2]) => {
+      const operationQuery = config2?.access?.operation?.query;
+      const filterQuery = config2?.access?.filter?.query;
+      if (typeof operationQuery !== "function" && typeof filterQuery !== "function") return [key2, config2];
+      const existing = config2?.ui?.isHidden;
+      const isHidden = async (args) => {
+        if (existing === true || typeof existing === "function" && await existing(args)) return true;
+        try {
+          const checked = { ...args, context: args.context ? sharedUserContext(args.context) : args.context };
+          if (typeof operationQuery === "function" && !await operationQuery(checked)) return true;
+          return typeof filterQuery === "function" && await filterQuery(checked) === false;
+        } catch {
+          return false;
+        }
+      };
+      return [key2, { ...config2, ui: { ...config2.ui ?? {}, isHidden } }];
+    }));
+  }
+});
+
+// features/keystone/ui-create-access.ts
+function createRule(access) {
+  if (typeof access === "function") return access;
+  const operation = access?.operation;
+  if (typeof operation === "function") return operation;
+  if (typeof operation?.create === "function") return operation.create;
+  return void 0;
+}
+async function createAllowed(listKey, list7, args) {
+  const rule = createRule(list7.access);
+  if (!rule) return true;
+  try {
+    return Boolean(await rule({ session: args.session, context: args.context, listKey, operation: "create" }));
+  } catch {
+    return false;
+  }
+}
+function withCreateAwareUi(lists) {
+  const out = {};
+  for (const [listKey, list7] of Object.entries(lists)) {
+    if (list7.ui?.hideCreate !== void 0 || !createRule(list7.access)) {
+      out[listKey] = list7;
+      continue;
+    }
+    out[listKey] = {
+      ...list7,
+      ui: {
+        ...list7.ui,
+        hideCreate: async (args) => !await createAllowed(listKey, list7, args)
+      }
+    };
+  }
+  return out;
+}
+function updateOperationRule(access) {
+  if (typeof access === "function") return access;
+  const rules2 = access?.operation;
+  if (typeof rules2 === "function") return rules2;
+  if (typeof rules2?.update === "function") return rules2.update;
+  return void 0;
+}
+function updateFilterRule(access) {
+  const filter = access?.filter;
+  return typeof filter?.update === "function" ? filter.update : void 0;
+}
+async function itemUpdateAllowed(listKey, list7, args) {
+  const operation = updateOperationRule(list7.access);
+  if (operation) {
+    try {
+      if (!await operation({ session: args.session, context: args.context, listKey, operation: "update" })) return false;
+    } catch {
+      return false;
+    }
+  }
+  const filterRule = updateFilterRule(list7.access);
+  if (!filterRule || args.item?.id == null) return true;
+  try {
+    const filter = await filterRule({ session: args.session, context: args.context, listKey, operation: "update" });
+    if (filter === true) return true;
+    if (filter === false) return false;
+    if (!filter || typeof filter !== "object") return true;
+    const count = await args.context.sudo().db[listKey].count({ where: { AND: [{ id: { equals: String(args.item.id) } }, filter] } });
+    return count > 0;
+  } catch {
+    return true;
+  }
+}
+function withItemViewAwareUi(lists) {
+  const out = {};
+  for (const [listKey, list7] of Object.entries(lists)) {
+    const itemView = list7.ui?.itemView ?? {};
+    if (itemView.defaultFieldMode !== void 0 || !updateOperationRule(list7.access) && !updateFilterRule(list7.access)) {
+      out[listKey] = list7;
+      continue;
+    }
+    out[listKey] = {
+      ...list7,
+      ui: {
+        ...list7.ui,
+        itemView: {
+          ...itemView,
+          // Called once per field; one decision per request and item.
+          defaultFieldMode: (args) => {
+            const decide = () => itemUpdateAllowed(listKey, list7, args).then((ok) => ok ? "edit" : "read");
+            if (!args.context || typeof args.context !== "object") return decide();
+            const key2 = JSON.stringify([listKey, String(args.item?.id), String(args.session?.itemId ?? ""), String(args.session?.listKey ?? "")]);
+            const scope = args.context;
+            let cache = itemModeCache.get(scope);
+            if (!cache) itemModeCache.set(scope, cache = /* @__PURE__ */ new Map());
+            let decision = cache.get(key2);
+            if (!decision) cache.set(key2, decision = decide());
+            return decision;
+          }
+        }
+      }
+    };
+  }
+  return out;
+}
+function deleteRule(access) {
+  if (typeof access === "function") return access;
+  const operation = access?.operation;
+  if (typeof operation === "function") return operation;
+  if (typeof operation?.delete === "function") return operation.delete;
+  return void 0;
+}
+async function deleteAllowed(listKey, list7, args) {
+  const rule = deleteRule(list7.access);
+  if (!rule) return true;
+  try {
+    return Boolean(await rule({ session: args.session, context: args.context, listKey, operation: "delete" }));
+  } catch {
+    return false;
+  }
+}
+function withDeleteAwareUi(lists) {
+  const out = {};
+  for (const [listKey, list7] of Object.entries(lists)) {
+    if (list7.ui?.hideDelete !== void 0 || !deleteRule(list7.access)) {
+      out[listKey] = list7;
+      continue;
+    }
+    out[listKey] = {
+      ...list7,
+      ui: {
+        ...list7.ui,
+        hideDelete: async (args) => !await deleteAllowed(listKey, list7, args)
+      }
+    };
+  }
+  return out;
+}
+var itemModeCache;
+var init_ui_create_access = __esm({
+  "features/keystone/ui-create-access.ts"() {
+    "use strict";
+    itemModeCache = /* @__PURE__ */ new WeakMap();
+  }
+});
+
+// features/keystone/mutations/redirectToInit.ts
+async function redirectToInit(root, args, context) {
+  const userCount = await context.sudo().query.User.count({});
+  if (userCount === 0) {
+    return true;
+  }
+  return false;
+}
+var redirectToInit_default;
+var init_redirectToInit = __esm({
+  "features/keystone/mutations/redirectToInit.ts"() {
+    "use strict";
+    redirectToInit_default = redirectToInit;
   }
 });
 
@@ -220,90 +1321,14 @@ var init_combination = __esm({
   }
 });
 
-// features/sportsbook/adapters/sandbox.ts
-function installedSandboxAdapter(connection) {
-  const kind = String(connection.capabilities?.kind ?? "");
-  const adapter = sandboxAdapters[kind];
-  if (!adapter || connection.adapterId !== adapter.manifest().id || connection.certificationStatus !== "SANDBOX" || !String(connection.configReference ?? "").startsWith("sandbox:")) return null;
-  return adapter;
-}
-var import_node_crypto3, SandboxAdapter, sandboxAdapters;
-var init_sandbox = __esm({
-  "features/sportsbook/adapters/sandbox.ts"() {
-    "use strict";
-    import_node_crypto3 = require("node:crypto");
-    SandboxAdapter = class {
-      constructor(kind, webhookSecret = "sandbox-only") {
-        this.kind = kind;
-        this.webhookSecret = webhookSecret;
-        this.results = /* @__PURE__ */ new Map();
-        this.fingerprints = /* @__PURE__ */ new Map();
-      }
-      manifest() {
-        return { id: `sandbox-${this.kind}`, version: "1.0.0", schemas: ["sandbox.v1"] };
-      }
-      async capabilities() {
-        return { supported: [this.kind, "query", "webhook", "reconcile"], unsupported: ["production-certified"] };
-      }
-      async validateConfig(configRef) {
-        return { valid: configRef.startsWith("sandbox:"), errors: configRef.startsWith("sandbox:") ? [] : ["Sandbox config must start with sandbox:"] };
-      }
-      async execute(_ctx, command, idempotencyKey) {
-        const fingerprint = JSON.stringify([command.type, command.externalRef ?? null, command.payload ?? null]);
-        const prior = this.results.get(idempotencyKey);
-        if (prior) {
-          if (this.fingerprints.get(idempotencyKey) !== fingerprint) throw new Error("ADAPTER_IDEMPOTENCY_CONFLICT");
-          return prior;
-        }
-        const result = { status: command.type === "simulate_pending" ? "PENDING" : command.type === "simulate_failure" ? "FAILED" : "SUCCEEDED", externalRef: command.externalRef ?? `${this.kind}-${idempotencyKey}`, payload: command.payload };
-        this.results.set(idempotencyKey, result);
-        this.fingerprints.set(idempotencyKey, fingerprint);
-        this.results.set(result.externalRef, result);
-        return result;
-      }
-      /** Process-local memory only: a miss (e.g. after restart) is not evidence of non-effect, so it reports PENDING. */
-      async query(_ctx, externalRef) {
-        return this.results.get(externalRef) ?? { status: "PENDING", externalRef };
-      }
-      /** `binding` (e.g. tenant + installation id) is covered by the MAC so signed bytes cannot be replayed against another installation. */
-      sign(raw, timestamp7, binding) {
-        const mac = (0, import_node_crypto3.createHmac)("sha256", this.webhookSecret).update(timestamp7).update(".");
-        if (binding !== void 0) mac.update(binding).update(".");
-        return mac.update(raw).digest("hex");
-      }
-      verifyWebhook(raw, headers, binding) {
-        const timestamp7 = headers.get("x-sandbox-timestamp") ?? "";
-        const supplied = headers.get("x-sandbox-signature") ?? "";
-        const expected = this.sign(raw, timestamp7, binding);
-        if (!supplied || supplied.length !== expected.length || !(0, import_node_crypto3.timingSafeEqual)(Buffer.from(supplied), Buffer.from(expected))) return { valid: false, reason: "INVALID_SIGNATURE" };
-        try {
-          return { valid: true, event: JSON.parse(Buffer.from(raw).toString()) };
-        } catch {
-          return { valid: false, reason: "INVALID_JSON" };
-        }
-      }
-      normalize(event) {
-        return [{ id: event.id, type: event.type, occurredAt: event.occurredAt, payload: event.payload, source: { adapterId: this.manifest().id, version: "1.0.0", externalId: event.id } }];
-      }
-      async health() {
-        return { ok: true, latencyMs: 0, details: "sandbox" };
-      }
-      async *reconcile() {
-        for (const result of new Set(this.results.values())) yield result;
-      }
-    };
-    sandboxAdapters = Object.fromEntries(["sports", "results", "kyc", "aml", "geo", "payments", "messaging", "analytics", "tax", "reporting", "integrity", "affiliates", "pam"].map((kind) => [kind, new SandboxAdapter(kind)]));
-  }
-});
-
 // features/sportsbook/domain/onboarding.ts
 function buildOnboardingFixture(input) {
   if (!/^[a-z0-9-]+$/.test(input.slug) || !/^[A-Z]{3}$/.test(input.currency) || input.currencyExponent < 0 || input.currencyExponent > 6) throw new Error("INVALID_ONBOARDING_INPUT");
   const seed = `sportsbook:${input.slug}:v1`;
   const id = (kind) => `${kind}_${evidenceHash(`${seed}:${kind}`).slice(0, 20)}`;
-  return { version: "1", fixtureHash: evidenceHash(input), tenant: { id: id("tenant"), name: input.operatorName, slug: input.slug, status: "ACTIVE", defaultTimezone: input.timezone }, brand: { id: id("brand"), name: input.brandName, domain: input.domain, defaultLocale: "en", status: "ACTIVE" }, jurisdiction: { id: id("jurisdiction"), code: input.jurisdictionCode, status: "PENDING" }, currency: { code: input.currency, exponent: input.currencyExponent }, providers: ["sports", "results", "kyc", "aml", "geo", "payments", "messaging", "analytics", "tax", "reporting", "integrity", "affiliates", "pam"].map((kind) => ({ id: id(`provider-${kind}`), kind, adapterId: `sandbox-${kind}`, certificationStatus: "SANDBOX" })), starterCatalog: { sport: { id: id("sport"), key: "football", name: "Football" }, competition: { id: id("competition"), key: "sandbox-league", name: "Sandbox League" } }, externalGates: ["licence approval", "jurisdiction policy approval", "provider certification", "finance chart approval"] };
+  return { version: "1", fixtureHash: evidenceHash(input), tenant: { id: id("tenant"), name: input.operatorName, slug: input.slug, status: "ACTIVE", defaultTimezone: input.timezone }, brand: { id: id("brand"), name: input.brandName, domain: input.domain, defaultLocale: "en", status: "ACTIVE" }, jurisdiction: { id: id("jurisdiction"), code: input.jurisdictionCode, status: "PENDING" }, currency: { code: input.currency, exponent: input.currencyExponent }, providers: ["sports", "results", "kyc", "aml", "geo", "payments", "messaging", "analytics", "tax", "reporting", "integrity", "affiliates", "pam"].map((kind) => ({ id: id(`provider-${kind}`), kind, adapterId: `house-${kind}`, certificationStatus: "INTERNAL" })), starterCatalog: { sport: { id: id("sport"), key: "football", name: "Football" }, competition: { id: id("competition"), key: "premier-league", name: "Premier League" } }, externalGates: ["licence approval", "jurisdiction policy approval", "provider certification", "finance chart approval"] };
 }
-function prepareSandboxPromotionProgress(progress, fixtureHash) {
+function preparePromotionProgress(progress, fixtureHash) {
   const completeEvidenceHash = evidenceHash({ fixtureHash, stage: "PROMOTIONS" });
   const pendingEvidenceHash = evidenceHash({ fixtureHash, stage: "PROMOTIONS", provisioning: "PENDING" });
   if (!progress) return { kind: "CREATE", evidenceHash: pendingEvidenceHash };
@@ -403,10 +1428,10 @@ var init_seed = __esm({
         slug: "northline",
         operatorName: "Northline Gaming",
         brandName: "Northline Sports",
-        domain: "sportsbook.local",
+        domain: "sportsbook.openship.org",
         currency: "USD",
         currencyExponent: 2,
-        jurisdictionCode: "SANDBOX",
+        jurisdictionCode: "US-NJ",
         timezone: "America/New_York"
       },
       dependencyOrder: [
@@ -639,7 +1664,7 @@ async function ensureOnboardingCatalogEvents(prisma, tenantId, actorId, appendAu
       if (await tx.event.findFirst({ where: { tenantId, externalKey }, select: { id: true } })) return false;
       const actor = await tx.user.findUnique({ where: { id: actorId }, include: { role: true } });
       if (!actor?.role?.canManageOnboarding || actor.tenantId !== tenantId) throw new Error("Not found");
-      await writeSeedEvent(tx, { tenantId, actorId, seedCompetition, seedEvent, externalKey, startAt: eventStart(seedEvent), canOpen: actor.role.canTrade === true, source: "OPERATOR", reason: "Opening prices set during onboarding", auditReason: "SANDBOX_ONBOARDING" }, appendAudit2);
+      await writeSeedEvent(tx, { tenantId, actorId, seedCompetition, seedEvent, externalKey, startAt: eventStart(seedEvent), canOpen: actor.role.canTrade === true, source: "OPERATOR", reason: "Opening prices set during onboarding", auditReason: "OPERATOR_ONBOARDING" }, appendAudit2);
       return true;
     });
     if (made) created++;
@@ -650,7 +1675,7 @@ async function writeSeedEvent(tx, input, appendAudit2) {
   const { tenantId, actorId, seedCompetition, seedEvent, externalKey, canOpen } = input;
   const competition = await tx.competition.findFirst({ where: { tenantId, key: seedCompetition.key } });
   const season = competition ? await tx.season.findFirst({ where: { tenantId, competitionId: competition.id, key: seedCompetition.season.key } }) : null;
-  const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-sports", certificationStatus: "SANDBOX", status: "ACTIVE" } });
+  const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "house-sports", certificationStatus: "INTERNAL", status: "ACTIVE" } });
   if (!competition || !provider) throw new Error("ONBOARDING_CATALOG_ROOTS_MISSING");
   const now = /* @__PURE__ */ new Date();
   const event = await tx.event.create({ data: { tenantId, competitionId: competition.id, seasonId: season?.id ?? null, externalKey, name: seedEvent.name, startAt: input.startAt, status: "SCHEDULED", version: 1 } });
@@ -664,7 +1689,7 @@ async function writeSeedEvent(tx, input, appendAudit2) {
     for (const seedSelection of seedMarket.selections) {
       const selection = await tx.selection.create({ data: { tenantId, marketId: market.id, key: seedSelection.key, label: seedSelection.label, status: "OPEN" } });
       const payload = { source: "ONBOARDING_SEED", marketId: market.id, selectionId: selection.id, decimalOdds: seedSelection.odds, line, sequence: "1", actorId };
-      const envelope = await tx.rawEnvelope.create({ data: { tenantId, providerConnectionId: provider.id, direction: "INBOUND", externalId: `onboarding:${(0, import_node_crypto4.randomUUID)()}`, schemaVersion: "sandbox.v1", payload, payloadHash: evidenceHash(payload), receivedAt: now } });
+      const envelope = await tx.rawEnvelope.create({ data: { tenantId, providerConnectionId: provider.id, direction: "INBOUND", externalId: `onboarding:${(0, import_node_crypto3.randomUUID)()}`, schemaVersion: "house.v1", payload, payloadHash: evidenceHash(payload), receivedAt: now } });
       await tx.priceSnapshot.create({ data: { tenantId, selectionId: selection.id, providerConnectionId: provider.id, decimalOdds: seedSelection.odds, line, sequence: "1", effectiveAt: now, receivedAt: now, rawEnvelopeId: envelope.id, status: "OPEN" } });
     }
     if (canOpen) {
@@ -678,11 +1703,11 @@ async function writeSeedEvent(tx, input, appendAudit2) {
   await appendAudit2(tx, tenantId, actorId, "catalog.event_created", "Event", event.id, input.auditReason, { competitionId: competition.id, externalKey, marketIds, opened: canOpen });
   return event;
 }
-var import_node_crypto4, onboardingCatalog, ODDS;
+var import_node_crypto3, onboardingCatalog, ODDS;
 var init_onboarding_catalog = __esm({
   "features/keystone/mutations/onboarding-catalog.ts"() {
     "use strict";
-    import_node_crypto4 = require("node:crypto");
+    import_node_crypto3 = require("node:crypto");
     init_seed();
     init_engine();
     init_trading_eligibility();
@@ -691,284 +1716,9 @@ var init_onboarding_catalog = __esm({
   }
 });
 
-// features/integrations/payment/authorizenet.ts
-var authorizenet_exports = {};
-__export(authorizenet_exports, {
-  cancelPaymentFunction: () => cancelPaymentFunction,
-  capturePaymentFunction: () => capturePaymentFunction,
-  createPaymentFunction: () => createPaymentFunction,
-  generatePaymentLinkFunction: () => generatePaymentLinkFunction,
-  getPaymentStatusFunction: () => getPaymentStatusFunction,
-  handleWebhookFunction: () => handleWebhookFunction,
-  mapTransactionStatus: () => mapTransactionStatus,
-  refundPaymentFunction: () => refundPaymentFunction
-});
-function merchantAuthentication() {
-  const name = process.env.AUTHORIZENET_API_LOGIN_ID;
-  const transactionKey = process.env.AUTHORIZENET_TRANSACTION_KEY;
-  if (!name || !transactionKey) throw new Error("Authorize.net credentials are not configured");
-  return { name, transactionKey };
-}
-async function call(operation, body, refId) {
-  const payload = { [operation]: { merchantAuthentication: merchantAuthentication(), ...refId ? { refId: ref(refId) } : {}, ...body } };
-  const response = await fetch(endpoint(), {
-    method: "POST",
-    redirect: "error",
-    signal: AbortSignal.timeout(3e4),
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) throw new Error(`Authorize.net HTTP ${response.status}`);
-  const result = JSON.parse((await response.text()).replace(/^\uFEFF/, ""));
-  return result;
-}
-function transactionError(result) {
-  const tx = result?.transactionResponse;
-  return tx?.errors?.[0]?.errorText || result?.messages?.message?.[0]?.text || "Authorize.net rejected the transaction";
-}
-function mapTransactionStatus(status3) {
-  return STATUS[status3] || "unknown";
-}
-async function createPaymentFunction({ amount, currency, opaqueData, cart, order, idempotencyKey, captureNow }) {
-  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error("Invalid payment amount");
-  if (String(currency || "").toUpperCase() !== "USD") throw new Error("Authorize.net adapter supports USD only");
-  if (!opaqueData) {
-    return {
-      status: "requires_payment_method",
-      amount,
-      currency: "USD",
-      acceptJs: {
-        apiLoginId: process.env.AUTHORIZENET_API_LOGIN_ID || "",
-        clientKey: process.env.NEXT_PUBLIC_AUTHORIZENET_CLIENT_KEY || "",
-        env: isProduction() ? "production" : "sandbox"
-      }
-    };
-  }
-  const invoiceNumber = ref(String(order?.displayId || order?.orderNumber || order?.id || cart?.id || "order"));
-  const result = await call(
-    "createTransactionRequest",
-    {
-      transactionRequest: {
-        transactionType: captureNow ? "authCaptureTransaction" : "authOnlyTransaction",
-        amount: dollars(amount),
-        payment: { opaqueData },
-        order: { invoiceNumber }
-      }
-    },
-    idempotencyKey || cart?.id || order?.id
-  );
-  const tx = result.transactionResponse;
-  if (result.messages?.resultCode !== "Ok" || tx?.responseCode !== "1" || !tx?.transId || tx.transId === "0") {
-    return { status: "failed", amount, currency: "USD", error: transactionError(result) };
-  }
-  return {
-    status: captureNow ? "succeeded" : "authorized",
-    paymentIntentId: String(tx.transId),
-    amount,
-    currency: "USD",
-    data: { transId: tx.transId, authCode: tx.authCode, accountNumber: tx.accountNumber, accountType: tx.accountType }
-  };
-}
-async function capturePaymentFunction({ paymentId, amount, idempotencyKey }) {
-  if (!paymentId) throw new Error("Payment reference is required");
-  const result = await call(
-    "createTransactionRequest",
-    { transactionRequest: { transactionType: "priorAuthCaptureTransaction", ...amount ? { amount: dollars(amount) } : {}, refTransId: paymentId } },
-    idempotencyKey || paymentId
-  );
-  const tx = result.transactionResponse;
-  if (result.messages?.resultCode === "Ok" && tx?.responseCode === "1") {
-    return getPaymentStatusFunction({ paymentId });
-  }
-  return { status: "unknown", error: transactionError(result) };
-}
-async function cancelPaymentFunction({ paymentId, idempotencyKey }) {
-  if (!paymentId) throw new Error("Payment reference is required");
-  const result = await call(
-    "createTransactionRequest",
-    { transactionRequest: { transactionType: "voidTransaction", refTransId: paymentId } },
-    idempotencyKey || `void${paymentId}`
-  );
-  const ok = result.messages?.resultCode === "Ok" && result.transactionResponse?.responseCode === "1";
-  return { status: ok ? "canceled" : "unknown", error: ok ? void 0 : transactionError(result) };
-}
-async function refundPaymentFunction({ paymentId, amount, currency, idempotencyKey }) {
-  if (!paymentId) throw new Error("Payment reference is required");
-  const details = await call("getTransactionDetailsRequest", { transId: paymentId });
-  const transaction = details.transaction;
-  if (!transaction) throw new Error(transactionError(details));
-  const settled = transaction.transactionStatus === "settledSuccessfully";
-  if (!settled) {
-    const voided = await cancelPaymentFunction({ paymentId, idempotencyKey });
-    return { ...voided, status: voided.status === "canceled" ? "refunded" : voided.status, amount: cents(transaction.authAmount), currency: "USD", method: "void" };
-  }
-  const refundAmount = amount ?? cents(transaction.settleAmount);
-  const result = await call(
-    "createTransactionRequest",
-    {
-      transactionRequest: {
-        transactionType: "refundTransaction",
-        amount: dollars(refundAmount),
-        payment: { creditCard: { cardNumber: String(transaction.payment?.creditCard?.cardNumber || "").slice(-4), expirationDate: "XXXX" } },
-        refTransId: paymentId
-      }
-    },
-    idempotencyKey || `refund${paymentId}`
-  );
-  const tx = result.transactionResponse;
-  const ok = result.messages?.resultCode === "Ok" && tx?.responseCode === "1";
-  return { status: ok ? "refunded" : "unknown", amount: refundAmount, currency: currency || "USD", data: tx, error: ok ? void 0 : transactionError(result), method: "refund" };
-}
-async function getPaymentStatusFunction({ paymentId }) {
-  if (!paymentId) throw new Error("Payment reference is required");
-  const result = await call("getTransactionDetailsRequest", { transId: paymentId });
-  const transaction = result.transaction;
-  if (!transaction) return { status: "unknown", error: transactionError(result) };
-  const status3 = mapTransactionStatus(transaction.transactionStatus);
-  const amount = status3 === "authorized" ? cents(transaction.authAmount) : cents(transaction.settleAmount || transaction.authAmount);
-  return {
-    status: status3,
-    amount,
-    currency: "USD",
-    data: { transId: transaction.transId, transactionStatus: transaction.transactionStatus, authAmount: transaction.authAmount, settleAmount: transaction.settleAmount }
-  };
-}
-async function generatePaymentLinkFunction({ paymentId }) {
-  const host = isProduction() ? "https://account.authorize.net" : "https://sandbox.authorize.net";
-  return `${host}/ui/themes/sandbox/Transaction/TransactionReceipt.aspx?transid=${encodeURIComponent(paymentId || "")}`;
-}
-async function handleWebhookFunction({ rawBody, headers = {} }) {
-  const signatureKey = process.env.AUTHORIZENET_SIGNATURE_KEY;
-  if (!signatureKey) throw new Error("Authorize.net webhook signature key is not configured");
-  if (!rawBody) throw new Error("Raw webhook body is required");
-  const supplied = String(headers["x-anet-signature"] || "").toLowerCase();
-  const expected = `sha512=${(0, import_node_crypto5.createHmac)("sha512", signatureKey).update(rawBody).digest("hex")}`;
-  const a = Buffer.from(supplied);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !(0, import_node_crypto5.timingSafeEqual)(a, b)) throw new Error("Webhook signature verification failed");
-  const event = JSON.parse(rawBody);
-  return { isValid: true, event: { ...event, id: event.notificationId }, type: String(event.eventType || ""), resource: event.payload || {} };
-}
-var import_node_crypto5, isProduction, endpoint, ref, dollars, cents, STATUS;
-var init_authorizenet = __esm({
-  "features/integrations/payment/authorizenet.ts"() {
-    "use strict";
-    import_node_crypto5 = require("node:crypto");
-    isProduction = () => process.env.AUTHORIZENET_ENV === "production";
-    endpoint = () => isProduction() ? "https://api.authorize.net/xml/v1/request.api" : "https://apitest.authorize.net/xml/v1/request.api";
-    ref = (value) => value.replace(/[^A-Za-z0-9-]/g, "").slice(-20);
-    dollars = (minor2) => (minor2 / 100).toFixed(2);
-    cents = (value) => Math.round(Number(value) * 100);
-    STATUS = {
-      authorizedPendingCapture: "authorized",
-      capturedPendingSettlement: "succeeded",
-      settledSuccessfully: "succeeded",
-      refundPendingSettlement: "refunded",
-      refundSettledSuccessfully: "refunded",
-      voided: "canceled",
-      declined: "failed",
-      expired: "failed",
-      failedReview: "failed",
-      generalError: "failed",
-      settlementError: "failed",
-      communicationError: "unknown",
-      underReview: "unknown",
-      FDSPendingReview: "unknown",
-      FDSAuthorizedPendingReview: "unknown"
-    };
-  }
-});
-
-// features/integrations/payment/manual.ts
-var manual_exports = {};
-__export(manual_exports, {
-  capturePaymentFunction: () => capturePaymentFunction2,
-  createPaymentFunction: () => createPaymentFunction2,
-  generatePaymentLinkFunction: () => generatePaymentLinkFunction2,
-  getPaymentStatusFunction: () => getPaymentStatusFunction2,
-  handleWebhookFunction: () => handleWebhookFunction2,
-  refundPaymentFunction: () => refundPaymentFunction2
-});
-async function createPaymentFunction2(input) {
-  if (!Number.isSafeInteger(input.amount) || (input.amount ?? 0) <= 0) throw new Error("Invalid payment amount");
-  return { status: "pending", amount: input.amount, currency: input.currency ?? "USD", paymentIntentId: input.idempotencyKey ?? "" };
-}
-async function capturePaymentFunction2(input) {
-  return { status: "succeeded", paymentIntentId: input.paymentId, amount: input.amount, currency: input.currency ?? "USD" };
-}
-async function refundPaymentFunction2(input) {
-  return { status: "unknown", paymentIntentId: input.paymentId, amount: input.amount, currency: input.currency ?? "USD" };
-}
-async function getPaymentStatusFunction2(input) {
-  return { status: "unknown", paymentIntentId: input.paymentId };
-}
-async function generatePaymentLinkFunction2(input) {
-  return { status: "pending", paymentIntentId: input.paymentId };
-}
-async function handleWebhookFunction2() {
-  return { isValid: false };
-}
-var init_manual = __esm({
-  "features/integrations/payment/manual.ts"() {
-    "use strict";
-  }
-});
-
-// features/integrations/payment/index.ts
-var paymentProviderAdapters;
-var init_payment = __esm({
-  "features/integrations/payment/index.ts"() {
-    "use strict";
-    init_sandbox();
-    paymentProviderAdapters = {
-      authorizenet: () => Promise.resolve().then(() => (init_authorizenet(), authorizenet_exports)),
-      manual: () => Promise.resolve().then(() => (init_manual(), manual_exports))
-    };
-  }
-});
-
-// features/keystone/utils/paymentProviderAdapter.ts
-async function executePaymentProvider(provider, command, idempotencyKey) {
-  if (provider.status !== "ACTIVE") throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
-  if (provider.adapterId === "sandbox-payments") {
-    if (provider.certificationStatus !== "SANDBOX") throw new Error("PAYMENT_ADAPTER_UNSUPPORTED");
-    const configuration = await sandboxAdapters.payments.validateConfig(provider.configReference);
-    if (!configuration.valid) throw new Error("PAYMENT_ADAPTER_INVALID_CONFIG");
-    return sandboxAdapters.payments.execute({}, command, idempotencyKey);
-  }
-  if (!(provider.adapterId in paymentProviderAdapters)) throw new Error("PAYMENT_ADAPTER_UNSUPPORTED");
-  if (provider.secretReference && !process.env[provider.secretReference]) throw new Error("PAYMENT_ADAPTER_INVALID_CONFIG");
-  const adapter = await paymentProviderAdapters[provider.adapterId]();
-  if (command.type === "withdrawal") {
-    if (provider.adapterId !== "manual") throw new Error("PAYMENT_ADAPTER_UNSUPPORTED");
-    return { status: "UNKNOWN", externalRef: idempotencyKey, reasonCode: "OPERATOR_PAYOUT_REQUIRED" };
-  }
-  if (provider.adapterId === "manual") throw new Error("PAYMENT_ADAPTER_UNSUPPORTED");
-  const result = await adapter.createPaymentFunction({ amount: Number(command.payload.amountMinor), currency: command.payload.currency, idempotencyKey, captureNow: true, opaqueData: command.payload.opaqueData });
-  if (result.status === "succeeded") return { status: "SUCCEEDED", externalRef: String(result.paymentIntentId ?? ""), reasonCode: "" };
-  if (result.status === "failed") return { status: "FAILED", externalRef: "", reasonCode: "PROVIDER_DECLINED" };
-  return { status: "UNKNOWN", externalRef: String(result.paymentIntentId ?? ""), reasonCode: "PROVIDER_OUTCOME_UNKNOWN" };
-}
-async function refundPaymentProvider(provider, reference, amountMinor, idempotencyKey) {
-  if (provider.status !== "ACTIVE") throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
-  if (provider.adapterId === "sandbox-payments") return { status: "SUCCEEDED", externalRef: `refund:${reference || idempotencyKey}`, method: "sandbox" };
-  if (provider.adapterId === "manual") return { status: "SUCCEEDED", externalRef: `cash-return:${reference || idempotencyKey}`, method: "cash" };
-  if (provider.adapterId !== "authorizenet" || !reference) throw new Error("PAYMENT_ADAPTER_UNSUPPORTED");
-  const adapter = await paymentProviderAdapters.authorizenet();
-  const result = await adapter.refundPaymentFunction({ paymentId: reference, amount: Number(amountMinor), currency: "USD", idempotencyKey });
-  if (result.status === "refunded") return { status: "SUCCEEDED", externalRef: String(result.data?.transId && result.data.transId !== "0" ? result.data.transId : reference), method: result.method };
-  return { status: result.status === "failed" ? "FAILED" : "UNKNOWN", externalRef: "" };
-}
-var init_paymentProviderAdapter = __esm({
-  "features/keystone/utils/paymentProviderAdapter.ts"() {
-    "use strict";
-    init_payment();
-  }
-});
-
-// features/sportsbook/api/sandbox-policy.ts
-var init_sandbox_policy = __esm({
-  "features/sportsbook/api/sandbox-policy.ts"() {
+// features/sportsbook/api/operator-policy.ts
+var init_operator_policy = __esm({
+  "features/sportsbook/api/operator-policy.ts"() {
     "use strict";
   }
 });
@@ -985,7 +1735,7 @@ var CustomerError;
 var init_errors = __esm({
   "features/sportsbook/customer/errors.ts"() {
     "use strict";
-    init_sandbox_policy();
+    init_operator_policy();
     init_constraint_errors();
     CustomerError = class extends Error {
       constructor(code, status3, details) {
@@ -1052,8 +1802,8 @@ function throwingClient(tx) {
 async function setLocalTenant(tx, tenantId) {
   await tx.$queryRaw`SELECT set_config('app.tenant_id', ${tenantId ?? ""}, true)`;
 }
-function tenantScopedPrisma(client) {
-  const base = client;
+function tenantScopedPrisma(client2) {
+  const base = client2;
   const withLocalTenant = async (tenantId, work) => base.$transaction(async (tx) => {
     await setLocalTenant(tx, tenantId);
     return work(tx);
@@ -1150,18 +1900,39 @@ async function assertCurrentCustomerActor(prisma, actor, lock = false, now = /* 
   const currency = await resolveTenantCurrency(prisma, session.tenant.id);
   if (actor.currency && currency.code !== actor.currency) throw new CustomerError("CUSTOMER_CURRENCY_CHANGED", 409);
 }
-var import_node_crypto6, CUSTOMER_SESSION_MAX_AGE_SECONDS, SERVICING_STATUSES;
+var import_node_crypto4, CUSTOMER_SESSION_MAX_AGE_SECONDS, SERVICING_STATUSES;
 var init_auth = __esm({
   "features/sportsbook/customer/auth.ts"() {
     "use strict";
-    import_node_crypto6 = require("node:crypto");
+    import_node_crypto4 = require("node:crypto");
     init_errors();
     init_currency();
     init_identity_bootstrap();
     init_tenant_scope();
-    init_sandbox_policy();
+    init_operator_policy();
     CUSTOMER_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
     SERVICING_STATUSES = /* @__PURE__ */ new Set(["ACTIVE", "SUSPENDED", "CLOSED"]);
+  }
+});
+
+// features/sportsbook/customer/audit.ts
+var init_audit = __esm({
+  "features/sportsbook/customer/audit.ts"() {
+    "use strict";
+    init_engine();
+  }
+});
+
+// features/sportsbook/customer/idempotency.ts
+async function finishCustomerCommand(prisma, commandId, status3, result) {
+  const updated = await prisma.customerCommand.updateMany({ where: { id: commandId, status: "IN_PROGRESS" }, data: { status: status3, result } });
+  return updated.count === 1;
+}
+var init_idempotency = __esm({
+  "features/sportsbook/customer/idempotency.ts"() {
+    "use strict";
+    init_engine();
+    init_errors();
   }
 });
 
@@ -1179,148 +1950,16 @@ var init_transaction = __esm({
   }
 });
 
-// features/sportsbook/customer/audit.ts
-var init_audit = __esm({
-  "features/sportsbook/customer/audit.ts"() {
-    "use strict";
-    init_engine();
-  }
-});
-
-// features/sportsbook/domain/balance.ts
-function nextProjection(current, change, now = /* @__PURE__ */ new Date()) {
-  const postedDelta = change.postedDelta ?? 0n;
-  const availableDelta = change.availableDelta ?? postedDelta;
-  const posted = BigInt(current.postedMinor) + postedDelta;
-  const available = BigInt(current.availableMinor) + availableDelta;
-  if (available > posted) throw new Error("BALANCE_PROJECTION_INVARIANT");
-  return {
-    postedMinor: String(posted),
-    pendingMinor: current.pendingMinor,
-    availableMinor: String(available),
-    version: Number(current.version ?? 0) + 1,
-    asOf: now
-  };
-}
-var postedChange, reserveChange, releaseChange, captureChange;
-var init_balance = __esm({
-  "features/sportsbook/domain/balance.ts"() {
-    "use strict";
-    postedChange = (delta) => ({ postedDelta: delta, availableDelta: delta });
-    reserveChange = (amount) => ({ postedDelta: 0n, availableDelta: -amount });
-    releaseChange = (amount) => ({ postedDelta: 0n, availableDelta: amount });
-    captureChange = (amount) => ({ postedDelta: -amount, availableDelta: 0n });
-  }
-});
-
-// features/sportsbook/customer/idempotency.ts
-async function finishCustomerCommand(prisma, commandId, status3, result) {
-  const updated = await prisma.customerCommand.updateMany({ where: { id: commandId, status: "IN_PROGRESS" }, data: { status: status3, result } });
-  return updated.count === 1;
-}
-var init_idempotency = __esm({
-  "features/sportsbook/customer/idempotency.ts"() {
-    "use strict";
-    init_engine();
-    init_errors();
-  }
-});
-
-// features/sportsbook/customer/funding.ts
-async function lockedProjection(tx, tenantId, accountId) {
-  const current = await tx.balanceProjection.findFirst({ where: { tenantId, accountId }, orderBy: { version: "desc" } });
-  if (!current) return null;
-  await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${current.id} FOR UPDATE`;
-  return tx.balanceProjection.findFirst({ where: { tenantId, accountId }, orderBy: { version: "desc" } });
-}
-async function dispatchPinnedPayment(intent, provider, fresh, opaqueData) {
-  if (!provider) return { status: "UNKNOWN", externalRef: "", reasonCode: "PROVIDER_INSTALLATION_MISSING" };
-  const snapshot = intent.riskEvidence?.provider;
-  if (snapshot && (snapshot.adapterId !== provider.adapterId || snapshot.adapterVersion !== provider.adapterVersion || snapshot.configReference !== provider.configReference)) {
-    return { status: "UNKNOWN", externalRef: "", reasonCode: "PROVIDER_CONFIGURATION_CHANGED" };
-  }
-  try {
-    const result = await executePaymentProvider(provider, { type: intent.type === "DEPOSIT" ? "deposit" : "withdrawal", payload: { amountMinor: intent.amountMinor, currency: intent.currency, opaqueData } }, `${provider.id}:${intent.idempotencyKey}`);
-    if (result.status === "SUCCEEDED") return { status: "SUCCEEDED", externalRef: result.externalRef, reasonCode: "" };
-    if (result.status === "FAILED") return { status: "FAILED", externalRef: result.externalRef, reasonCode: "PROVIDER_DECLINED" };
-    if (result.reasonCode === "OPERATOR_PAYOUT_REQUIRED") return { status: "PROCESSING", externalRef: "", reasonCode: "OPERATOR_PAYOUT_REQUIRED" };
-    return { status: "UNKNOWN", externalRef: result.externalRef, reasonCode: "PROVIDER_PENDING" };
-  } catch (error) {
-    const code = error instanceof Error ? error.message : "";
-    if (fresh && PRE_DISPATCH_REFUSALS.has(code)) return { status: "FAILED", externalRef: "", reasonCode: code };
-    return { status: "UNKNOWN", externalRef: "", reasonCode: PRE_DISPATCH_REFUSALS.has(code) ? code : "PROVIDER_OUTCOME_UNKNOWN" };
-  }
-}
-async function applyPaymentOutcome(tx, current, outcome, now) {
-  const tenantId = current.tenantId;
-  const amountMinor = BigInt(current.amountMinor);
-  const [cash, clearing] = await Promise.all([
-    tx.ledgerAccount.findFirst({ where: { tenantId, playerId: current.playerId, key: "PLAYER_CASH", currency: current.currency } }),
-    tx.ledgerAccount.findFirst({ where: { tenantId, playerId: null, key: "PAYMENT_CLEARING", currency: current.currency } })
-  ]);
-  if (!cash || !clearing) throw new Error("PAYMENT_LEDGER_UNAVAILABLE");
-  let status3 = outcome.status;
-  if (outcome.status === "SUCCEEDED") {
-    const deposit = current.type === "DEPOSIT";
-    const journalKey = !deposit && isCustomerOrigin(current) ? `withdrawal:${current.idempotencyKey}` : `payment:${current.idempotencyKey}`;
-    if (await tx.journalTransaction.findFirst({ where: { tenantId, idempotencyKey: journalKey } })) throw new Error("JOURNAL_ALREADY_POSTED");
-    const journal = await tx.journalTransaction.create({ data: { tenantId, type: deposit ? "DEPOSIT" : "WITHDRAWAL", idempotencyKey: journalKey, correlationId: current.id, status: "POSTED", effectiveAt: now } });
-    await tx.journalEntry.createMany({ data: [
-      { tenantId, transactionId: journal.id, accountId: clearing.id, side: deposit ? "DEBIT" : "CREDIT", amountMinor: current.amountMinor, currency: current.currency },
-      { tenantId, transactionId: journal.id, accountId: cash.id, side: deposit ? "CREDIT" : "DEBIT", amountMinor: current.amountMinor, currency: current.currency }
-    ] });
-    if (!deposit) {
-      const captured = await tx.hold.updateMany({ where: { id: current.holdId ?? "", tenantId, status: "ACTIVE" }, data: { status: "CAPTURED", version: { increment: 1 } } });
-      if (captured.count !== 1) throw new Error("WITHDRAWAL_HOLD_NOT_ACTIVE");
-    }
-    const projection = await lockedProjection(tx, tenantId, cash.id);
-    if (!projection) throw new Error("PAYMENT_LEDGER_UNAVAILABLE");
-    await tx.balanceProjection.create({ data: { tenantId, accountId: cash.id, ...nextProjection(projection, deposit ? postedChange(amountMinor) : captureChange(amountMinor), now) } });
-  } else if (outcome.status === "FAILED") {
-    if (current.type === "WITHDRAWAL" && current.holdId) {
-      const released = await tx.hold.updateMany({ where: { id: current.holdId, tenantId, status: "ACTIVE" }, data: { status: "RELEASED", version: { increment: 1 } } });
-      if (released.count === 1) {
-        const projection = await lockedProjection(tx, tenantId, cash.id);
-        if (!projection) throw new Error("PAYMENT_LEDGER_UNAVAILABLE");
-        await tx.balanceProjection.create({ data: { tenantId, accountId: cash.id, ...nextProjection(projection, releaseChange(amountMinor), now) } });
-      }
-    }
-  } else {
-    status3 = outcome.status === "PROCESSING" ? "PROCESSING" : "UNKNOWN";
-  }
-  const definitive = status3 === "SUCCEEDED" || status3 === "FAILED";
-  const intent = await tx.paymentIntent.update({ where: { id: current.id }, data: { status: status3, completedAt: definitive ? now : null, ...outcome.externalRef ? { providerSessionReference: outcome.externalRef } : {} } });
-  const attempt = await tx.paymentAttempt.findFirst({ where: { tenantId, paymentIntentId: current.id }, orderBy: { attempt: "desc" } });
-  if (attempt) await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: status3 === "PROCESSING" ? "PENDING" : status3, reasonCode: outcome.reasonCode, ...outcome.externalRef ? { externalReference: outcome.externalRef } : {} } });
-  return { status: status3, intent };
-}
-var PRE_DISPATCH_REFUSALS, isCustomerOrigin;
-var init_funding = __esm({
-  "features/sportsbook/customer/funding.ts"() {
-    "use strict";
-    init_paymentProviderAdapter();
-    init_auth();
-    init_errors();
-    init_transaction();
-    init_audit();
-    init_currency();
-    init_balance();
-    init_idempotency();
-    PRE_DISPATCH_REFUSALS = /* @__PURE__ */ new Set(["PAYMENT_PROVIDER_UNAVAILABLE", "PAYMENT_ADAPTER_UNSUPPORTED", "PAYMENT_ADAPTER_INVALID_CONFIG"]);
-    isCustomerOrigin = (intent) => /^customer(-withdrawal)?:/.test(String(intent.idempotencyKey ?? ""));
-  }
-});
-
 // features/sportsbook/customer/promotions.ts
-async function ensureSandboxPromotions(prisma, tenantId) {
+async function ensureStarterPromotions(prisma, tenantId) {
   const now = /* @__PURE__ */ new Date();
   const currency = (await resolveTenantCurrency(prisma, tenantId)).code;
   await serializable(prisma, async (tx) => {
     for (const fixture of promotionFixtures) {
       let promotion = await tx.promotion.findFirst({ where: { tenantId, key: fixture.key } });
       if (!promotion) {
-        const termsHash = evidenceHash({ key: fixture.key, economics: fixture.economics, requirements: fixture.requirements, version: "sandbox-full-v1" });
-        promotion = await tx.promotion.create({ data: { tenantId, key: fixture.key, name: fixture.name, description: fixture.description, type: fixture.type, status: "ACTIVE", startsAt: new Date(now.getTime() - 864e5), endsAt: new Date(now.getTime() + 30 * 864e5), budgetMinor: fixture.budgetMinor, currency, termsVersion: "sandbox-full-v1", termsHash } });
+        const termsHash = evidenceHash({ key: fixture.key, economics: fixture.economics, requirements: fixture.requirements, version: "promotions-v1" });
+        promotion = await tx.promotion.create({ data: { tenantId, key: fixture.key, name: fixture.name, description: fixture.description, type: fixture.type, status: "ACTIVE", startsAt: new Date(now.getTime() - 864e5), endsAt: new Date(now.getTime() + 30 * 864e5), budgetMinor: fixture.budgetMinor, currency, termsVersion: "promotions-v1", termsHash } });
         await tx.promotionRuleVersion.create({ data: { tenantId, promotionId: promotion.id, version: 1, eligibility: { kyc: "APPROVED", onePerPlayer: true }, economics: fixture.economics, wageringRequirements: fixture.requirements, abuseControls: { duplicateAccount: "DENY", linkedPaymentMethod: "REVIEW", maxAwardsPerPlayer: 1 }, contributionRules: { sportsbook: 100 }, status: "ACTIVE", effectiveFrom: now, evidenceHash: termsHash } });
         await tx.campaignBudget.create({ data: { tenantId, promotionId: promotion.id, allocatedMinor: fixture.budgetMinor, awardedMinor: "0", redeemedMinor: "0", forfeitedMinor: "0", currency, version: 1, status: "ACTIVE" } });
       }
@@ -1349,9 +1988,9 @@ var init_promotions = __esm({
       }
     };
     promotionFixtures = [
-      { key: "sandbox-free-bet", name: "First play free bet", description: "A $5 restricted free bet. Stake is not returned on a win.", type: "FREE_BET", budgetMinor: "500000", economics: { amountMinor: "500", stakeReturned: false }, requirements: { minimumOdds: "1.50", validStructures: ["STRAIGHT", "PARLAY"] } },
-      { key: "sandbox-odds-boost", name: "Weekend odds boost", description: "A 10% profit boost capped at $10 for eligible pre-match wagers.", type: "ODDS_BOOST", budgetMinor: "100000", economics: { boostBasisPoints: 1e3, maxBoostMinor: "1000" }, requirements: { minimumOdds: "1.80", validStructures: ["STRAIGHT", "PARLAY"] } },
-      { key: "sandbox-deposit-match", name: "Deposit match sandbox", description: "A $10 restricted bonus wallet award with 3\xD7 wagering evidence.", type: "DEPOSIT_MATCH", budgetMinor: "500000", economics: { amountMinor: "1000", stakeReturned: true }, requirements: { wageringMultiple: 3, validStructures: ["STRAIGHT", "PARLAY", "SYSTEM"] } }
+      { key: "first-play-free-bet", name: "First play free bet", description: "A $5 restricted free bet. Stake is not returned on a win.", type: "FREE_BET", budgetMinor: "500000", economics: { amountMinor: "500", stakeReturned: false }, requirements: { minimumOdds: "1.50", validStructures: ["STRAIGHT", "PARLAY"] } },
+      { key: "weekend-odds-boost", name: "Weekend odds boost", description: "A 10% profit boost capped at $10 for eligible pre-match wagers.", type: "ODDS_BOOST", budgetMinor: "100000", economics: { boostBasisPoints: 1e3, maxBoostMinor: "1000" }, requirements: { minimumOdds: "1.80", validStructures: ["STRAIGHT", "PARLAY"] } },
+      { key: "deposit-match", name: "Deposit match", description: "A $10 restricted bonus wallet award with 3\xD7 wagering evidence.", type: "DEPOSIT_MATCH", budgetMinor: "500000", economics: { amountMinor: "1000", stakeReturned: true }, requirements: { wageringMultiple: 3, validStructures: ["STRAIGHT", "PARLAY", "SYSTEM"] } }
     ];
   }
 });
@@ -2212,18 +2851,16 @@ async function gradeSelectionFromApprovedResult(tx, tenantId, actorId, a) {
   await appendAudit(tx, tenantId, actorId, "selection.graded", "Selection", selection.id, a.reason, { gradeId: grade.id, marketId: selection.market.id, resultVersionId: result.id, outcome: fact.outcome, ruleVersion, inputHash, complete });
   return grade.id;
 }
-var import_node_crypto7, import_node_crypto8, graphql, requireUnscopedCapability, requireTenant, serializable2, decimalOddsFromAmounts, limitPeriodStart, stakeLimitFacts, journalEntryFingerprint, postJournal, appendAudit, rejectApprovedResultVersion, requireScopedPlayer, parseObject, positiveMoney, roleCapabilityKeys, parseRoleCapabilities, accountMap, sportsbookTypeDefs, sportsbookResolvers;
+var import_node_crypto5, import_node_crypto6, graphql, requireUnscopedCapability, requireTenant, serializable2, decimalOddsFromAmounts, limitPeriodStart, stakeLimitFacts, journalEntryFingerprint, postJournal, appendAudit, rejectApprovedResultVersion, requireScopedPlayer, parseObject, positiveMoney, roleCapabilityKeys, parseRoleCapabilities, accountMap, sportsbookTypeDefs, sportsbookResolvers;
 var init_sportsbook = __esm({
   "features/keystone/mutations/sportsbook.ts"() {
     "use strict";
-    import_node_crypto7 = require("node:crypto");
+    import_node_crypto5 = require("node:crypto");
     init_engine();
     init_ledger();
     init_onboarding();
     init_trading_eligibility();
     init_onboarding_catalog();
-    init_funding();
-    init_balance();
     init_promotions();
     init_limit_enforcement();
     init_acceptance_gates();
@@ -2237,7 +2874,7 @@ var init_sportsbook = __esm({
     init_store_logo();
     init_house_rules();
     init_result_approval();
-    import_node_crypto8 = require("node:crypto");
+    import_node_crypto6 = require("node:crypto");
     init_mail();
     init_approval_control();
     init_setting_policy();
@@ -2366,10 +3003,9 @@ var init_sportsbook = __esm({
     acceptStraightWager(quoteId:ID!,idempotencyKey:String!): WagerCommandResult!
     applySportsbookOnboarding(slug:String!,operatorName:String!,brandName:String!,domain:String!,currency:String!,currencyExponent:Int!,jurisdictionCode:String!,timezone:String!): OnboardingPreview!
     createCatalogEvent(competitionId:ID!,externalKey:String!,name:String!,startAt:String!,marketDefinition:String!,selections:String!): ID!
-    ingestSandboxPrice(selectionId:ID!,decimalOdds:String!,line:String,sequence:String!,externalId:String!): Boolean!
     setMarketPrices(marketId:ID!,prices:String!,line:String): Int!
     setMarketStatus(marketId:ID!,status:String!,reason:String!,expectedVersion:Int!,expectedStatus:String!): Boolean!
-    ingestSandboxResult(eventId:ID!,payload:String!): ID!
+    enterEventResult(eventId:ID!,payload:String!): ID!
     requestResultApproval(resultVersionId:ID!,reason:String!): ID!
     withdrawResultVersion(resultVersionId:ID!,reason:String!): Boolean!
     approveResultVersion(resultVersionId:ID!,approvalId:ID!,reason:String!): Boolean!
@@ -2378,7 +3014,6 @@ var init_sportsbook = __esm({
     gradeMarketSelection(marketId:ID!,selectionId:ID!,resultVersionId:ID!,reason:String!): ID!
     createRiskLimit(profileId:ID!,scopeType:String!,scopeId:String!,maxStakeMinor:String!,maxPayoutMinor:String!,maxLiabilityMinor:String!,currency:String!): ID!
     openWagerInvestigation(wagerId:ID!,category:String!,reason:String!): ID!
-    sandboxPayment(playerId:ID!,type:String!,amountMinor:String!,currency:String!,idempotencyKey:String!): ID!
     setResponsibleGamingLimit(playerId:ID!,type:String!,period:String!,amountMinor:String!,currency:String!): ID!
     selfExclude(playerId:ID!,scope:String!,endsAt:String): ID!
     openVerificationCase(playerId:ID!,type:String!,evidenceReference:String!): ID!
@@ -2434,52 +3069,52 @@ var init_sportsbook = __esm({
             if (existingBrand && (existingBrand.domain !== args.domain || existingBrand.name !== args.brandName)) throw new Error("ONBOARDING_CONFLICT");
             const brand = existingBrand ?? await tx.brand.create({ data: { tenantId: tenant4.id, name: args.brandName, domain: args.domain, defaultLocale: "en", logoIcon: DEFAULT_STORE_LOGO_ICON, logoColor: DEFAULT_STORE_LOGO_COLOR, status: "ACTIVE" } });
             const jurisdiction = await tx.jurisdiction.upsert({ where: { code: args.jurisdictionCode }, create: { code: args.jurisdictionCode, authority: "UNCONFIGURED", status: "PENDING" }, update: {} });
-            if (!await tx.operatorJurisdiction.findFirst({ where: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id } })) await tx.operatorJurisdiction.create({ data: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id, licenseReference: "EXTERNAL-GATE", policyVersion: "sandbox-v1", status: "PENDING" } });
+            if (!await tx.operatorJurisdiction.findFirst({ where: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id } })) await tx.operatorJurisdiction.create({ data: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id, licenseReference: "EXTERNAL-GATE", policyVersion: "operator-v1", status: "PENDING" } });
             const operatorJurisdiction = await tx.operatorJurisdiction.findFirst({ where: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id } });
             const onboardingUser = await tx.user.update({ where: { id: context.session.itemId }, data: { tenantId: tenant4.id, onboardingStatus: "in_progress" } });
             if (onboardingUser.roleId) await tx.role.updateMany({ where: { id: onboardingUser.roleId, OR: [{ tenantId: null }, { tenantId: tenant4.id }] }, data: { tenantId: tenant4.id } });
             const legalEntity = await tx.legalEntity.findFirst({ where: { tenantId: tenant4.id, registrationReference: "EXTERNAL-GATE" } }) ?? await tx.legalEntity.create({ data: { tenantId: tenant4.id, name: `${args.operatorName} legal entity`, countryCode: "UNCONFIGURED", registrationReference: "EXTERNAL-GATE", status: "PENDING" } });
-            const currency = await tx.currencyDefinition.findUnique({ where: { code: args.currency } }) ?? await tx.currencyDefinition.create({ data: { code: args.currency, exponent: args.currencyExponent, name: `${args.currency} sandbox currency`, status: "ACTIVE" } });
+            const currency = await tx.currencyDefinition.findUnique({ where: { code: args.currency } }) ?? await tx.currencyDefinition.create({ data: { code: args.currency, exponent: args.currencyExponent, name: args.currency, status: "ACTIVE" } });
             if (Number(currency.exponent) !== Number(args.currencyExponent)) throw new Error("CURRENCY_EXPONENT_CONFLICT");
             if (currency.status !== "ACTIVE") throw new Error("CURRENCY_NOT_ACTIVE");
             if (!await tx.tenantCurrency.findFirst({ where: { tenantId: tenant4.id, currencyId: currency.id } })) await tx.tenantCurrency.create({ data: { tenantId: tenant4.id, currencyId: currency.id, depositsEnabled: true, withdrawalsEnabled: true, wageringEnabled: true, defaultForBrand: true, status: "ACTIVE" } });
-            if (!await tx.brandLocale.findFirst({ where: { tenantId: tenant4.id, brandId: brand.id, locale: "en-US" } })) await tx.brandLocale.create({ data: { tenantId: tenant4.id, brandId: brand.id, locale: "en-US", language: "en", timezone: args.timezone, termsVersion: "sandbox-full-v1", termsContentHash: evidenceHash({ type: "TERMS", version: "sandbox-full-v1" }), default: true, status: "ACTIVE" } });
-            if (!await tx.operatorChannel.findFirst({ where: { tenantId: tenant4.id, key: "sandbox-web" } })) await tx.operatorChannel.create({ data: { tenantId: tenant4.id, legalEntityId: legalEntity.id, operatorJurisdictionId: operatorJurisdiction.id, brandId: brand.id, key: "sandbox-web", type: "WEB", status: "PENDING", capabilities: { mode: "sandbox", productionBlocked: true } } });
-            for (const [key2, value, type] of [["currency", args.currency, "STRING"], ["currencyExponent", args.currencyExponent, "INTEGER"], ["houseRules", { straightFixedOdds: true, inPlay: true, parlay: true, system: true, roundRobin: true, teaser: true, eachWay: true, cashOut: true, partialAcceptance: true }, "JSON"], ["maxStakeMinor", "100000", "MONEY"], ["maxPayoutMinor", "1000000", "MONEY"], ["liveDelayMs", 3e3, "INTEGER"], ["minimumAge", 18, "INTEGER"], ["priceChangeConsent", ["EXACT", "ACCEPT_BETTER", "ACCEPT_WITHIN_TOLERANCE"], "JSON"]]) if (!await tx.configValue.findFirst({ where: { tenantId: tenant4.id, key: key2 } })) await tx.configValue.create({ data: { tenantId: tenant4.id, key: key2, value, valueType: type, scopeType: "TENANT", scopeId: tenant4.id, policyVersion: "sandbox-full-v1", effectiveFrom: /* @__PURE__ */ new Date() } });
-            for (const [key2, valueType, mergeStrategy, description] of [["maxStakeMinor", "MONEY", "MIN", "Maximum accepted stake"], ["maxPayoutMinor", "MONEY", "MIN", "Maximum contractual payout"], ["liveDelayMs", "INTEGER", "MAX", "Minimum live acceptance delay"], ["wagerStructures", "JSON", "DENY_WINS", "Permitted wager structures"], ["minimumAge", "INTEGER", "MAX", "Minimum customer age"]]) if (!await tx.configDefinition.findFirst({ where: { tenantId: tenant4.id, key: key2 } })) await tx.configDefinition.create({ data: { tenantId: tenant4.id, key: key2, valueType, mergeStrategy, allowedScopes: ["TENANT", "JURISDICTION", "BRAND"], validationSchema: { mode: "sandbox" }, secret: false, description } });
-            if (!await tx.jurisdictionPolicyVersion.findFirst({ where: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id, version: 1 } })) await tx.jurisdictionPolicyVersion.create({ data: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id, version: 1, authorityCitation: "UNCONFIGURED-EXTERNAL-GATE", policyDocument: { mode: "sandbox", productionActivation: false }, effectiveFrom: /* @__PURE__ */ new Date(), status: "DRAFT", evidenceHash: evidenceHash({ jurisdiction: args.jurisdictionCode, mode: "sandbox" }) } });
-            for (const rule of [{ name: "sandbox-comprehensive", sportKey: "", rules: { structures: ["STRAIGHT", "PARLAY", "SYSTEM", "ROUND_ROBIN", "TEASER", "EACH_WAY"], cashOut: true, deadHeat: true, push: true, void: true, partialAcceptance: true, taxPolicy: "NONE", currencyExponent: Number(args.currencyExponent) } }, { name: "teaser:6", sportKey: "football", rules: { points: "6", decimalOdds: "1.91", approvedFor: ["spread", "total"] } }]) if (!await tx.houseRuleVersion.findFirst({ where: { tenantId: tenant4.id, name: rule.name, version: 1 } })) await tx.houseRuleVersion.create({ data: { tenantId: tenant4.id, name: rule.name, version: 1, sportKey: rule.sportKey, marketDefinitionKey: "", rules: rule.rules, semanticHash: evidenceHash(rule), effectiveFrom: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
-            for (const flag of [{ key: "sandbox.full-wagering", description: "Local comprehensive wager structures" }, { key: "sandbox.cashout", description: "Local deterministic cash-out" }, { key: "sandbox.promotions", description: "Local restricted-value promotions" }]) if (!await tx.featureFlag.findFirst({ where: { tenantId: tenant4.id, key: flag.key, scopeType: "TENANT", scopeId: tenant4.id } })) await tx.featureFlag.create({ data: { tenantId: tenant4.id, key: flag.key, description: flag.description, enabled: true, scopeType: "TENANT", scopeId: tenant4.id, safeDefault: false, ownerId: context.session.itemId } });
-            for (const p2 of fixture.providers) if (!await tx.providerConnection.findFirst({ where: { tenantId: tenant4.id, adapterId: p2.adapterId } })) await tx.providerConnection.create({ data: { tenantId: tenant4.id, adapterId: p2.adapterId, adapterVersion: "1.0.0", configReference: `sandbox:${p2.kind}`, capabilities: { kind: p2.kind }, certificationStatus: "SANDBOX", status: "ACTIVE" } });
+            if (!await tx.brandLocale.findFirst({ where: { tenantId: tenant4.id, brandId: brand.id, locale: "en-US" } })) await tx.brandLocale.create({ data: { tenantId: tenant4.id, brandId: brand.id, locale: "en-US", language: "en", timezone: args.timezone, termsVersion: "terms-v1", termsContentHash: evidenceHash({ type: "TERMS", version: "terms-v1" }), default: true, status: "ACTIVE" } });
+            if (!await tx.operatorChannel.findFirst({ where: { tenantId: tenant4.id, key: "web" } })) await tx.operatorChannel.create({ data: { tenantId: tenant4.id, legalEntityId: legalEntity.id, operatorJurisdictionId: operatorJurisdiction.id, brandId: brand.id, key: "web", type: "WEB", status: "ACTIVE", capabilities: { channel: "web" } } });
+            for (const [key2, value, type] of [["currency", args.currency, "STRING"], ["currencyExponent", args.currencyExponent, "INTEGER"], ["houseRules", { straightFixedOdds: true, inPlay: true, parlay: true, system: true, roundRobin: true, teaser: true, eachWay: true, cashOut: true, partialAcceptance: true }, "JSON"], ["maxStakeMinor", "100000", "MONEY"], ["maxPayoutMinor", "1000000", "MONEY"], ["liveDelayMs", 3e3, "INTEGER"], ["minimumAge", 18, "INTEGER"], ["priceChangeConsent", ["EXACT", "ACCEPT_BETTER", "ACCEPT_WITHIN_TOLERANCE"], "JSON"]]) if (!await tx.configValue.findFirst({ where: { tenantId: tenant4.id, key: key2 } })) await tx.configValue.create({ data: { tenantId: tenant4.id, key: key2, value, valueType: type, scopeType: "TENANT", scopeId: tenant4.id, policyVersion: "operator-v1", effectiveFrom: /* @__PURE__ */ new Date() } });
+            for (const [key2, valueType, mergeStrategy, description] of [["maxStakeMinor", "MONEY", "MIN", "Maximum accepted stake"], ["maxPayoutMinor", "MONEY", "MIN", "Maximum contractual payout"], ["liveDelayMs", "INTEGER", "MAX", "Minimum live acceptance delay"], ["wagerStructures", "JSON", "DENY_WINS", "Permitted wager structures"], ["minimumAge", "INTEGER", "MAX", "Minimum customer age"]]) if (!await tx.configDefinition.findFirst({ where: { tenantId: tenant4.id, key: key2 } })) await tx.configDefinition.create({ data: { tenantId: tenant4.id, key: key2, valueType, mergeStrategy, allowedScopes: ["TENANT", "JURISDICTION", "BRAND"], validationSchema: {}, secret: false, description } });
+            if (!await tx.jurisdictionPolicyVersion.findFirst({ where: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id, version: 1 } })) await tx.jurisdictionPolicyVersion.create({ data: { tenantId: tenant4.id, jurisdictionId: jurisdiction.id, version: 1, authorityCitation: "UNCONFIGURED-EXTERNAL-GATE", policyDocument: { source: "onboarding", productionActivation: false }, effectiveFrom: /* @__PURE__ */ new Date(), status: "DRAFT", evidenceHash: evidenceHash({ jurisdiction: args.jurisdictionCode, source: "onboarding" }) } });
+            for (const rule of [{ name: "house-rules", sportKey: "", rules: { structures: ["STRAIGHT", "PARLAY", "SYSTEM", "ROUND_ROBIN", "TEASER", "EACH_WAY"], cashOut: true, deadHeat: true, push: true, void: true, partialAcceptance: true, taxPolicy: "NONE", currencyExponent: Number(args.currencyExponent) } }, { name: "teaser:6", sportKey: "football", rules: { points: "6", decimalOdds: "1.91", approvedFor: ["spread", "total"] } }]) if (!await tx.houseRuleVersion.findFirst({ where: { tenantId: tenant4.id, name: rule.name, version: 1 } })) await tx.houseRuleVersion.create({ data: { tenantId: tenant4.id, name: rule.name, version: 1, sportKey: rule.sportKey, marketDefinitionKey: "", rules: rule.rules, semanticHash: evidenceHash(rule), effectiveFrom: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
+            for (const flag of [{ key: "wagering.full-structures", description: "Parlay, system, round-robin, teaser and each-way wagers" }, { key: "wagering.cashout", description: "Customer cash-out offers" }, { key: "wagering.promotions", description: "Restricted-value promotions" }]) if (!await tx.featureFlag.findFirst({ where: { tenantId: tenant4.id, key: flag.key, scopeType: "TENANT", scopeId: tenant4.id } })) await tx.featureFlag.create({ data: { tenantId: tenant4.id, key: flag.key, description: flag.description, enabled: true, scopeType: "TENANT", scopeId: tenant4.id, safeDefault: false, ownerId: context.session.itemId } });
+            for (const p2 of fixture.providers) if (!await tx.providerConnection.findFirst({ where: { tenantId: tenant4.id, adapterId: p2.adapterId } })) await tx.providerConnection.create({ data: { tenantId: tenant4.id, adapterId: p2.adapterId, adapterVersion: "1.0.0", configReference: `house:${p2.kind}`, capabilities: { kind: p2.kind }, certificationStatus: "INTERNAL", status: "ACTIVE" } });
             await ensureOnboardingCatalogRoots(tx, tenant4.id, args.timezone);
             for (const definition of [{ key: "match-result", name: "Match result", family: "MATCH_RESULT" }, { key: "moneyline", name: "Moneyline", family: "MONEYLINE" }, { key: "spread", name: "Point spread", family: "SPREAD" }, { key: "total", name: "Total", family: "TOTAL" }]) if (!await tx.marketDefinition.findFirst({ where: { tenantId: tenant4.id, key: definition.key, version: 1 } })) await tx.marketDefinition.create({ data: { tenantId: tenant4.id, key: definition.key, name: definition.name, sportKey: "*", parametersSchema: { line: definition.key === "spread" || definition.key === "total" }, gradingRuleFamily: definition.family, allowedPhases: ["PREMATCH", "LIVE"], status: "ACTIVE", version: 1 } });
-            if (!await tx.limitProfile.findFirst({ where: { tenantId: tenant4.id, name: "Sandbox defaults" } })) await tx.limitProfile.create({ data: { tenantId: tenant4.id, name: "Sandbox defaults", version: 1, status: "ACTIVE", effectiveFrom: /* @__PURE__ */ new Date() } });
-            if (!await tx.safeguardingAccount.findFirst({ where: { tenantId: tenant4.id, accountReference: "sandbox-safeguarding" } })) await tx.safeguardingAccount.create({ data: { tenantId: tenant4.id, legalEntityId: legalEntity.id, accountReference: "sandbox-safeguarding", classification: "NOT_PROTECTED", currency: args.currency, status: "ACTIVE", disclosureVersion: "sandbox-only" } });
+            if (!await tx.limitProfile.findFirst({ where: { tenantId: tenant4.id, name: "Default limits" } })) await tx.limitProfile.create({ data: { tenantId: tenant4.id, name: "Default limits", version: 1, status: "ACTIVE", effectiveFrom: /* @__PURE__ */ new Date() } });
+            if (!await tx.safeguardingAccount.findFirst({ where: { tenantId: tenant4.id, accountReference: "player-funds" } })) await tx.safeguardingAccount.create({ data: { tenantId: tenant4.id, legalEntityId: legalEntity.id, accountReference: "player-funds", classification: "NOT_PROTECTED", currency: args.currency, status: "ACTIVE", disclosureVersion: "disclosure-v1" } });
             for (const policy of [{ recordClass: "AUDIT", days: 2555, mode: "PRESERVE" }, { recordClass: "CUSTOMER_SESSION", days: 30, mode: "DELETE" }, { recordClass: "GEO", days: 30, mode: "TOKENIZE" }]) if (!await tx.retentionPolicyVersion.findFirst({ where: { tenantId: tenant4.id, recordClass: policy.recordClass, version: 1 } })) await tx.retentionPolicyVersion.create({ data: { tenantId: tenant4.id, recordClass: policy.recordClass, version: 1, retentionDays: policy.days, archiveDays: 0, deletionMode: policy.mode, legalHoldWins: true, effectiveFrom: /* @__PURE__ */ new Date(), status: "ACTIVE", evidenceHash: evidenceHash(policy) } });
             for (const stage of ["OPERATOR", "BRAND", "POLICY", "PROVIDERS", "CATALOG", "GOVERNANCE", "FINANCE", "PROMOTIONS", "OPERATIONS"]) {
               const progress = await tx.onboardingProgress.findFirst({ where: { tenantId: tenant4.id, stage } });
               if (stage === "PROMOTIONS") {
-                const transition = prepareSandboxPromotionProgress(progress, fixture.fixtureHash);
-                if (transition.kind === "CREATE") await tx.onboardingProgress.create({ data: { tenantId: tenant4.id, stage, status: "PENDING", evidenceHash: transition.evidenceHash, details: { mode: "sandbox", promotionProvisioning: "PENDING" } } });
+                const transition = preparePromotionProgress(progress, fixture.fixtureHash);
+                if (transition.kind === "CREATE") await tx.onboardingProgress.create({ data: { tenantId: tenant4.id, stage, status: "PENDING", evidenceHash: transition.evidenceHash, details: { promotionProvisioning: "PENDING" } } });
                 if (transition.kind === "RESET_PENDING") {
-                  const reset = await tx.onboardingProgress.updateMany({ where: { id: progress.id, tenantId: tenant4.id, stage, status: "COMPLETE", evidenceHash: transition.previousEvidenceHash }, data: { status: "PENDING", evidenceHash: transition.evidenceHash, completedAt: null, details: { mode: "sandbox", promotionProvisioning: "PENDING" } } });
+                  const reset = await tx.onboardingProgress.updateMany({ where: { id: progress.id, tenantId: tenant4.id, stage, status: "COMPLETE", evidenceHash: transition.previousEvidenceHash }, data: { status: "PENDING", evidenceHash: transition.evidenceHash, completedAt: null, details: { promotionProvisioning: "PENDING" } } });
                   if (reset.count !== 1) throw new Error("ONBOARDING_PROMOTIONS_PROGRESS_STALE");
                 }
-              } else if (!progress) await tx.onboardingProgress.create({ data: { tenantId: tenant4.id, stage, status: "COMPLETE", evidenceHash: evidenceHash({ fixtureHash: fixture.fixtureHash, stage }), completedAt: /* @__PURE__ */ new Date(), details: stage === "OPERATOR" ? { mode: "sandbox", manifest: { fixtureHash: fixture.fixtureHash, actorId: context.session.itemId, input: { slug: args.slug, operatorName: args.operatorName, brandName: args.brandName, domain: args.domain, currency: args.currency, currencyExponent: args.currencyExponent, jurisdictionCode: args.jurisdictionCode, timezone: args.timezone }, tenantId: tenant4.id, brandId: brand.id, currencyId: currency.id, jurisdictionId: jurisdiction.id } } : { mode: "sandbox" } } });
+              } else if (!progress) await tx.onboardingProgress.create({ data: { tenantId: tenant4.id, stage, status: "COMPLETE", evidenceHash: evidenceHash({ fixtureHash: fixture.fixtureHash, stage }), completedAt: /* @__PURE__ */ new Date(), details: stage === "OPERATOR" ? { manifest: { fixtureHash: fixture.fixtureHash, actorId: context.session.itemId, input: { slug: args.slug, operatorName: args.operatorName, brandName: args.brandName, domain: args.domain, currency: args.currency, currencyExponent: args.currencyExponent, jurisdictionCode: args.jurisdictionCode, timezone: args.timezone }, tenantId: tenant4.id, brandId: brand.id, currencyId: currency.id, jurisdictionId: jurisdiction.id } } : {} } });
             }
             for (const stage of ["LICENSING", "CERTIFICATION"]) {
               const progress = await tx.onboardingProgress.findFirst({ where: { tenantId: tenant4.id, stage } });
               if (!progress) await tx.onboardingProgress.create({ data: { tenantId: tenant4.id, stage, status: "BLOCKED", evidenceHash: evidenceHash({ fixtureHash: fixture.fixtureHash, stage, external: true }), details: { externalGate: true } } });
             }
-            await appendAudit(tx, tenant4.id, context.session.itemId, "operator.onboarded", "Tenant", tenant4.id, "SANDBOX_ONBOARDING", { fixtureHash: fixture.fixtureHash, brandId: brand.id });
+            await appendAudit(tx, tenant4.id, context.session.itemId, "operator.onboarded", "Tenant", tenant4.id, "OPERATOR_ONBOARDING", { fixtureHash: fixture.fixtureHash, brandId: brand.id });
             return { tenantId: tenant4.id, brandId: brand.id };
           });
           await ensurePromotionsThenComplete(
-            () => ensureSandboxPromotions(context.prisma, applied.tenantId),
+            () => ensureStarterPromotions(context.prisma, applied.tenantId),
             async () => {
               const completeHash = evidenceHash({ fixtureHash: fixture.fixtureHash, stage: "PROMOTIONS" });
               const pendingHash = evidenceHash({ fixtureHash: fixture.fixtureHash, stage: "PROMOTIONS", provisioning: "PENDING" });
-              const completed = await context.prisma.onboardingProgress.updateMany({ where: { tenantId: applied.tenantId, stage: "PROMOTIONS", status: "PENDING", evidenceHash: pendingHash }, data: { status: "COMPLETE", evidenceHash: completeHash, completedAt: /* @__PURE__ */ new Date(), details: { mode: "sandbox" } } });
+              const completed = await context.prisma.onboardingProgress.updateMany({ where: { tenantId: applied.tenantId, stage: "PROMOTIONS", status: "PENDING", evidenceHash: pendingHash }, data: { status: "COMPLETE", evidenceHash: completeHash, completedAt: /* @__PURE__ */ new Date(), details: {} } });
               if (completed.count === 1) return;
               const existing = await context.prisma.onboardingProgress.findFirst({ where: { tenantId: applied.tenantId, stage: "PROMOTIONS", status: "COMPLETE", evidenceHash: completeHash }, select: { id: true } });
               if (!existing) throw new Error("ONBOARDING_PROMOTIONS_PROGRESS_NOT_PENDING");
@@ -2534,7 +3169,7 @@ var init_sportsbook = __esm({
           return context.prisma.$transaction(async (tx) => {
             await assertCurrentActor(tx, context, tenantId, "canTrade");
             const market = await tx.market.findFirst({ where: { id: a.marketId, tenantId }, select: { id: true, status: true } });
-            const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-sports", certificationStatus: "SANDBOX", status: "ACTIVE" } });
+            const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "house-sports", certificationStatus: "INTERNAL", status: "ACTIVE" } });
             if (!market || !provider) throw new Error("Not found");
             if (!["OPEN", "SUSPENDED"].includes(market.status)) throw new Error("MARKET_NOT_TRADING");
             const now = /* @__PURE__ */ new Date();
@@ -2544,23 +3179,11 @@ var init_sportsbook = __esm({
               const latest = await tx.priceSnapshot.findFirst({ where: { tenantId, selectionId }, orderBy: { receivedAt: "desc" }, select: { sequence: true } });
               const sequence = String((Number.parseInt(latest?.sequence ?? "0", 10) || 0) + 1);
               const payload = { source: "TRADER", marketId: market.id, selectionId, decimalOdds, line, sequence, actorId: context.session.itemId };
-              const envelope = await tx.rawEnvelope.create({ data: { tenantId, providerConnectionId: provider.id, direction: "INBOUND", externalId: `trader:${(0, import_node_crypto7.randomUUID)()}`, schemaVersion: "sandbox.v1", payload, payloadHash: evidenceHash(payload), receivedAt: now } });
+              const envelope = await tx.rawEnvelope.create({ data: { tenantId, providerConnectionId: provider.id, direction: "INBOUND", externalId: `trader:${(0, import_node_crypto5.randomUUID)()}`, schemaVersion: "house.v1", payload, payloadHash: evidenceHash(payload), receivedAt: now } });
               await tx.priceSnapshot.create({ data: { tenantId, selectionId, providerConnectionId: provider.id, decimalOdds, line, sequence, effectiveAt: now, receivedAt: now, rawEnvelopeId: envelope.id, status: "OPEN" } });
             }
             await appendAudit(tx, tenantId, context.session.itemId, "market.priced", "Market", market.id, "TRADER_PRICE", { selections: entries.length });
             return entries.length;
-          });
-        },
-        ingestSandboxPrice: async (_r, a, context) => {
-          const tenantId = await requireTenant(context, "canTrade");
-          return context.prisma.$transaction(async (tx) => {
-            await assertCurrentActor(tx, context, tenantId, "canTrade");
-            const selection = await tx.selection.findFirst({ where: { id: a.selectionId, tenantId } });
-            const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-sports", certificationStatus: "SANDBOX", status: "ACTIVE" } });
-            if (!selection || !provider) throw new Error("Not found");
-            const envelope = await tx.rawEnvelope.create({ data: { tenantId, providerConnectionId: provider.id, direction: "INBOUND", externalId: a.externalId, schemaVersion: "sandbox.v1", payload: a, payloadHash: evidenceHash(a), receivedAt: /* @__PURE__ */ new Date() } }).catch(async () => null);
-            await tx.priceSnapshot.create({ data: { tenantId, selectionId: a.selectionId, providerConnectionId: provider.id, decimalOdds: a.decimalOdds, line: a.line || "", sequence: a.sequence, effectiveAt: /* @__PURE__ */ new Date(), receivedAt: /* @__PURE__ */ new Date(), rawEnvelopeId: envelope?.id, status: "OPEN" } });
-            return true;
           });
         },
         setMarketStatus: async (_r, a, context) => {
@@ -2589,7 +3212,7 @@ var init_sportsbook = __esm({
             return true;
           });
         },
-        ingestSandboxResult: async (_r, a, context) => {
+        enterEventResult: async (_r, a, context) => {
           const tenantId = await requireTenant(context, "canTrade");
           let payload;
           try {
@@ -2602,7 +3225,7 @@ var init_sportsbook = __esm({
           return context.prisma.$transaction(async (tx) => {
             await assertCurrentActor(tx, context, tenantId, "canTrade");
             const event = await tx.event.findFirst({ where: { id: a.eventId, tenantId } });
-            const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-results", certificationStatus: "SANDBOX", status: "ACTIVE" } });
+            const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "house-results", certificationStatus: "INTERNAL", status: "ACTIVE" } });
             if (!event || !provider) throw new Error("Not found");
             if (event.status === "CANCELLED" || new Date(event.startAt).getTime() > Date.now()) throw new Error("EVENT_NOT_STARTED");
             for (const fact of canonical2.facts) {
@@ -2746,84 +3369,6 @@ var init_sportsbook = __esm({
             return dispute.id;
           });
         },
-        sandboxPayment: async (_r, a, context) => {
-          const tenantId = await requireTenant(context, "canManageFinance");
-          if (!["DEPOSIT", "WITHDRAWAL"].includes(a.type)) throw new Error("INVALID_PAYMENT");
-          positiveMoney(String(a.amountMinor ?? ""), "PAYMENT_AMOUNT");
-          if (!/^[A-Za-z0-9:_-]{8,128}$/.test(String(a.idempotencyKey ?? ""))) throw new Error("INVALID_IDEMPOTENCY_KEY");
-          const actorId = context.session.itemId, deposit = a.type === "DEPOSIT", amount = BigInt(a.amountMinor);
-          const requestHash = evidenceHash({ action: "OPERATOR_SANDBOX_PAYMENT", tenantId, actorId, playerId: a.playerId, type: a.type, amountMinor: String(amount), currency: a.currency });
-          const prepared = await serializable2(context.prisma, async (tx) => {
-            await assertCurrentActor(tx, context, tenantId, "canManageFinance");
-            const prior = await tx.paymentIntent.findFirst({ where: { tenantId, idempotencyKey: a.idempotencyKey }, include: { providerConnection: true } });
-            if (prior) {
-              if (prior.riskEvidence?.requestHash !== requestHash) throw new Error("IDEMPOTENCY_KEY_CONFLICT");
-              return { intent: prior, provider: prior.providerConnection, fresh: false };
-            }
-            const player = await tx.player.findFirst({ where: { id: a.playerId, tenantId } });
-            if (!player) throw new Error("Not found");
-            const enabled = (await tx.tenantCurrency.findMany({ where: { tenantId, status: "ACTIVE" }, include: { currency: true } })).find((row) => row.currency?.code === a.currency && row.currency?.status === "ACTIVE" && (deposit ? row.depositsEnabled : row.withdrawalsEnabled));
-            if (!enabled) throw new Error("PAYMENT_CURRENCY_UNAVAILABLE");
-            const accounts = await accountMap(tx, tenantId, a.playerId, a.currency);
-            const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-payments", status: "ACTIVE" }, orderBy: [{ failoverPriority: "asc" }, { createdAt: "asc" }, { id: "asc" }] });
-            if (!provider) throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
-            let holdId = null;
-            if (!deposit) {
-              const current = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
-              if (current) await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${current.id} FOR UPDATE`;
-              const projection = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
-              if (!projection || BigInt(projection.availableMinor) < amount) throw new Error("INSUFFICIENT_FUNDS");
-              holdId = (await tx.hold.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, purposeType: "WITHDRAWAL", purposeId: `operator:${a.idempotencyKey}`, amountMinor: String(amount), status: "ACTIVE", expiresAt: null, version: 1 } })).id;
-              await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, ...nextProjection(projection, reserveChange(amount)) } });
-            }
-            const intent = await tx.paymentIntent.create({ data: { tenantId, playerId: a.playerId, providerConnectionId: provider.id, holdId, type: a.type, amountMinor: String(amount), feeMinor: "0", currency: a.currency, idempotencyKey: a.idempotencyKey, status: "PROCESSING", riskEvidence: { mode: "SANDBOX", requestHash, actorId, provider: { connectionId: provider.id, adapterId: provider.adapterId, adapterVersion: provider.adapterVersion, configReference: provider.configReference, certificationStatus: provider.certificationStatus } } } });
-            await tx.paymentAttempt.create({ data: { tenantId, paymentIntentId: intent.id, attempt: 1, externalReference: "", status: "PENDING", reasonCode: "PREPARED" } });
-            await appendAudit(tx, tenantId, actorId, "payment.prepared", "PaymentIntent", intent.id, "SANDBOX_ADAPTER", { type: a.type, amountMinor: String(amount), currency: a.currency, holdId, providerConnectionId: provider.id });
-            return { intent, provider, fresh: true };
-          });
-          const settledStatus = (status3, id) => {
-            if (status3 === "SUCCEEDED") return id;
-            if (["PENDING", "PROCESSING", "UNKNOWN"].includes(status3 ?? "")) throw new Error(`PAYMENT_OUTCOME_UNKNOWN:${id}`);
-            throw new Error(`PAYMENT_${status3 ?? "FAILED"}:${id}`);
-          };
-          if (!["PENDING", "PROCESSING", "UNKNOWN"].includes(prepared.intent.status ?? "")) return settledStatus(prepared.intent.status, prepared.intent.id);
-          const outcome = await dispatchPinnedPayment(prepared.intent, prepared.provider, prepared.fresh);
-          const finalStatus = await serializable2(context.prisma, async (tx) => {
-            await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${prepared.intent.id} FOR UPDATE`;
-            const current = await tx.paymentIntent.findUnique({ where: { id: prepared.intent.id } });
-            if (!current) throw new Error("Not found");
-            if (!["PENDING", "PROCESSING", "UNKNOWN"].includes(current.status ?? "")) return current.status;
-            const accounts = await accountMap(tx, tenantId, current.playerId, current.currency), value = BigInt(current.amountMinor), isDeposit = current.type === "DEPOSIT", now = /* @__PURE__ */ new Date();
-            const lockProjection = async () => {
-              const latest = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
-              if (latest) await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${latest.id} FOR UPDATE`;
-              const locked = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } });
-              if (!locked) throw new Error("PAYMENT_LEDGER_UNAVAILABLE");
-              return locked;
-            };
-            let status3 = outcome.status;
-            if (status3 === "SUCCEEDED") {
-              const journal = await postJournal(tx, tenantId, { idempotencyKey: `payment:${current.idempotencyKey}`, type: current.type, entries: [{ accountId: accounts.PAYMENT_CLEARING.id, currency: current.currency, side: isDeposit ? "DEBIT" : "CREDIT", amount: value }, { accountId: accounts.PLAYER_CASH.id, currency: current.currency, side: isDeposit ? "CREDIT" : "DEBIT", amount: value }] }, current.id);
-              if (journal.replayed) throw new Error("JOURNAL_ALREADY_POSTED");
-              if (!isDeposit) {
-                const captured = await tx.hold.updateMany({ where: { id: current.holdId ?? "", tenantId, status: "ACTIVE" }, data: { status: "CAPTURED", version: { increment: 1 } } });
-                if (captured.count !== 1) throw new Error("WITHDRAWAL_HOLD_NOT_ACTIVE");
-              }
-              await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, ...nextProjection(await lockProjection(), isDeposit ? postedChange(value) : captureChange(value), now) } });
-            } else if (status3 === "FAILED") {
-              if (!isDeposit && current.holdId) {
-                const released = await tx.hold.updateMany({ where: { id: current.holdId, tenantId, status: "ACTIVE" }, data: { status: "RELEASED", version: { increment: 1 } } });
-                if (released.count === 1) await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, ...nextProjection(await lockProjection(), releaseChange(value), now) } });
-              }
-            } else status3 = "UNKNOWN";
-            await tx.paymentIntent.update({ where: { id: current.id }, data: { status: status3, completedAt: status3 === "UNKNOWN" ? null : now, ...outcome.externalRef ? { providerSessionReference: outcome.externalRef } : {} } });
-            const attempt = await tx.paymentAttempt.findFirst({ where: { tenantId, paymentIntentId: current.id }, orderBy: { attempt: "desc" } });
-            if (attempt) await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: status3, reasonCode: outcome.reasonCode, ...outcome.externalRef ? { externalReference: outcome.externalRef } : {} } });
-            await appendAudit(tx, tenantId, actorId, status3 === "SUCCEEDED" ? "payment.completed" : status3 === "FAILED" ? "payment.failed" : "payment.outcome_unknown", "PaymentIntent", current.id, "SANDBOX_ADAPTER", { type: current.type, amountMinor: current.amountMinor, currency: current.currency, externalReference: outcome.externalRef, reasonCode: outcome.reasonCode });
-            return status3;
-          });
-          return settledStatus(finalStatus, prepared.intent.id);
-        },
         setResponsibleGamingLimit: async (_r, a, context) => {
           const tenantId = await requireTenant(context, "canManageCompliance");
           if (!/^\d+$/.test(a.amountMinor) || BigInt(a.amountMinor) < 0n) throw new Error("INVALID_LIMIT");
@@ -2874,7 +3419,7 @@ var init_sportsbook = __esm({
           return context.prisma.$transaction(async (tx) => {
             await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
             await requireScopedPlayer(tx, tenantId, a.playerId);
-            const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-kyc", status: "ACTIVE" } });
+            const provider = await tx.providerConnection.findFirst({ where: { tenantId, adapterId: "house-kyc", status: "ACTIVE" } });
             if (!provider) throw new Error("KYC_PROVIDER_UNAVAILABLE");
             if (await tx.verificationCase.findFirst({ where: { tenantId, playerId: a.playerId, type: a.type, status: "PENDING" }, select: { id: true } })) throw new Error("VERIFICATION_ALREADY_OPEN");
             const verification = await tx.verificationCase.create({ data: { tenantId, playerId: a.playerId, providerConnectionId: provider.id, type: a.type, status: "PENDING", evidenceReference: a.evidenceReference } });
@@ -3197,14 +3742,14 @@ var init_sportsbook = __esm({
         },
         applyApprovedOperatorAdmission: async (_r, a, context) => {
           const tenantId = await requireTenant(context, "canManagePeople"), email = String(a.email ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim(), emailHash = evidenceHash(email), action = `OPERATOR_ADMISSION:${emailHash}:${a.roleId}`, payloadHash = evidenceHash({ action: "OPERATOR_ADMISSION", name, email, roleId: a.roleId });
-          const token = (0, import_node_crypto8.randomBytes)(32).toString("base64url");
+          const token = (0, import_node_crypto6.randomBytes)(32).toString("base64url");
           const userId = await context.transaction(async (txContext) => {
             const approval = await consumeApproval(txContext.prisma, context, { tenantId, capability: "canManagePeople", approvalId: a.approvalId, action, payloadHash });
             if (approval.replay) throw new Error("APPROVAL_ALREADY_CONSUMED");
             const role = await txContext.prisma.role.findFirst({ where: { id: a.roleId, tenantId } });
             if (!role) throw new Error("Not found");
             if (await txContext.prisma.user.findUnique({ where: { email } })) throw new Error("OPERATOR_EMAIL_UNAVAILABLE");
-            const user = await txContext.sudo().query.User.createOne({ data: { tenant: { connect: { id: tenantId } }, role: { connect: { id: role.id } }, name, email, password: (0, import_node_crypto8.randomBytes)(32).toString("base64url") }, query: "id" });
+            const user = await txContext.sudo().query.User.createOne({ data: { tenant: { connect: { id: tenantId } }, role: { connect: { id: role.id } }, name, email, password: (0, import_node_crypto6.randomBytes)(32).toString("base64url") }, query: "id" });
             await txContext.prisma.user.update({ where: { id: user.id }, data: { passwordResetToken: evidenceHash(token), passwordResetIssuedAt: /* @__PURE__ */ new Date(), passwordResetRedeemedAt: null } });
             await txContext.prisma.roleGrant.create({ data: { tenantId, userId: user.id, roleId: role.id, scope: { tenantId, approvalId: approval.id, admission: true }, effectiveFrom: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
             await appendAudit(txContext.prisma, tenantId, context.session.itemId, "operator.admitted", "User", user.id, "DUAL_APPROVED", { approvalId: approval.id, roleId: role.id, emailHash });
@@ -3308,7 +3853,7 @@ var init_sportsbook = __esm({
               await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${projection.id} FOR UPDATE`;
               projection = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: account.id }, orderBy: { version: "desc" } });
             }
-            let decision = evaluateAcceptance({ id: quote.id, tenantId, playerId: quote.playerId, selectionId: quote.selectionId, snapshotId: quote.priceSnapshotId, decimalOdds: quote.decimalOdds, stake: BigInt(quote.stakeMinor), currency: quote.currency, expiresAt: quote.expiresAt, policyVersion: quote.policyVersion, rulesHash: quote.termsHash }, { now, tenantActive: Boolean(currentTenant), playerActive: quote.player.status === "ACTIVE", kycApproved, geoApproved: Boolean(geo), selfExcluded: Boolean(exclusion || restriction), wageredInPeriod: fullLimitViolation ? 1n : responsibleLimit?.wageredInPeriod ?? 0n, periodLimit: fullLimitViolation ? 0n : responsibleLimit?.periodLimit, marketOpen: eventTradable && quote.selection.market.status === "OPEN" && quote.selection.status === "OPEN", priceReceivedAt: quote.priceSnapshot.receivedAt, maxPriceAgeMs: maxPriceAgeMs(isLivePricing(quote.selection?.market?.event?.status, quote.selection?.market?.tradingMode)), available: BigInt(projection?.availableMinor ?? "0"), currentLiability: 0n, maxLiability: BigInt(process.env.SANDBOX_MAX_LIABILITY_MINOR ?? "100000000") });
+            let decision = evaluateAcceptance({ id: quote.id, tenantId, playerId: quote.playerId, selectionId: quote.selectionId, snapshotId: quote.priceSnapshotId, decimalOdds: quote.decimalOdds, stake: BigInt(quote.stakeMinor), currency: quote.currency, expiresAt: quote.expiresAt, policyVersion: quote.policyVersion, rulesHash: quote.termsHash }, { now, tenantActive: Boolean(currentTenant), playerActive: quote.player.status === "ACTIVE", kycApproved, geoApproved: Boolean(geo), selfExcluded: Boolean(exclusion || restriction), wageredInPeriod: fullLimitViolation ? 1n : responsibleLimit?.wageredInPeriod ?? 0n, periodLimit: fullLimitViolation ? 0n : responsibleLimit?.periodLimit, marketOpen: eventTradable && quote.selection.market.status === "OPEN" && quote.selection.status === "OPEN", priceReceivedAt: quote.priceSnapshot.receivedAt, maxPriceAgeMs: maxPriceAgeMs(isLivePricing(quote.selection?.market?.event?.status, quote.selection?.market?.tradingMode)), available: BigInt(projection?.availableMinor ?? "0"), currentLiability: 0n, maxLiability: BigInt(process.env.MAX_LIABILITY_MINOR ?? "100000000") });
             if (decision.accepted) {
               const extra = !priceCurrent ? "PRICE_CHANGED" : (await riskLimitViolation(tx, { tenantId, playerId: quote.playerId, currency: quote.currency, stakeMinor: BigInt(quote.stakeMinor), potentialReturnMinor: decision.potentialReturn, allocations: [{ marketId: quote.selection.marketId, eventId: quote.selection.market.eventId ?? null, stakeMinor: BigInt(quote.stakeMinor), liabilityMinor: decision.liability }], now }))?.code;
               if (extra) decision = { ...decision, accepted: false, rejectionCode: extra, gates: [...decision.gates, { gate: extra === "PRICE_CHANGED" ? "currentPrice" : "riskLimits", passed: false, code: extra }] };
@@ -3337,1063 +3882,21 @@ var init_sportsbook = __esm({
   }
 });
 
-// keystone.ts
-var keystone_exports = {};
-__export(keystone_exports, {
-  default: () => keystone_default2
-});
-module.exports = __toCommonJS(keystone_exports);
-
-// features/keystone/index.ts
-var import_auth4 = require("@keystone-6/auth");
-var import_core7 = require("@keystone-6/core");
-var import_config = require("dotenv/config");
-
-// features/keystone/models/User.ts
-var import_core = require("@keystone-6/core");
-var import_access = require("@keystone-6/core/access");
-var import_fields2 = require("@keystone-6/core/fields");
-
-// features/keystone/access.ts
-init_session_assurance();
-function isSignedIn({ session }) {
-  return Boolean(session);
-}
-var isOperatorSessionAssured = (session) => hasOperatorMfaAssurance(session);
-async function currentUser({ session, context }) {
-  if (!session?.itemId || !context?.prisma) return null;
-  return context.prisma.user.findUnique({ where: { id: session.itemId }, include: { role: true } });
-}
-var currentOperatorPermission = (capability) => async (args) => {
-  if (!isOperatorSessionAssured(args.session)) return false;
-  const user = await currentUser(args);
-  return Boolean(user?.role?.[capability]);
-};
-var currentCapability = (capability) => async (args) => {
-  if (!isOperatorSessionAssured(args.session)) return false;
-  const user = await currentUser(args);
-  return Boolean(user?.tenantId && user.role?.[capability]);
-};
-var currentTenantId = async (args) => {
-  const user = await currentUser(args);
-  return user?.tenantId ?? null;
-};
-var currentTenantScope = async (args) => {
-  const tenantId = await currentTenantId(args);
-  return tenantId ? { tenant: { id: { equals: tenantId } } } : false;
-};
-var currentTenantItemScope = async (args) => {
-  const tenantId = await currentTenantId(args);
-  return tenantId ? { id: { equals: tenantId } } : false;
-};
-var assuredPermission = (capability) => ({ session }) => isOperatorSessionAssured(session) && Boolean(session?.data.role?.[capability]);
-var permissions = {
-  canManagePeople: assuredPermission("canManagePeople"),
-  canManageRoles: assuredPermission("canManageRoles"),
-  canManageSportsbook: assuredPermission("canManageSportsbook"),
-  canTrade: assuredPermission("canTrade"),
-  canManageRisk: assuredPermission("canManageRisk"),
-  canManageCompliance: assuredPermission("canManageCompliance"),
-  canManageFinance: assuredPermission("canManageFinance"),
-  canManageIntegrations: assuredPermission("canManageIntegrations"),
-  canApproveSensitiveActions: assuredPermission("canApproveSensitiveActions"),
-  canReadAudit: assuredPermission("canReadAudit")
-};
-var rules = {
-  sameTenant: ({ session }) => session?.data.tenant?.id ? { tenant: { id: { equals: session.data.tenant.id } } } : false,
-  canReadPeople: async (args) => {
-    const { session } = args;
-    if (!session) return false;
-    const user = await currentUser(args);
-    if (isOperatorSessionAssured(session) && user?.tenantId && user.role?.canSeeOtherPeople) {
-      return { OR: [{ id: { equals: session.itemId } }, { tenant: { id: { equals: user.tenantId } } }] };
-    }
-    return { id: { equals: session.itemId } };
-  },
-  canUpdatePeople: async (args) => {
-    const { session } = args;
-    if (!session) return false;
-    const user = await currentUser(args);
-    if (isOperatorSessionAssured(session) && user?.tenantId && user.role?.canEditOtherPeople) {
-      return { OR: [{ id: { equals: session.itemId } }, { tenant: { id: { equals: user.tenantId } } }] };
-    }
-    return { id: { equals: session.itemId } };
-  },
-  canDeletePeople: async (args) => {
-    const { session } = args;
-    if (!session || !isOperatorSessionAssured(session)) return false;
-    const user = await currentUser(args);
-    if (!user?.tenantId || !user.role?.canManagePeople) return false;
-    return { AND: [{ tenant: { id: { equals: user.tenantId } } }, { id: { not: { equals: session.itemId } } }] };
-  }
-};
-
-// features/keystone/models/trackingFields.ts
-var import_fields = require("@keystone-6/core/fields");
-var trackingFields = {
-  createdAt: (0, import_fields.timestamp)({ access: { read: () => true, create: () => false, update: () => false }, validation: { isRequired: true }, defaultValue: { kind: "now" }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "read" } } }),
-  updatedAt: (0, import_fields.timestamp)({ access: { read: () => true, create: () => false, update: () => false }, validation: { isRequired: true }, defaultValue: { kind: "now" }, db: { updatedAt: true }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "read" } } })
-};
-
-// features/keystone/models/User.ts
-var userOwnershipAccess = { create: import_access.denyAll, update: import_access.denyAll };
-var User = (0, import_core.list)({
-  access: {
-    operation: {
-      ...(0, import_access.allOperations)(isSignedIn),
-      create: (args) => {
-        if (process.env.PUBLIC_SIGNUPS_ALLOWED === "true") {
-          return true;
-        }
-        return currentOperatorPermission("canManagePeople")(args);
-      },
-      delete: currentOperatorPermission("canManagePeople")
-    },
-    filter: {
-      query: rules.canReadPeople,
-      update: rules.canUpdatePeople,
-      delete: rules.canDeletePeople
-    }
-  },
-  ui: {
-    hideCreate: (args) => !permissions.canManagePeople(args),
-    hideDelete: (args) => !permissions.canManagePeople(args),
-    listView: {
-      initialColumns: ["name", "email", "role", "tenant"]
-    },
-    itemView: {
-      defaultFieldMode: ({ session, item }) => session?.data.role?.canEditOtherPeople || session?.itemId === item?.id ? "edit" : "read"
-    }
-  },
-  fields: {
-    name: (0, import_fields2.text)({
-      validation: {
-        isRequired: true
-      }
-    }),
-    email: (0, import_fields2.text)({
-      isIndexed: "unique",
-      validation: {
-        isRequired: true
-      }
-    }),
-    passwordResetToken: (0, import_fields2.text)({ defaultValue: null, db: { isNullable: true }, access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
-    passwordResetIssuedAt: (0, import_fields2.timestamp)({ access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
-    passwordResetRedeemedAt: (0, import_fields2.timestamp)({ access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
-    operatorMfaEnabled: (0, import_fields2.checkbox)({ defaultValue: false, access: { create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "read" } } }),
-    operatorMfaSecret: (0, import_fields2.text)({ defaultValue: null, db: { isNullable: true }, access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
-    operatorMfaRecoveryHashes: (0, import_fields2.json)({ access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
-    operatorMfaFailedAttempts: (0, import_fields2.integer)({ defaultValue: 0, access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
-    operatorMfaLockedUntil: (0, import_fields2.timestamp)({ access: { read: import_access.denyAll, create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "hidden" } } }),
-    operatorMfaEnrolledAt: (0, import_fields2.timestamp)({ access: { create: import_access.denyAll, update: import_access.denyAll }, ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "read" } } }),
-    password: (0, import_fields2.password)({
-      access: {
-        read: import_access.denyAll,
-        update: async ({ session, item, context }) => await currentOperatorPermission("canManagePeople")({ session, context }) || session?.itemId === item.id
-      },
-      validation: { isRequired: true }
-    }),
-    tenant: (0, import_fields2.relationship)({
-      ref: "Tenant",
-      access: userOwnershipAccess
-    }),
-    ...trackingFields,
-    onboardingStatus: (0, import_fields2.select)({
-      options: [
-        { label: "Not Started", value: "not_started" },
-        { label: "In Progress", value: "in_progress" },
-        { label: "Completed", value: "completed" },
-        { label: "Dismissed", value: "dismissed" }
-      ],
-      defaultValue: "not_started",
-      access: { update: import_access.denyAll }
-    }),
-    role: (0, import_fields2.relationship)({
-      ref: "Role.assignedTo",
-      access: userOwnershipAccess,
-      ui: {
-        itemView: {
-          fieldMode: (args) => permissions.canManagePeople(args) ? "edit" : "read"
-        }
-      }
-    })
-  }
-});
-
-// features/keystone/models/Role.ts
-var import_core2 = require("@keystone-6/core");
-var import_access3 = require("@keystone-6/core/access");
-var import_fields3 = require("@keystone-6/core/fields");
-var Role = (0, import_core2.list)({
-  access: {
-    operation: { query: isSignedIn, create: import_access3.denyAll, update: import_access3.denyAll, delete: import_access3.denyAll },
-    filter: { query: ({ session }) => session?.data.tenant?.id ? { OR: [{ tenant: { id: { equals: session.data.tenant.id } } }, { assignedTo: { some: { id: { equals: session.itemId } } } }] } : { assignedTo: { some: { id: { equals: session?.itemId ?? "" } } } } }
-  },
-  ui: {
-    hideCreate: true,
-    hideDelete: true,
-    listView: {
-      initialColumns: ["name", "assignedTo"]
-    },
-    itemView: { defaultFieldMode: "read" }
-  },
-  fields: {
-    tenant: (0, import_fields3.relationship)({ ref: "Tenant", access: { create: import_access3.denyAll, update: import_access3.denyAll } }),
-    name: (0, import_fields3.text)({ validation: { isRequired: true } }),
-    canSeeOtherPeople: (0, import_fields3.checkbox)({ defaultValue: false }),
-    canEditOtherPeople: (0, import_fields3.checkbox)({ defaultValue: false }),
-    canManagePeople: (0, import_fields3.checkbox)({ defaultValue: false }),
-    canManageRoles: (0, import_fields3.checkbox)({ defaultValue: false }),
-    canAccessDashboard: (0, import_fields3.checkbox)({ defaultValue: false }),
-    canManageOnboarding: (0, import_fields3.checkbox)({ defaultValue: false }),
-    canManageSportsbook: (0, import_fields3.checkbox)({ defaultValue: false }),
-    canTrade: (0, import_fields3.checkbox)({ defaultValue: false }),
-    canManageRisk: (0, import_fields3.checkbox)({ defaultValue: false }),
-    canManageCompliance: (0, import_fields3.checkbox)({ defaultValue: false }),
-    canManageFinance: (0, import_fields3.checkbox)({ defaultValue: false }),
-    canManageIntegrations: (0, import_fields3.checkbox)({ defaultValue: false }),
-    canApproveSensitiveActions: (0, import_fields3.checkbox)({ defaultValue: false }),
-    canReadAudit: (0, import_fields3.checkbox)({ defaultValue: false }),
-    ...trackingFields,
-    assignedTo: (0, import_fields3.relationship)({
-      ref: "User.role",
-      many: true,
-      ui: {
-        itemView: { fieldMode: "read" }
-      }
-    })
-  }
-});
-
-// features/keystone/models/Sportsbook.ts
-var Sportsbook_exports = {};
-__export(Sportsbook_exports, {
-  AcceptanceDecision: () => AcceptanceDecision,
-  AuditEvent: () => AuditEvent,
-  Brand: () => Brand,
-  Competition: () => Competition,
-  Event: () => Event,
-  Hold: () => Hold,
-  InboxMessage: () => InboxMessage,
-  JournalEntry: () => JournalEntry,
-  JournalTransaction: () => JournalTransaction,
-  Jurisdiction: () => Jurisdiction,
-  LedgerAccount: () => LedgerAccount,
-  Market: () => Market,
-  OperatorJurisdiction: () => OperatorJurisdiction,
-  OperatorLicence: () => OperatorLicence,
-  Player: () => Player,
-  PlayerLimit: () => PlayerLimit,
-  PriceSnapshot: () => PriceSnapshot,
-  ProviderConnection: () => ProviderConnection,
-  Quote: () => Quote,
-  RawEnvelope: () => RawEnvelope,
-  ResultVersion: () => ResultVersion,
-  Selection: () => Selection,
-  SelfExclusion: () => SelfExclusion,
-  Settlement: () => Settlement,
-  Sport: () => Sport,
-  Tenant: () => Tenant,
-  Wager: () => Wager,
-  WagerLeg: () => WagerLeg
-});
-var import_core3 = require("@keystone-6/core");
-var import_access5 = require("@keystone-6/core/access");
-var import_fields4 = require("@keystone-6/core/fields");
-init_store_logo();
-
-// features/keystone/utils/storeLogo.ts
-var ALLOWED_ELEMENTS = /* @__PURE__ */ new Set([
-  "svg",
-  "g",
-  "path",
-  "defs",
-  "lineargradient",
-  "radialgradient",
-  "stop",
-  "clippath",
-  "rect",
-  "circle",
-  "ellipse",
-  "line",
-  "polyline",
-  "polygon",
-  "title",
-  "desc"
-]);
-var ALLOWED_ATTRIBUTES = /* @__PURE__ */ new Set([
-  "xmlns",
-  "fill",
-  "fill-rule",
-  "clip-rule",
-  "height",
-  "width",
-  "viewbox",
-  "d",
-  "clip-path",
-  "id",
-  "x1",
-  "x2",
-  "y1",
-  "y2",
-  "gradientunits",
-  "gradienttransform",
-  "offset",
-  "stop-color",
-  "stop-opacity",
-  "opacity",
-  "cx",
-  "cy",
-  "r",
-  "rx",
-  "ry",
-  "x",
-  "y",
-  "transform",
-  "stroke",
-  "stroke-width",
-  "stroke-linecap",
-  "stroke-linejoin",
-  "points",
-  "role",
-  "aria-hidden",
-  "aria-label",
-  "preserveaspectratio"
-]);
-var ATTRIBUTE_PATTERN = /\s+([A-Za-z_:][\w:.-]*)\s*=\s*("[^"]*"|'[^']*')/g;
-var TAG_PATTERN = /<\/?\s*([A-Za-z][\w:-]*)([^<>]*)>/g;
-function sanitizeStoreLogoSvg(svg) {
-  const source = svg.trim();
-  if (!source.startsWith("<svg") || !source.endsWith("</svg>") || source.length > 1e5) {
-    return "";
-  }
-  if (/<!|<\?|\b(?:javascript|data|vbscript):|\bon[a-z]+\s*=|\b(?:href|src|style)\s*=/i.test(source)) {
-    return "";
-  }
-  let tagCount = 0;
-  let match;
-  TAG_PATTERN.lastIndex = 0;
-  while (match = TAG_PATTERN.exec(source)) {
-    tagCount += 1;
-    const element = match[1].toLowerCase();
-    if (!ALLOWED_ELEMENTS.has(element)) return "";
-    if (match[0].startsWith("</")) continue;
-    const attributes = match[2];
-    let consumed = "";
-    ATTRIBUTE_PATTERN.lastIndex = 0;
-    let attributeMatch;
-    while (attributeMatch = ATTRIBUTE_PATTERN.exec(attributes)) {
-      consumed += attributeMatch[0];
-      const attribute = attributeMatch[1].toLowerCase();
-      const value = attributeMatch[2].slice(1, -1);
-      if (!ALLOWED_ATTRIBUTES.has(attribute)) return "";
-      if (attribute === "id" && !/^[A-Za-z_][\w:.-]*$/.test(value)) return "";
-      if (/url\(/i.test(value) && !/^url\(#[A-Za-z_][\w:.-]*\)$/.test(value)) return "";
-    }
-    const remainder = attributes.replace(consumed, "").replace(/\//g, "").trim();
-    if (remainder) return "";
-  }
-  TAG_PATTERN.lastIndex = 0;
-  if (tagCount === 0 || source.replace(TAG_PATTERN, "").trim()) return "";
-  return source;
-}
-
-// features/keystone/models/Sportsbook.ts
-var list3 = (config2) => (0, import_core3.list)({ ...config2, ui: { hideNavigation: true, hideCreate: true, hideDelete: true, ...config2.ui }, graphql: { ...config2.graphql, maxTake: 100 } });
-var requiredText = () => (0, import_fields4.text)({ validation: { isRequired: true } });
-var status = (values, defaultValue = values[0]) => (0, import_fields4.select)({ type: "enum", options: values.map((value) => ({ label: value, value })), defaultValue });
-var tenant = () => (0, import_fields4.relationship)({ ref: "Tenant", many: false, access: { create: import_access5.denyAll, update: import_access5.denyAll } });
-var scopedAccess = (capability) => ({ operation: { query: currentCapability(capability), create: import_access5.denyAll, update: import_access5.denyAll, delete: import_access5.denyAll }, filter: { query: currentTenantScope } });
-var tenantAccess = scopedAccess("canManageSportsbook");
-var Tenant = list3({ access: { operation: { query: isSignedIn, create: import_access5.denyAll, update: import_access5.denyAll, delete: import_access5.denyAll }, filter: { query: currentTenantItemScope } }, fields: { name: requiredText(), slug: (0, import_fields4.text)({ isIndexed: "unique" }), status: status(["ACTIVE", "SUSPENDED", "CLOSED"]), defaultTimezone: requiredText(), supportedLocales: (0, import_fields4.json)(), dataResidencyRegion: (0, import_fields4.text)(), ...trackingFields } });
-var Brand = list3({ access: tenantAccess, fields: { tenant: tenant(), name: requiredText(), domain: requiredText(), defaultLocale: requiredText(), defaultTimezone: (0, import_fields4.text)(), supportedLocales: (0, import_fields4.json)(), designTokens: (0, import_fields4.json)(), termsReference: (0, import_fields4.text)(), logoIcon: (0, import_fields4.text)({ defaultValue: DEFAULT_STORE_LOGO_ICON, hooks: { resolveInput: ({ resolvedData, fieldKey }) => {
-  const value = resolvedData[fieldKey];
-  if (value === void 0 || value === null || value === "") return value;
-  return typeof value === "string" ? sanitizeStoreLogoSvg(value) : "";
-}, validate: ({ inputData, resolvedData, fieldKey, addValidationError }) => {
-  const submitted = inputData?.[fieldKey];
-  if (typeof submitted === "string" && submitted.trim() && !resolvedData?.[fieldKey]) addValidationError("Logo must be a valid, safe SVG document");
-} } }), logoColor: (0, import_fields4.text)({ defaultValue: DEFAULT_STORE_LOGO_COLOR, hooks: { resolveInput: ({ resolvedData, fieldKey }) => {
-  const value = resolvedData[fieldKey];
-  return value === void 0 ? value : normalizeStoreLogoColor(value);
-} } }), status: status(["ACTIVE", "INACTIVE"]), ...trackingFields } });
-var Jurisdiction = list3({ access: { operation: { query: currentCapability("canManageSportsbook"), create: import_access5.denyAll, update: import_access5.denyAll, delete: import_access5.denyAll } }, fields: { code: (0, import_fields4.text)({ isIndexed: "unique" }), authority: requiredText(), status: status(["PENDING", "ACTIVE", "INACTIVE"]), ...trackingFields } });
-var OperatorJurisdiction = list3({ access: tenantAccess, fields: { tenant: tenant(), jurisdiction: (0, import_fields4.relationship)({ ref: "Jurisdiction" }), licenseReference: requiredText(), policyVersion: requiredText(), effectiveFrom: (0, import_fields4.timestamp)(), effectiveTo: (0, import_fields4.timestamp)(), status: status(["PENDING", "ACTIVE", "SUSPENDED"]), ...trackingFields } });
-var OperatorLicence = list3({ access: scopedAccess("canManageCompliance"), fields: { tenant: tenant(), jurisdiction: (0, import_fields4.relationship)({ ref: "Jurisdiction" }), licenceNumber: requiredText(), regulator: requiredText(), expiresAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), permittedRegions: (0, import_fields4.json)({ defaultValue: [] }), status: status(["ACTIVE", "SUSPENDED"]), ...trackingFields } });
-var Player = list3({ access: scopedAccess("canManageCompliance"), fields: { tenant: tenant(), brand: (0, import_fields4.relationship)({ ref: "Brand" }), subject: requiredText(), status: status(["PENDING", "ACTIVE", "SUSPENDED", "CLOSED"]), kycStatus: status(["REQUIRED", "PENDING", "APPROVED", "REJECTED"]), locale: requiredText(), timezone: (0, import_fields4.text)(), preferredOddsFormat: status(["DECIMAL", "AMERICAN", "FRACTIONAL"]), marketingAllowed: (0, import_fields4.checkbox)({ defaultValue: false }), riskBand: status(["LOW", "MEDIUM", "HIGH"]), ...trackingFields } });
-var PlayerLimit = list3({ access: scopedAccess("canManageCompliance"), fields: { tenant: tenant(), player: (0, import_fields4.relationship)({ ref: "Player" }), type: status(["DEPOSIT", "STAKE", "LOSS", "SESSION"]), period: status(["DAILY", "WEEKLY", "MONTHLY"]), amountMinor: requiredText(), currency: requiredText(), effectiveFrom: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), effectiveTo: (0, import_fields4.timestamp)(), ...trackingFields } });
-var SelfExclusion = list3({ access: scopedAccess("canManageCompliance"), fields: { tenant: tenant(), player: (0, import_fields4.relationship)({ ref: "Player" }), scope: requiredText(), startsAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), endsAt: (0, import_fields4.timestamp)(), status: status(["ACTIVE", "EXPIRED", "REVOKED"]), source: requiredText(), ...trackingFields } });
-var Sport = list3({ access: scopedAccess("canTrade"), fields: { tenant: tenant(), key: requiredText(), name: requiredText(), active: (0, import_fields4.checkbox)({ defaultValue: true }), ...trackingFields } });
-var Competition = list3({ access: scopedAccess("canTrade"), fields: { tenant: tenant(), sport: (0, import_fields4.relationship)({ ref: "Sport" }), region: (0, import_fields4.relationship)({ ref: "Region" }), key: requiredText(), name: requiredText(), timezone: (0, import_fields4.text)(), status: status(["ACTIVE", "INACTIVE"]), ...trackingFields } });
-var Event = list3({ access: scopedAccess("canTrade"), fields: { tenant: tenant(), competition: (0, import_fields4.relationship)({ ref: "Competition" }), season: (0, import_fields4.relationship)({ ref: "Season" }), stage: (0, import_fields4.relationship)({ ref: "CompetitionStage" }), venue: (0, import_fields4.relationship)({ ref: "Venue" }), externalKey: requiredText(), name: requiredText(), startAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), status: status(["SCHEDULED", "LIVE", "ENDED", "CANCELLED", "SUSPENDED"]), livePhase: (0, import_fields4.text)(), clockSeconds: (0, import_fields4.integer)(), officialResultStatus: status(["NONE", "PROVISIONAL", "APPROVED", "DISPUTED"]), version: (0, import_fields4.integer)({ defaultValue: 1 }), ...trackingFields } });
-var Market = list3({ access: scopedAccess("canTrade"), fields: { tenant: tenant(), event: (0, import_fields4.relationship)({ ref: "Event" }), definition: (0, import_fields4.relationship)({ ref: "MarketDefinition" }), definitionKey: requiredText(), parameters: (0, import_fields4.json)(), tradingMode: status(["PREMATCH", "LIVE"]), line: (0, import_fields4.text)(), marginBasisPoints: (0, import_fields4.integer)(), cashOutEnabled: (0, import_fields4.checkbox)({ defaultValue: false }), status: status(["OPEN", "SUSPENDED", "CLOSED", "GRADED"]), version: (0, import_fields4.integer)({ defaultValue: 1 }), ...trackingFields } });
-var Selection = list3({ access: scopedAccess("canTrade"), fields: { tenant: tenant(), market: (0, import_fields4.relationship)({ ref: "Market" }), key: requiredText(), label: requiredText(), status: status(["OPEN", "SUSPENDED", "CLOSED"]), ...trackingFields } });
-var PriceSnapshot = list3({ access: scopedAccess("canTrade"), fields: { tenant: tenant(), selection: (0, import_fields4.relationship)({ ref: "Selection" }), providerConnection: (0, import_fields4.relationship)({ ref: "ProviderConnection" }), decimalOdds: requiredText(), line: (0, import_fields4.text)(), sequence: requiredText(), effectiveAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), receivedAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), rawEnvelope: (0, import_fields4.relationship)({ ref: "RawEnvelope" }), status: status(["OPEN", "SUSPENDED"]), ...trackingFields } });
-var Quote = list3({ access: scopedAccess("canManageRisk"), fields: { tenant: tenant(), player: (0, import_fields4.relationship)({ ref: "Player" }), selection: (0, import_fields4.relationship)({ ref: "Selection" }), priceSnapshot: (0, import_fields4.relationship)({ ref: "PriceSnapshot" }), structure: status(["STRAIGHT", "PARLAY", "SYSTEM", "ROUND_ROBIN", "TEASER", "EACH_WAY"]), promotion: (0, import_fields4.relationship)({ ref: "Promotion" }), legCount: (0, import_fields4.integer)({ defaultValue: 1 }), partCount: (0, import_fields4.integer)({ defaultValue: 1 }), stakeMinor: requiredText(), potentialReturnMinor: (0, import_fields4.text)(), currency: requiredText(), decimalOdds: requiredText(), priceChangeConsent: status(["EXACT", "ACCEPT_BETTER", "ACCEPT_WITHIN_TOLERANCE"]), liveDelayMs: (0, import_fields4.integer)({ defaultValue: 0 }), expiresAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), termsHash: requiredText(), policyVersion: requiredText(), ...trackingFields } });
-var Wager = list3({ access: scopedAccess("canManageRisk"), fields: { tenant: tenant(), player: (0, import_fields4.relationship)({ ref: "Player" }), quote: (0, import_fields4.relationship)({ ref: "Quote" }), legalEntity: (0, import_fields4.relationship)({ ref: "LegalEntity" }), operatorJurisdiction: (0, import_fields4.relationship)({ ref: "OperatorJurisdiction" }), brand: (0, import_fields4.relationship)({ ref: "Brand" }), channel: (0, import_fields4.relationship)({ ref: "OperatorChannel" }), structure: status(["STRAIGHT", "PARLAY", "SYSTEM", "ROUND_ROBIN", "TEASER", "EACH_WAY"]), promotion: (0, import_fields4.relationship)({ ref: "Promotion" }), bonusAward: (0, import_fields4.relationship)({ ref: "BonusAward" }), version: (0, import_fields4.integer)({ defaultValue: 1 }), idempotencyKey: requiredText(), stakeMinor: requiredText(), potentialReturnMinor: requiredText(), maxPayoutMinor: (0, import_fields4.text)(), currency: requiredText(), termsHash: requiredText(), priceChangeConsent: status(["EXACT", "ACCEPT_BETTER", "ACCEPT_WITHIN_TOLERANCE"]), liveDelayMs: (0, import_fields4.integer)({ defaultValue: 0 }), requestedAt: (0, import_fields4.timestamp)(), status: status(["PENDING", "DELAYED", "ACCEPTED", "REJECTED", "OPEN", "PARTIALLY_CASHED_OUT", "CASHED_OUT", "GRADED", "SETTLED", "VOID"]), acceptedAt: (0, import_fields4.timestamp)(), ...trackingFields } });
-var WagerLeg = list3({ access: scopedAccess("canManageRisk"), fields: { tenant: tenant(), wager: (0, import_fields4.relationship)({ ref: "Wager" }), wagerPart: (0, import_fields4.relationship)({ ref: "WagerPart" }), legIndex: (0, import_fields4.integer)(), eventKey: requiredText(), marketKey: requiredText(), selectionKey: requiredText(), snapshotId: requiredText(), decimalOdds: requiredText(), line: (0, import_fields4.text)(), ruleVersion: requiredText(), correlationGroupKey: (0, import_fields4.text)(), live: (0, import_fields4.checkbox)({ defaultValue: false }), ...trackingFields } });
-var AcceptanceDecision = list3({ access: scopedAccess("canManageRisk"), fields: { tenant: tenant(), wager: (0, import_fields4.relationship)({ ref: "Wager" }), quote: (0, import_fields4.relationship)({ ref: "Quote" }), accepted: (0, import_fields4.checkbox)({ defaultValue: false }), rejectionCode: (0, import_fields4.text)(), gateResults: (0, import_fields4.json)(), inputHash: requiredText(), ...trackingFields } });
-var ResultVersion = list3({ access: scopedAccess("canManageRisk"), fields: { tenant: tenant(), event: (0, import_fields4.relationship)({ ref: "Event" }), providerConnection: (0, import_fields4.relationship)({ ref: "ProviderConnection" }), version: (0, import_fields4.integer)({ validation: { isRequired: true } }), status: status(["PENDING", "APPROVED", "REJECTED", "SUPERSEDED"]), payload: (0, import_fields4.json)(), payloadHash: requiredText(), approvedAt: (0, import_fields4.timestamp)(), ...trackingFields } });
-var Settlement = list3({ access: scopedAccess("canManageRisk"), fields: { tenant: tenant(), wager: (0, import_fields4.relationship)({ ref: "Wager" }), resultVersion: (0, import_fields4.relationship)({ ref: "ResultVersion" }), settlementRun: (0, import_fields4.relationship)({ ref: "SettlementRun" }), version: (0, import_fields4.integer)({ validation: { isRequired: true } }), outcome: status(["WIN", "LOSS", "PUSH", "VOID", "DEAD_HEAT", "PARTIAL"]), grossPayoutMinor: (0, import_fields4.text)(), taxMinor: (0, import_fields4.text)(), payoutMinor: requiredText(), inputHash: requiredText(), journalTransaction: (0, import_fields4.relationship)({ ref: "JournalTransaction" }), reversalOf: (0, import_fields4.relationship)({ ref: "Settlement" }), ...trackingFields } });
-var LedgerAccount = list3({ access: scopedAccess("canManageFinance"), fields: { tenant: tenant(), player: (0, import_fields4.relationship)({ ref: "Player" }), key: requiredText(), accountClass: status(["ASSET", "LIABILITY", "REVENUE", "EXPENSE", "EQUITY"]), currency: requiredText(), status: status(["ACTIVE", "FROZEN", "CLOSED"]), ...trackingFields } });
-var JournalTransaction = list3({ access: scopedAccess("canManageFinance"), fields: { tenant: tenant(), type: requiredText(), idempotencyKey: requiredText(), correlationId: requiredText(), status: status(["POSTED", "REVERSED"]), reversalOf: (0, import_fields4.relationship)({ ref: "JournalTransaction" }), effectiveAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), ...trackingFields } });
-var JournalEntry = list3({ access: scopedAccess("canManageFinance"), fields: { tenant: tenant(), transaction: (0, import_fields4.relationship)({ ref: "JournalTransaction" }), account: (0, import_fields4.relationship)({ ref: "LedgerAccount" }), side: status(["DEBIT", "CREDIT"]), amountMinor: requiredText(), currency: requiredText(), ...trackingFields } });
-var Hold = list3({ access: scopedAccess("canManageFinance"), fields: { tenant: tenant(), account: (0, import_fields4.relationship)({ ref: "LedgerAccount" }), purposeType: requiredText(), purposeId: requiredText(), amountMinor: requiredText(), status: status(["ACTIVE", "CAPTURED", "RELEASED", "EXPIRED"]), expiresAt: (0, import_fields4.timestamp)(), version: (0, import_fields4.integer)({ defaultValue: 1 }), ...trackingFields } });
-var ProviderConnection = list3({ access: scopedAccess("canManageIntegrations"), fields: { tenant: tenant(), legalEntity: (0, import_fields4.relationship)({ ref: "LegalEntity" }), jurisdiction: (0, import_fields4.relationship)({ ref: "Jurisdiction" }), adapterId: requiredText(), adapterVersion: requiredText(), configReference: requiredText(), secretReference: (0, import_fields4.text)(), dataResidencyRegion: (0, import_fields4.text)(), failoverPriority: (0, import_fields4.integer)({ defaultValue: 100 }), capabilities: (0, import_fields4.json)(), certificationStatus: status(["SANDBOX", "PENDING", "CERTIFIED", "SUSPENDED"]), status: status(["ACTIVE", "DEGRADED", "DISABLED"]), ...trackingFields } });
-var RawEnvelope = list3({ access: scopedAccess("canManageIntegrations"), fields: { tenant: tenant(), providerConnection: (0, import_fields4.relationship)({ ref: "ProviderConnection" }), direction: status(["INBOUND", "OUTBOUND"]), externalId: requiredText(), schemaVersion: requiredText(), installationRevision: (0, import_fields4.text)(), payload: (0, import_fields4.json)(), payloadHash: requiredText(), receivedAt: (0, import_fields4.timestamp)({ validation: { isRequired: true } }), ...trackingFields } });
-var InboxMessage = list3({ access: scopedAccess("canManageIntegrations"), fields: { tenant: tenant(), rawEnvelope: (0, import_fields4.relationship)({ ref: "RawEnvelope" }), messageKey: requiredText(), type: requiredText(), status: status(["PENDING", "PROCESSING", "COMPLETED", "DEAD"]), attempts: (0, import_fields4.integer)({ defaultValue: 0 }), availableAt: (0, import_fields4.timestamp)(), leaseUntil: (0, import_fields4.timestamp)(), leaseOwner: (0, import_fields4.text)(), lastError: (0, import_fields4.text)(), ...trackingFields } });
-var AuditEvent = list3({ access: scopedAccess("canReadAudit"), fields: { tenant: tenant(), actorId: requiredText(), action: requiredText(), targetType: requiredText(), targetId: requiredText(), reason: (0, import_fields4.text)(), payloadHash: requiredText(), previousHash: (0, import_fields4.text)(), hash: requiredText(), ...trackingFields } });
-
-// features/keystone/models/SportsbookP0.ts
-var SportsbookP0_exports = {};
-__export(SportsbookP0_exports, {
-  AMLCase: () => AMLCase,
-  AccountRestriction: () => AccountRestriction,
-  ApiRateBucket: () => ApiRateBucket,
-  ApprovalRequest: () => ApprovalRequest,
-  AuditAnchor: () => AuditAnchor,
-  BalanceProjection: () => BalanceProjection,
-  BetSlip: () => BetSlip,
-  BetSlipItem: () => BetSlipItem,
-  CashOutOffer: () => CashOutOffer,
-  Competitor: () => Competitor,
-  ComplianceReport: () => ComplianceReport,
-  ConfigValue: () => ConfigValue,
-  Consent: () => Consent,
-  DataCorrectionCase: () => DataCorrectionCase,
-  Dispute: () => Dispute,
-  DisputeEvent: () => DisputeEvent,
-  EventParticipant: () => EventParticipant,
-  ExposurePosition: () => ExposurePosition,
-  GeoCheck: () => GeoCheck,
-  GeoSession: () => GeoSession,
-  Incident: () => Incident,
-  LegGrade: () => LegGrade,
-  LegalHold: () => LegalHold,
-  LimitProfile: () => LimitProfile,
-  LimitRule: () => LimitRule,
-  MarketGrade: () => MarketGrade,
-  OnboardingProgress: () => OnboardingProgress,
-  PaymentAttempt: () => PaymentAttempt,
-  PaymentIntent: () => PaymentIntent,
-  PlayerIdentity: () => PlayerIdentity,
-  ProviderEntityMapping: () => ProviderEntityMapping,
-  ReconciliationItem: () => ReconciliationItem,
-  ReconciliationRun: () => ReconciliationRun,
-  ResettlementCase: () => ResettlementCase,
-  RoleGrant: () => RoleGrant,
-  TaxAssessment: () => TaxAssessment,
-  Team: () => Team,
-  TradingStatusChange: () => TradingStatusChange,
-  VerificationCase: () => VerificationCase,
-  VerificationCheck: () => VerificationCheck,
-  WagerStatusEvent: () => WagerStatusEvent,
-  WebhookReplay: () => WebhookReplay
-});
-var import_core4 = require("@keystone-6/core");
-var import_access7 = require("@keystone-6/core/access");
-var import_fields5 = require("@keystone-6/core/fields");
-var list4 = (config2) => (0, import_core4.list)({ ...config2, ui: { hideNavigation: true, hideCreate: true, hideDelete: true, ...config2.ui }, graphql: { ...config2.graphql, maxTake: 100 } });
-var t = () => (0, import_fields5.text)({ validation: { isRequired: true } });
-var rel = (ref2) => (0, import_fields5.relationship)({ ref: ref2 });
-var tenant2 = () => (0, import_fields5.relationship)({ ref: "Tenant", access: { create: import_access7.denyAll, update: import_access7.denyAll } });
-var st = (v) => (0, import_fields5.select)({ type: "enum", options: v.map((value) => ({ label: value, value })), defaultValue: v[0] });
-var scopedAccess2 = (capability) => ({ operation: { query: currentCapability(capability), create: import_access7.denyAll, update: import_access7.denyAll, delete: import_access7.denyAll }, filter: { query: currentTenantScope } });
-var immutable = scopedAccess2("canManageSportsbook");
-var f = (fields, access = immutable) => list4({ access, fields: { tenant: tenant2(), ...fields, ...trackingFields } });
-var Team = f({ name: t(), status: st(["ACTIVE", "INACTIVE"]), members: (0, import_fields5.relationship)({ ref: "User", many: true }) }, scopedAccess2("canManageRoles"));
-var RoleGrant = f({ user: rel("User"), role: rel("Role"), team: rel("Team"), scope: (0, import_fields5.json)(), effectiveFrom: (0, import_fields5.timestamp)(), effectiveTo: (0, import_fields5.timestamp)(), status: st(["ACTIVE", "REVOKED"]) }, scopedAccess2("canManageRoles"));
-var ApprovalRequest = f({ action: t(), payloadHash: t(), requesterId: t(), approverId: (0, import_fields5.text)(), status: st(["PENDING", "APPROVED", "REJECTED", "EXPIRED"]), reason: (0, import_fields5.text)(), decidedAt: (0, import_fields5.timestamp)(), requestPayload: (0, import_fields5.json)(), expiresAt: (0, import_fields5.timestamp)(), consumedAt: (0, import_fields5.timestamp)(), consumedById: (0, import_fields5.text)(), consumedKey: (0, import_fields5.text)() }, scopedAccess2("canManageRoles"));
-var ConfigValue = f({ key: t(), value: (0, import_fields5.json)(), valueType: t(), scopeType: t(), scopeId: (0, import_fields5.text)(), policyVersion: t(), effectiveFrom: (0, import_fields5.timestamp)(), effectiveTo: (0, import_fields5.timestamp)() }, scopedAccess2("canManageSportsbook"));
-var PlayerIdentity = f({ player: rel("Player"), encryptedPayload: t(), tokenizedIdentifiers: (0, import_fields5.json)(), encryptionKeyRef: t(), classification: st(["RESTRICTED_PII"]) }, scopedAccess2("canManageCompliance"));
-var VerificationCase = f({ player: rel("Player"), providerConnection: rel("ProviderConnection"), type: st(["KYC", "AGE", "ADDRESS"]), status: st(["PENDING", "APPROVED", "REJECTED", "EXPIRED"]), evidenceReference: (0, import_fields5.text)(), expiresAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageCompliance"));
-var VerificationCheck = f({ verificationCase: rel("VerificationCase"), attempt: (0, import_fields5.integer)(), decision: st(["PENDING", "PASS", "FAIL", "REVIEW"]), reasonCode: (0, import_fields5.text)(), rawEnvelope: rel("RawEnvelope") }, scopedAccess2("canManageCompliance"));
-var AMLCase = f({ player: rel("Player"), status: st(["OPEN", "REVIEW", "CLOSED"]), riskBand: st(["LOW", "MEDIUM", "HIGH"]), restrictedEvidence: (0, import_fields5.json)(), ownerId: (0, import_fields5.text)() }, scopedAccess2("canManageCompliance"));
-var GeoSession = f({ player: rel("Player"), sessionKey: t(), status: st(["ACTIVE", "EXPIRED", "REVOKED"]), expiresAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageCompliance"));
-var GeoCheck = f({ geoSession: rel("GeoSession"), providerConnection: rel("ProviderConnection"), decision: st(["ALLOW", "DENY", "UNKNOWN"]), reasonCode: (0, import_fields5.text)(), coarseEvidence: (0, import_fields5.json)(), checkedAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageCompliance"));
-var AccountRestriction = f({ player: rel("Player"), capability: t(), reasonCode: t(), startsAt: (0, import_fields5.timestamp)(), endsAt: (0, import_fields5.timestamp)(), status: st(["ACTIVE", "EXPIRED", "REVOKED"]) }, scopedAccess2("canManageCompliance"));
-var Consent = f({ player: rel("Player"), type: t(), policyVersion: t(), givenAt: (0, import_fields5.timestamp)(), withdrawnAt: (0, import_fields5.timestamp)(), evidenceHash: t() }, scopedAccess2("canManageCompliance"));
-var Competitor = f({ key: t(), name: t(), status: st(["ACTIVE", "INACTIVE"]) }, scopedAccess2("canTrade"));
-var EventParticipant = f({ event: rel("Event"), competitor: rel("Competitor"), role: t(), sortOrder: (0, import_fields5.integer)() }, scopedAccess2("canTrade"));
-var ProviderEntityMapping = f({ providerConnection: rel("ProviderConnection"), entityType: t(), externalId: t(), canonicalType: t(), canonicalId: t(), confidence: (0, import_fields5.text)(), status: st(["PENDING", "APPROVED", "REJECTED"]) }, scopedAccess2("canTrade"));
-var TradingStatusChange = f({ scopeType: t(), scopeId: t(), fromStatus: t(), toStatus: t(), reason: t(), source: t(), actorId: (0, import_fields5.text)(), effectiveAt: (0, import_fields5.timestamp)() }, scopedAccess2("canTrade"));
-var LimitProfile = f({ name: t(), version: (0, import_fields5.integer)(), status: st(["DRAFT", "ACTIVE", "RETIRED"]), effectiveFrom: (0, import_fields5.timestamp)(), effectiveTo: (0, import_fields5.timestamp)() }, scopedAccess2("canManageRisk"));
-var LimitRule = f({ profile: rel("LimitProfile"), scopeType: t(), scopeId: (0, import_fields5.text)(), maxStakeMinor: (0, import_fields5.text)(), maxPayoutMinor: (0, import_fields5.text)(), maxLiabilityMinor: (0, import_fields5.text)(), currency: t(), priority: (0, import_fields5.integer)() }, scopedAccess2("canManageRisk"));
-var ExposurePosition = f({ scopeType: t(), scopeId: t(), currency: t(), stakeMinor: t(), liabilityMinor: t(), version: (0, import_fields5.integer)(), asOf: (0, import_fields5.timestamp)() }, scopedAccess2("canManageRisk"));
-var BetSlip = f({ player: rel("Player"), currency: t(), status: st(["OPEN", "QUOTED", "EXPIRED", "ACCEPTED"]), expiresAt: (0, import_fields5.timestamp)(), version: (0, import_fields5.integer)(), quoteKey: (0, import_fields5.text)() }, scopedAccess2("canManageRisk"));
-var BetSlipItem = f({ betSlip: rel("BetSlip"), selection: rel("Selection"), priceSnapshot: rel("PriceSnapshot"), requestedOdds: t(), line: (0, import_fields5.text)() }, scopedAccess2("canManageRisk"));
-var WagerStatusEvent = f({ wager: rel("Wager"), fromStatus: (0, import_fields5.text)(), toStatus: t(), reasonCode: t(), actorId: (0, import_fields5.text)(), effectiveAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageRisk"));
-var MarketGrade = f({ market: rel("Market"), resultVersion: rel("ResultVersion"), ruleVersion: t(), outcome: t(), factorNumerator: (0, import_fields5.text)(), factorDenominator: (0, import_fields5.text)(), trace: (0, import_fields5.json)(), inputHash: t() }, scopedAccess2("canManageRisk"));
-var LegGrade = f({ wagerLeg: rel("WagerLeg"), marketGrade: rel("MarketGrade"), outcome: t(), factorNumerator: (0, import_fields5.text)(), factorDenominator: (0, import_fields5.text)(), inputHash: t() }, scopedAccess2("canManageRisk"));
-var ResettlementCase = f({ wager: rel("Wager"), oldSettlement: rel("Settlement"), newResultVersion: rel("ResultVersion"), reason: t(), approvalRequest: rel("ApprovalRequest"), status: st(["PENDING", "APPROVED", "COMPLETED", "REJECTED"]) }, scopedAccess2("canManageRisk"));
-var CashOutOffer = f({ wager: rel("Wager"), amountMinor: t(), currency: t(), portionNumerator: t(), portionDenominator: t(), feeMinor: (0, import_fields5.text)(), marginBasisPoints: (0, import_fields5.integer)(), valuationInputs: (0, import_fields5.json)(), valuationHash: t(), wagerVersion: (0, import_fields5.integer)(), offeredAt: (0, import_fields5.timestamp)(), expiresAt: (0, import_fields5.timestamp)(), status: st(["OPEN", "ACCEPTED", "EXPIRED", "WITHDRAWN"]) }, scopedAccess2("canManageRisk"));
-var Dispute = f({ player: rel("Player"), wager: rel("Wager"), category: t(), status: st(["OPEN", "TRIAGED", "INVESTIGATING", "PROPOSED_RESOLUTION", "RESOLVED", "REJECTED", "APPEALED"]), evidence: (0, import_fields5.json)(), resolution: (0, import_fields5.text)(), approvalRequest: rel("ApprovalRequest"), resolvedAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageRisk"));
-var DisputeEvent = f({ dispute: rel("Dispute"), type: t(), actorId: t(), evidenceHash: t(), details: (0, import_fields5.json)() }, scopedAccess2("canManageRisk"));
-var BalanceProjection = f({ account: rel("LedgerAccount"), postedMinor: t(), pendingMinor: t(), availableMinor: t(), version: (0, import_fields5.integer)(), asOf: (0, import_fields5.timestamp)() }, scopedAccess2("canManageFinance"));
-var PaymentIntent = f({ player: rel("Player"), type: st(["DEPOSIT", "WITHDRAWAL", "REFUND", "CHARGEBACK", "ADJUSTMENT"]), amountMinor: t(), feeMinor: (0, import_fields5.text)(), currency: t(), idempotencyKey: t(), status: st(["PENDING", "REVIEW", "PROCESSING", "SUCCEEDED", "FAILED", "UNKNOWN", "CANCELLED"]), providerConnection: rel("ProviderConnection"), paymentMethodReference: (0, import_fields5.text)(), providerSessionReference: (0, import_fields5.text)(), hold: rel("Hold"), riskEvidence: (0, import_fields5.json)(), completedAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageFinance"));
-var PaymentAttempt = f({ paymentIntent: rel("PaymentIntent"), attempt: (0, import_fields5.integer)(), externalReference: (0, import_fields5.text)(), status: st(["PENDING", "SUCCEEDED", "FAILED", "UNKNOWN"]), rawEnvelope: rel("RawEnvelope"), reasonCode: (0, import_fields5.text)() }, scopedAccess2("canManageFinance"));
-var ReconciliationRun = f({ type: t(), windowFrom: (0, import_fields5.timestamp)(), windowTo: (0, import_fields5.timestamp)(), status: st(["PENDING", "RUNNING", "COMPLETED", "FAILED"]), inputHash: t(), differenceMinor: (0, import_fields5.text)() }, scopedAccess2("canManageFinance"));
-var ReconciliationItem = f({ run: rel("ReconciliationRun"), internalReference: t(), providerReference: (0, import_fields5.text)(), differenceMinor: t(), currency: t(), status: st(["MATCHED", "OPEN", "RESOLVED"]), resolutionJournal: rel("JournalTransaction") }, scopedAccess2("canManageFinance"));
-var TaxAssessment = f({ wager: rel("Wager"), ruleVersion: t(), basisMinor: t(), amountMinor: t(), currency: t(), status: st(["CALCULATED", "POSTED", "REVERSED"]) }, scopedAccess2("canManageFinance"));
-var Incident = f({ severity: st(["SEV1", "SEV2", "SEV3", "SEV4"]), title: t(), status: st(["OPEN", "MITIGATING", "RESOLVED"]), commanderId: (0, import_fields5.text)(), evidence: (0, import_fields5.json)(), resolvedAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageIntegrations"));
-var ComplianceReport = f({ type: t(), periodStart: (0, import_fields5.timestamp)(), periodEnd: (0, import_fields5.timestamp)(), version: (0, import_fields5.integer)(), artifactHash: t(), artifactReference: t(), status: st(["DRAFT", "APPROVED", "SUBMITTED"]), submittedAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageCompliance"));
-var LegalHold = f({ scopeType: t(), scopeId: t(), reason: t(), startsAt: (0, import_fields5.timestamp)(), endsAt: (0, import_fields5.timestamp)(), status: st(["ACTIVE", "RELEASED"]), approvalRequest: rel("ApprovalRequest") }, scopedAccess2("canManageCompliance"));
-var DataCorrectionCase = f({ scopeType: t(), scopeId: t(), reason: t(), dryRunHash: t(), approvalRequest: rel("ApprovalRequest"), status: st(["PENDING", "APPROVED", "APPLIED", "REJECTED"]) }, scopedAccess2("canManageRisk"));
-var ApiRateBucket = f({ keyHash: t(), scope: t(), windowStartedAt: (0, import_fields5.timestamp)(), count: (0, import_fields5.integer)({ defaultValue: 0 }), expiresAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageIntegrations"));
-var WebhookReplay = f({ providerConnection: rel("ProviderConnection"), messageHash: t(), occurredAt: (0, import_fields5.timestamp)(), expiresAt: (0, import_fields5.timestamp)() }, scopedAccess2("canManageIntegrations"));
-var AuditAnchor = f({ chainHeadHash: t(), eventCount: (0, import_fields5.integer)(), anchoredAt: (0, import_fields5.timestamp)(), externalReference: t(), status: st(["PENDING", "ANCHORED", "FAILED"]) }, scopedAccess2("canReadAudit"));
-var OnboardingProgress = f({ stage: t(), status: st(["PENDING", "COMPLETE", "BLOCKED"]), evidenceHash: t(), completedAt: (0, import_fields5.timestamp)(), details: (0, import_fields5.json)() }, scopedAccess2("canManageSportsbook"));
-
-// features/keystone/models/Customer.ts
-var Customer_exports = {};
-__export(Customer_exports, {
-  CustomerCommand: () => CustomerCommand,
-  CustomerQuoteLegTerms: () => CustomerQuoteLegTerms,
-  CustomerQuoteTerms: () => CustomerQuoteTerms,
-  CustomerSession: () => CustomerSession
-});
-var import_core5 = require("@keystone-6/core");
-var import_access9 = require("@keystone-6/core/access");
-var import_fields6 = require("@keystone-6/core/fields");
-var list5 = (config2) => (0, import_core5.list)({ ...config2, ui: { hideNavigation: true, hideCreate: true, hideDelete: true, ...config2.ui }, graphql: { ...config2.graphql, maxTake: 100 } });
-var internalAccess = {
-  operation: {
-    query: import_access9.denyAll,
-    create: import_access9.denyAll,
-    update: import_access9.denyAll,
-    delete: import_access9.denyAll
-  }
-};
-var requiredText2 = (isIndexed) => (0, import_fields6.text)({
-  validation: { isRequired: true },
-  ...isIndexed ? { isIndexed } : {}
-});
-var internalList = (fields, graphql6 = {}) => list5({
-  access: internalAccess,
-  graphql: { omit: true, ...graphql6 },
-  ui: { hideNavigation: true, hideCreate: true, hideDelete: true },
-  fields: {
-    ...fields,
-    ...trackingFields
-  }
-});
-var CustomerSession = internalList({
-  tenant: (0, import_fields6.relationship)({ ref: "Tenant" }),
-  player: (0, import_fields6.relationship)({ ref: "Player" }),
-  tokenDigest: requiredText2("unique"),
-  expiresAt: (0, import_fields6.timestamp)({ validation: { isRequired: true } }),
-  assuranceLevel: (0, import_fields6.select)({ type: "enum", options: ["GUEST", "PASSWORD", "MFA"].map((value) => ({ label: value, value })), defaultValue: "GUEST" }),
-  deviceDigest: (0, import_fields6.text)(),
-  lastSeenAt: (0, import_fields6.timestamp)(),
-  revokedAt: (0, import_fields6.timestamp)()
-});
-var CustomerCommand = internalList({
-  tenant: (0, import_fields6.relationship)({ ref: "Tenant" }),
-  player: (0, import_fields6.relationship)({ ref: "Player" }),
-  commandKey: requiredText2("unique"),
-  idempotencyKey: requiredText2(),
-  type: (0, import_fields6.select)({
-    type: "enum",
-    options: ["WAGER", "FUND", "LIMIT", "EXCLUSION", "AUTH", "CASH_OUT", "PROMOTION", "DISPUTE", "PROFILE", "PRIVACY"].map((value) => ({ label: value, value })),
-    defaultValue: "WAGER"
-  }),
-  requestHash: requiredText2(),
-  status: (0, import_fields6.select)({
-    type: "enum",
-    options: ["IN_PROGRESS", "SUCCEEDED", "REJECTED"].map((value) => ({ label: value, value })),
-    defaultValue: "IN_PROGRESS"
-  }),
-  result: (0, import_fields6.json)()
-});
-var CustomerQuoteTerms = internalList({
-  tenant: (0, import_fields6.relationship)({ ref: "Tenant" }),
-  player: (0, import_fields6.relationship)({ ref: "Player" }),
-  quote: (0, import_fields6.relationship)({ ref: "Quote" }),
-  quoteKey: requiredText2("unique"),
-  structure: (0, import_fields6.select)({ type: "enum", options: ["STRAIGHT", "PARLAY", "SYSTEM", "ROUND_ROBIN", "TEASER", "EACH_WAY"].map((value) => ({ label: value, value })), defaultValue: "STRAIGHT" }),
-  legCount: (0, import_fields6.text)({ validation: { isRequired: true }, defaultValue: "1" }),
-  partCount: (0, import_fields6.text)({ validation: { isRequired: true }, defaultValue: "1" }),
-  partPlan: (0, import_fields6.json)(),
-  priceChangeConsent: (0, import_fields6.text)({ defaultValue: "EXACT" }),
-  liveDelayMs: (0, import_fields6.text)({ defaultValue: "0" }),
-  bonusEconomics: (0, import_fields6.json)(),
-  eventId: requiredText2(),
-  marketId: requiredText2(),
-  selectionId: requiredText2(),
-  priceSnapshotId: requiredText2(),
-  eventName: requiredText2(),
-  marketName: requiredText2(),
-  selectionName: requiredText2(),
-  decimalOdds: requiredText2(),
-  stakeMinor: requiredText2(),
-  potentialReturnMinor: requiredText2(),
-  currency: requiredText2(),
-  termsHash: requiredText2(),
-  expiresAt: (0, import_fields6.timestamp)({ validation: { isRequired: true } })
-}, { plural: "CustomerQuoteTermRecords" });
-var CustomerQuoteLegTerms = internalList({
-  tenant: (0, import_fields6.relationship)({ ref: "Tenant" }),
-  player: (0, import_fields6.relationship)({ ref: "Player" }),
-  quote: (0, import_fields6.relationship)({ ref: "Quote" }),
-  quoteKey: requiredText2(),
-  legIndex: (0, import_fields6.text)({ validation: { isRequired: true } }),
-  eventId: requiredText2(),
-  marketId: requiredText2(),
-  selectionId: requiredText2(),
-  priceSnapshotId: requiredText2(),
-  eventName: requiredText2(),
-  marketName: requiredText2(),
-  selectionName: requiredText2(),
-  decimalOdds: requiredText2(),
-  line: (0, import_fields6.text)(),
-  live: (0, import_fields6.select)({ type: "enum", options: ["PREMATCH", "LIVE"].map((value) => ({ label: value, value })), defaultValue: "PREMATCH" }),
-  correlationGroupKey: (0, import_fields6.text)(),
-  ruleVersion: requiredText2(),
-  evidenceHash: requiredText2()
-}, { plural: "CustomerQuoteLegTermRecords" });
-
-// features/keystone/models/SportsbookFull.ts
-var SportsbookFull_exports = {};
-__export(SportsbookFull_exports, {
-  AccessReview: () => AccessReview,
-  AccountClosure: () => AccountClosure,
-  AdapterCertificationRun: () => AdapterCertificationRun,
-  AffiliateAttribution: () => AffiliateAttribution,
-  AffordabilityAssessment: () => AffordabilityAssessment,
-  BonusAward: () => BonusAward,
-  BonusTransaction: () => BonusTransaction,
-  BrandLocale: () => BrandLocale,
-  CampaignBudget: () => CampaignBudget,
-  CashOutAcceptance: () => CashOutAcceptance,
-  CompetitionStage: () => CompetitionStage,
-  ConfigDefinition: () => ConfigDefinition,
-  CorrelationGroup: () => CorrelationGroup,
-  CorrelationRule: () => CorrelationRule,
-  CurrencyDefinition: () => CurrencyDefinition,
-  CustomerCredential: () => CustomerCredential,
-  CustomerDevice: () => CustomerDevice,
-  CustomerFavorite: () => CustomerFavorite,
-  CustomerPrivacyRequest: () => CustomerPrivacyRequest,
-  CustomerRecoveryToken: () => CustomerRecoveryToken,
-  DataExport: () => DataExport,
-  EventScheduleChange: () => EventScheduleChange,
-  FeatureFlag: () => FeatureFlag,
-  FeedHealthSnapshot: () => FeedHealthSnapshot,
-  HouseRuleVersion: () => HouseRuleVersion,
-  IntegrationDeliveryAttempt: () => IntegrationDeliveryAttempt,
-  IntegrityCase: () => IntegrityCase,
-  JurisdictionPolicyVersion: () => JurisdictionPolicyVersion,
-  LedgerAdjustmentRequest: () => LedgerAdjustmentRequest,
-  LegalEntity: () => LegalEntity,
-  MarketDefinition: () => MarketDefinition,
-  Notification: () => Notification,
-  OperatorChannel: () => OperatorChannel,
-  PamSubjectMapping: () => PamSubjectMapping,
-  PlayerStatement: () => PlayerStatement,
-  Promotion: () => Promotion,
-  PromotionRedemption: () => PromotionRedemption,
-  PromotionRuleVersion: () => PromotionRuleVersion,
-  ProviderHealthSample: () => ProviderHealthSample,
-  Region: () => Region,
-  ReportArtifact: () => ReportArtifact,
-  RetentionExecution: () => RetentionExecution,
-  RetentionPolicyVersion: () => RetentionPolicyVersion,
-  SafeguardingAccount: () => SafeguardingAccount,
-  SafeguardingReconciliation: () => SafeguardingReconciliation,
-  ScreeningHit: () => ScreeningHit,
-  Season: () => Season,
-  SettlementLine: () => SettlementLine,
-  SettlementRun: () => SettlementRun,
-  SupportCase: () => SupportCase,
-  SupportCaseEvent: () => SupportCaseEvent,
-  TaxRuleVersion: () => TaxRuleVersion,
-  TenantCurrency: () => TenantCurrency,
-  TraderOverride: () => TraderOverride,
-  TradingReplayRun: () => TradingReplayRun,
-  Venue: () => Venue,
-  WagerExposureAllocation: () => WagerExposureAllocation,
-  WagerPart: () => WagerPart,
-  WebhookDelivery: () => WebhookDelivery,
-  WebhookEndpoint: () => WebhookEndpoint
-});
-var import_core6 = require("@keystone-6/core");
-var import_access10 = require("@keystone-6/core/access");
-var import_fields7 = require("@keystone-6/core/fields");
-var list6 = (config2) => (0, import_core6.list)({ ...config2, ui: { hideNavigation: true, hideCreate: true, hideDelete: true, ...config2.ui }, graphql: { ...config2.graphql, maxTake: 100 } });
-var requiredText3 = () => (0, import_fields7.text)({ validation: { isRequired: true } });
-var optionalText = () => (0, import_fields7.text)();
-var requiredTime = () => (0, import_fields7.timestamp)({ validation: { isRequired: true } });
-var relation = (ref2) => (0, import_fields7.relationship)({ ref: ref2, many: false, validation: { isRequired: true } });
-var optionalRelation = (ref2) => (0, import_fields7.relationship)({ ref: ref2, many: false });
-var tenant3 = () => (0, import_fields7.relationship)({ ref: "Tenant", many: false, validation: { isRequired: true }, access: { create: import_access10.denyAll, update: import_access10.denyAll } });
-var status2 = (values, defaultValue = values[0]) => (0, import_fields7.select)({ type: "enum", options: values.map((value) => ({ label: value, value })), defaultValue });
-var scopedAccess3 = (capability) => ({ operation: { query: currentCapability(capability), create: import_access10.denyAll, update: import_access10.denyAll, delete: import_access10.denyAll }, filter: { query: currentTenantScope } });
-var scoped = (capability, fields) => list6({ access: scopedAccess3(capability), fields: { tenant: tenant3(), ...fields, ...trackingFields } });
-var internal = (fields) => list6({ access: { operation: { query: import_access10.denyAll, create: import_access10.denyAll, update: import_access10.denyAll, delete: import_access10.denyAll } }, graphql: { omit: true }, ui: { isHidden: true }, fields: { ...fields, ...trackingFields } });
-var LegalEntity = scoped("canManageSportsbook", {
-  name: requiredText3(),
-  countryCode: requiredText3(),
-  registrationReference: requiredText3(),
-  status: status2(["PENDING", "ACTIVE", "SUSPENDED", "CLOSED"])
-});
-var CurrencyDefinition = list6({
-  access: { operation: { query: currentCapability("canManageSportsbook"), create: import_access10.denyAll, update: import_access10.denyAll, delete: import_access10.denyAll } },
-  fields: { code: (0, import_fields7.text)({ validation: { isRequired: true }, isIndexed: "unique" }), exponent: (0, import_fields7.integer)({ validation: { isRequired: true } }), name: requiredText3(), status: status2(["ACTIVE", "INACTIVE"]), ...trackingFields }
-});
-var TenantCurrency = scoped("canManageSportsbook", {
-  currency: relation("CurrencyDefinition"),
-  depositsEnabled: (0, import_fields7.checkbox)({ defaultValue: false }),
-  withdrawalsEnabled: (0, import_fields7.checkbox)({ defaultValue: false }),
-  wageringEnabled: (0, import_fields7.checkbox)({ defaultValue: false }),
-  defaultForBrand: (0, import_fields7.checkbox)({ defaultValue: false }),
-  status: status2(["PENDING", "ACTIVE", "SUSPENDED"])
-});
-var JurisdictionPolicyVersion = scoped("canManageSportsbook", {
-  jurisdiction: relation("Jurisdiction"),
-  version: (0, import_fields7.integer)({ validation: { isRequired: true } }),
-  authorityCitation: requiredText3(),
-  policyDocument: (0, import_fields7.json)(),
-  effectiveFrom: requiredTime(),
-  effectiveTo: (0, import_fields7.timestamp)(),
-  status: status2(["DRAFT", "APPROVED", "ACTIVE", "RETIRED"]),
-  approvedBy: optionalText(),
-  approvedAt: (0, import_fields7.timestamp)(),
-  evidenceHash: requiredText3()
-});
-var HouseRuleVersion = scoped("canManageSportsbook", {
-  name: requiredText3(),
-  version: (0, import_fields7.integer)({ validation: { isRequired: true } }),
-  sportKey: optionalText(),
-  marketDefinitionKey: optionalText(),
-  rules: (0, import_fields7.json)(),
-  semanticHash: requiredText3(),
-  effectiveFrom: requiredTime(),
-  effectiveTo: (0, import_fields7.timestamp)(),
-  status: status2(["DRAFT", "APPROVED", "ACTIVE", "RETIRED"]),
-  approvalRequest: optionalRelation("ApprovalRequest")
-});
-var FeatureFlag = scoped("canManageSportsbook", {
-  key: requiredText3(),
-  description: requiredText3(),
-  enabled: (0, import_fields7.checkbox)({ defaultValue: false }),
-  scopeType: status2(["TENANT", "BRAND", "JURISDICTION", "CHANNEL"]),
-  scopeId: requiredText3(),
-  safeDefault: (0, import_fields7.checkbox)({ defaultValue: false }),
-  ownerId: requiredText3(),
-  expiresAt: (0, import_fields7.timestamp)(),
-  approvalRequest: optionalRelation("ApprovalRequest")
-});
-var ConfigDefinition = scoped("canManageSportsbook", {
-  key: requiredText3(),
-  valueType: status2(["STRING", "INTEGER", "MONEY", "BOOLEAN", "JSON"]),
-  mergeStrategy: status2(["REPLACE", "MIN", "MAX", "UNION", "DENY_WINS"]),
-  allowedScopes: (0, import_fields7.json)(),
-  validationSchema: (0, import_fields7.json)(),
-  secret: (0, import_fields7.checkbox)({ defaultValue: false }),
-  description: requiredText3()
-});
-var BrandLocale = scoped("canManageSportsbook", {
-  brand: relation("Brand"),
-  locale: requiredText3(),
-  language: requiredText3(),
-  timezone: requiredText3(),
-  termsVersion: requiredText3(),
-  termsContentHash: requiredText3(),
-  default: (0, import_fields7.checkbox)({ defaultValue: false }),
-  status: status2(["DRAFT", "ACTIVE", "RETIRED"])
-});
-var OperatorChannel = scoped("canManageSportsbook", {
-  legalEntity: relation("LegalEntity"),
-  operatorJurisdiction: relation("OperatorJurisdiction"),
-  brand: relation("Brand"),
-  key: requiredText3(),
-  type: status2(["WEB", "MOBILE_WEB", "NATIVE", "RETAIL", "PAM"]),
-  status: status2(["PENDING", "ACTIVE", "SUSPENDED"]),
-  capabilities: (0, import_fields7.json)()
-});
-var AccessReview = scoped("canManageRoles", {
-  scopeType: requiredText3(),
-  scopeId: requiredText3(),
-  status: status2(["OPEN", "IN_REVIEW", "APPROVED", "REMEDIATION", "CLOSED"]),
-  openedBy: requiredText3(),
-  reviewerId: optionalText(),
-  findings: (0, import_fields7.json)(),
-  dueAt: requiredTime(),
-  completedAt: (0, import_fields7.timestamp)()
-});
-var Region = scoped("canTrade", { key: requiredText3(), name: requiredText3(), countryCodes: (0, import_fields7.json)(), status: status2(["ACTIVE", "INACTIVE"]) });
-var Season = scoped("canTrade", { competition: relation("Competition"), key: requiredText3(), name: requiredText3(), startsAt: requiredTime(), endsAt: requiredTime(), status: status2(["SCHEDULED", "ACTIVE", "COMPLETE", "CANCELLED"]) });
-var CompetitionStage = scoped("canTrade", { season: relation("Season"), key: requiredText3(), name: requiredText3(), sortOrder: (0, import_fields7.integer)({ validation: { isRequired: true } }), status: status2(["SCHEDULED", "ACTIVE", "COMPLETE"]) });
-var Venue = scoped("canTrade", { key: requiredText3(), name: requiredText3(), countryCode: requiredText3(), timezone: requiredText3(), address: (0, import_fields7.json)(), status: status2(["ACTIVE", "INACTIVE"]) });
-var MarketDefinition = scoped("canTrade", { key: requiredText3(), name: requiredText3(), sportKey: requiredText3(), parametersSchema: (0, import_fields7.json)(), gradingRuleFamily: requiredText3(), allowedPhases: (0, import_fields7.json)(), status: status2(["DRAFT", "ACTIVE", "RETIRED"]), version: (0, import_fields7.integer)({ validation: { isRequired: true } }) });
-var EventScheduleChange = scoped("canTrade", { event: relation("Event"), fromStartAt: requiredTime(), toStartAt: requiredTime(), reasonCode: requiredText3(), source: requiredText3(), actorId: requiredText3(), evidenceHash: requiredText3() });
-var FeedHealthSnapshot = scoped("canManageIntegrations", { providerConnection: relation("ProviderConnection"), scopeType: requiredText3(), scopeId: requiredText3(), status: status2(["HEALTHY", "DEGRADED", "STALE", "GAPPED", "DOWN"]), heartbeatAt: (0, import_fields7.timestamp)(), lagMs: (0, import_fields7.integer)(), lastSequence: optionalText(), gapFrom: optionalText(), gapTo: optionalText(), checkedAt: requiredTime(), actionTaken: optionalText() });
-var CorrelationGroup = scoped("canManageRisk", { key: requiredText3(), name: requiredText3(), sportKey: requiredText3(), status: status2(["DRAFT", "ACTIVE", "RETIRED"]), version: (0, import_fields7.integer)({ validation: { isRequired: true } }) });
-var CorrelationRule = scoped("canManageRisk", { group: relation("CorrelationGroup"), leftPattern: (0, import_fields7.json)(), rightPattern: (0, import_fields7.json)(), decision: status2(["ALLOW", "DENY", "PROVIDER_PRICE_REQUIRED"]), reasonCode: requiredText3(), priority: (0, import_fields7.integer)({ validation: { isRequired: true } }) });
-var TraderOverride = scoped("canTrade", { targetType: requiredText3(), targetId: requiredText3(), overrideType: status2(["PRICE", "LINE", "STATUS", "MAX_STAKE", "MAX_PAYOUT", "MAX_LIABILITY", "CASH_OUT"]), value: (0, import_fields7.json)(), reasonCode: requiredText3(), startsAt: requiredTime(), expiresAt: requiredTime(), status: status2(["PENDING", "ACTIVE", "EXPIRED", "REVOKED"]), requesterId: requiredText3(), approvalRequest: optionalRelation("ApprovalRequest") });
-var TradingReplayRun = scoped("canManageIntegrations", { providerConnection: relation("ProviderConnection"), scopeType: requiredText3(), scopeId: requiredText3(), frontier: requiredText3(), adapterVersion: requiredText3(), normalizerVersion: requiredText3(), ruleVersion: requiredText3(), inputHash: requiredText3(), outputHash: optionalText(), comparison: (0, import_fields7.json)(), dryRun: (0, import_fields7.checkbox)({ defaultValue: true }), status: status2(["PENDING", "RUNNING", "MATCHED", "DIFFERENT", "FAILED"]), completedAt: (0, import_fields7.timestamp)() });
-var WagerExposureAllocation = scoped("canManageRisk", { wager: relation("Wager"), market: relation("Market"), stakeMinor: requiredText3(), liabilityMinor: requiredText3(), remainingStakeMinor: requiredText3(), remainingLiabilityMinor: requiredText3(), version: (0, import_fields7.integer)({ validation: { isRequired: true } }), status: status2(["OPEN", "PARTIALLY_CLOSED", "CLOSED"]) });
-var WagerPart = scoped("canManageRisk", { wager: relation("Wager"), partIndex: (0, import_fields7.integer)({ validation: { isRequired: true } }), combinationKey: requiredText3(), stakeMinor: requiredText3(), decimalOdds: requiredText3(), potentialReturnMinor: requiredText3(), status: status2(["OPEN", "GRADED", "SETTLED", "CASHED_OUT", "VOID"]), gradeSummary: (0, import_fields7.json)(), settlement: optionalRelation("Settlement") });
-var SettlementRun = scoped("canManageRisk", { triggerType: status2(["RESULT_APPROVED", "CORRECTION", "MANUAL_REPLAY"]), resultVersion: relation("ResultVersion"), inputHash: requiredText3(), status: status2(["PENDING", "RUNNING", "COMPLETED", "FAILED"]), wagersConsidered: (0, import_fields7.integer)({ defaultValue: 0 }), wagersSettled: (0, import_fields7.integer)({ defaultValue: 0 }), startedAt: requiredTime(), completedAt: (0, import_fields7.timestamp)(), errorSummary: optionalText() });
-var SettlementLine = scoped("canManageRisk", { settlement: relation("Settlement"), wagerPart: optionalRelation("WagerPart"), wagerLeg: optionalRelation("WagerLeg"), lineType: status2(["STAKE_RETURN", "PROFIT", "LOSS", "VOID", "PUSH", "DEAD_HEAT", "TAX", "ROUNDING"]), amountMinor: requiredText3(), unroundedValue: requiredText3(), scale: (0, import_fields7.integer)({ validation: { isRequired: true } }), roundingRule: requiredText3(), residualMinor: requiredText3(), trace: (0, import_fields7.json)() });
-var CashOutAcceptance = scoped("canManageRisk", { offer: relation("CashOutOffer"), wager: relation("Wager"), player: relation("Player"), amountMinor: requiredText3(), currency: requiredText3(), portionNumerator: requiredText3(), portionDenominator: requiredText3(), wagerVersion: (0, import_fields7.integer)({ validation: { isRequired: true } }), acceptedAt: requiredTime(), journalTransaction: relation("JournalTransaction"), status: status2(["ACCEPTED", "REVERSED"]), reversalOf: optionalRelation("CashOutAcceptance"), idempotencyKey: requiredText3(), evidenceHash: requiredText3() });
-var SafeguardingAccount = scoped("canManageFinance", { legalEntity: relation("LegalEntity"), providerConnection: optionalRelation("ProviderConnection"), accountReference: requiredText3(), classification: status2(["NOT_PROTECTED", "MEDIUM_PROTECTION", "HIGH_PROTECTION", "TRUST"]), currency: requiredText3(), status: status2(["ACTIVE", "SUSPENDED", "CLOSED"]), disclosureVersion: requiredText3() });
-var SafeguardingReconciliation = scoped("canManageFinance", { safeguardingAccount: relation("SafeguardingAccount"), asOf: requiredTime(), safeguardedAssetMinor: requiredText3(), playerLiabilityMinor: requiredText3(), differenceMinor: requiredText3(), status: status2(["MATCHED", "SHORTFALL", "SURPLUS", "RESOLVED"]), evidenceHash: requiredText3(), reconciliationRun: optionalRelation("ReconciliationRun") });
-var LedgerAdjustmentRequest = scoped("canManageFinance", { player: optionalRelation("Player"), account: relation("LedgerAccount"), amountMinor: requiredText3(), currency: requiredText3(), direction: status2(["DEBIT", "CREDIT"]), reasonCode: requiredText3(), evidence: (0, import_fields7.json)(), status: status2(["PENDING", "APPROVED", "POSTED", "REJECTED"]), requesterId: requiredText3(), approvalRequest: relation("ApprovalRequest"), journalTransaction: optionalRelation("JournalTransaction") });
-var TaxRuleVersion = scoped("canManageFinance", { jurisdiction: relation("Jurisdiction"), key: requiredText3(), version: (0, import_fields7.integer)({ validation: { isRequired: true } }), basis: status2(["STAKE", "WINNINGS", "GGR", "PLAYER_WITHHOLDING", "PROMOTION"]), rateNumerator: requiredText3(), rateDenominator: requiredText3(), roundingRule: requiredText3(), effectiveFrom: requiredTime(), effectiveTo: (0, import_fields7.timestamp)(), status: status2(["DRAFT", "ACTIVE", "RETIRED"]), evidenceHash: requiredText3() });
-var PlayerStatement = scoped("canManageFinance", { player: relation("Player"), periodStart: requiredTime(), periodEnd: requiredTime(), openingMinor: requiredText3(), closingMinor: requiredText3(), currency: requiredText3(), journalHash: requiredText3(), artifactReference: requiredText3(), status: status2(["GENERATING", "READY", "FAILED"]) });
-var Promotion = scoped("canManageSportsbook", { key: requiredText3(), name: requiredText3(), description: requiredText3(), type: status2(["FREE_BET", "ODDS_BOOST", "DEPOSIT_MATCH", "CASHBACK"]), status: status2(["DRAFT", "SCHEDULED", "ACTIVE", "PAUSED", "ENDED"]), startsAt: requiredTime(), endsAt: requiredTime(), jurisdiction: optionalRelation("Jurisdiction"), brand: optionalRelation("Brand"), budgetMinor: requiredText3(), currency: requiredText3(), termsVersion: requiredText3(), termsHash: requiredText3(), approvalRequest: optionalRelation("ApprovalRequest") });
-var PromotionRuleVersion = scoped("canManageSportsbook", { promotion: relation("Promotion"), version: (0, import_fields7.integer)({ validation: { isRequired: true } }), eligibility: (0, import_fields7.json)(), economics: (0, import_fields7.json)(), wageringRequirements: (0, import_fields7.json)(), abuseControls: (0, import_fields7.json)(), contributionRules: (0, import_fields7.json)(), status: status2(["DRAFT", "ACTIVE", "RETIRED"]), effectiveFrom: requiredTime(), effectiveTo: (0, import_fields7.timestamp)(), evidenceHash: requiredText3() });
-var CampaignBudget = scoped("canManageFinance", { promotion: relation("Promotion"), allocatedMinor: requiredText3(), awardedMinor: requiredText3(), redeemedMinor: requiredText3(), forfeitedMinor: requiredText3(), currency: requiredText3(), version: (0, import_fields7.integer)({ validation: { isRequired: true } }), status: status2(["ACTIVE", "EXHAUSTED", "CLOSED"]) });
-var BonusAward = scoped("canManageFinance", { promotion: relation("Promotion"), ruleVersion: relation("PromotionRuleVersion"), player: relation("Player"), amountMinor: requiredText3(), remainingMinor: requiredText3(), currency: requiredText3(), awardType: status2(["FREE_BET", "BONUS_CASH", "ODDS_BOOST"]), stakeReturned: (0, import_fields7.checkbox)({ defaultValue: false }), status: status2(["AWARDED", "ACTIVE", "CONSUMED", "CONVERTED", "EXPIRED", "FORFEITED"]), awardedAt: requiredTime(), activatedAt: (0, import_fields7.timestamp)(), expiresAt: requiredTime(), idempotencyKey: requiredText3(), evidenceHash: requiredText3() });
-var BonusTransaction = scoped("canManageFinance", { award: relation("BonusAward"), type: status2(["AWARD", "ACTIVATE", "RESERVE", "CONSUME", "RELEASE", "CONVERT", "EXPIRE", "FORFEIT", "REVERSE"]), amountMinor: requiredText3(), remainingMinor: requiredText3(), currency: requiredText3(), wager: optionalRelation("Wager"), journalTransaction: optionalRelation("JournalTransaction"), idempotencyKey: requiredText3(), evidenceHash: requiredText3() });
-var PromotionRedemption = scoped("canManageSportsbook", { promotion: relation("Promotion"), ruleVersion: relation("PromotionRuleVersion"), player: relation("Player"), bonusAward: optionalRelation("BonusAward"), status: status2(["ELIGIBLE", "CLAIMED", "REJECTED", "REVERSED"]), reasonCode: optionalText(), idempotencyKey: requiredText3(), evidenceHash: requiredText3(), redeemedAt: requiredTime() });
-var CustomerCredential = internal({ tenant: relation("Tenant"), player: relation("Player"), emailDigest: (0, import_fields7.text)({ validation: { isRequired: true }, isIndexed: "unique" }), emailMasked: requiredText3(), passwordHash: requiredText3(), passwordVersion: (0, import_fields7.integer)({ defaultValue: 1 }), status: status2(["PENDING_VERIFICATION", "ACTIVE", "LOCKED", "CLOSED"]), failedAttempts: (0, import_fields7.integer)({ defaultValue: 0 }), lockedUntil: (0, import_fields7.timestamp)(), verifiedAt: (0, import_fields7.timestamp)(), lastAuthenticatedAt: (0, import_fields7.timestamp)() });
-var CustomerDevice = internal({ tenant: relation("Tenant"), player: relation("Player"), session: optionalRelation("CustomerSession"), deviceDigest: requiredText3(), label: requiredText3(), firstSeenAt: requiredTime(), lastSeenAt: requiredTime(), revokedAt: (0, import_fields7.timestamp)(), riskSignals: (0, import_fields7.json)() });
-var CustomerRecoveryToken = internal({ tenant: relation("Tenant"), player: relation("Player"), tokenDigest: (0, import_fields7.text)({ validation: { isRequired: true }, isIndexed: "unique" }), purpose: status2(["VERIFY_EMAIL", "RESET_PASSWORD", "RECOVER_ACCOUNT"]), expiresAt: requiredTime(), consumedAt: (0, import_fields7.timestamp)(), attempts: (0, import_fields7.integer)({ defaultValue: 0 }) });
-var CustomerFavorite = internal({ tenant: relation("Tenant"), player: relation("Player"), targetType: status2(["SPORT", "COMPETITION", "EVENT", "COMPETITOR"]), targetId: requiredText3(), createdByDevice: optionalText() });
-var CustomerPrivacyRequest = scoped("canManageCompliance", { player: relation("Player"), type: status2(["ACCESS", "EXPORT", "CORRECT", "DELETE", "RESTRICT", "PORTABILITY"]), status: status2(["OPEN", "VERIFYING", "IN_PROGRESS", "COMPLETED", "DENIED"]), requestedAt: requiredTime(), dueAt: requiredTime(), completedAt: (0, import_fields7.timestamp)(), identityEvidenceHash: requiredText3(), artifactReference: optionalText(), decisionReason: optionalText() });
-var ScreeningHit = scoped("canManageCompliance", { amlCase: relation("AMLCase"), providerConnection: relation("ProviderConnection"), screeningType: status2(["SANCTIONS", "PEP", "ADVERSE_MEDIA", "SOURCE_OF_FUNDS"]), matchToken: requiredText3(), status: status2(["POTENTIAL", "REVIEW", "CONFIRMED", "CLEARED", "FALSE_POSITIVE"]), dispositionReason: optionalText(), evidenceReference: requiredText3(), screenedAt: requiredTime(), resolvedAt: (0, import_fields7.timestamp)(), ownerId: optionalText() });
-var AffordabilityAssessment = scoped("canManageCompliance", { player: relation("Player"), source: requiredText3(), riskBand: status2(["LOW", "MEDIUM", "HIGH", "PROHIBITED"]), evidenceReference: requiredText3(), assessedAt: requiredTime(), expiresAt: requiredTime(), decision: status2(["ALLOW", "RESTRICT", "REVIEW"]), reasonCode: requiredText3() });
-var AccountClosure = scoped("canManageCompliance", { player: relation("Player"), requestedBy: requiredText3(), reasonCode: requiredText3(), requestedAt: requiredTime(), coolingEndsAt: (0, import_fields7.timestamp)(), status: status2(["REQUESTED", "REVIEW", "BLOCKED_FUNDS", "CLOSED", "CANCELLED"]), completedAt: (0, import_fields7.timestamp)(), evidenceHash: requiredText3() });
-var SupportCase = scoped("canManageCompliance", { player: relation("Player"), wager: optionalRelation("Wager"), paymentIntent: optionalRelation("PaymentIntent"), dispute: optionalRelation("Dispute"), category: status2(["ACCOUNT", "WAGER", "PAYMENT", "RESPONSIBLE_GAMING", "PRIVACY", "TECHNICAL"]), priority: status2(["LOW", "NORMAL", "HIGH", "URGENT"]), status: status2(["OPEN", "TRIAGED", "WAITING_CUSTOMER", "WAITING_OPERATOR", "RESOLVED", "CLOSED"]), subject: requiredText3(), ownerId: optionalText(), openedAt: requiredTime(), resolvedAt: (0, import_fields7.timestamp)(), slaDueAt: requiredTime() });
-var SupportCaseEvent = scoped("canManageCompliance", { supportCase: relation("SupportCase"), type: status2(["OPENED", "NOTE", "CUSTOMER_MESSAGE", "OPERATOR_MESSAGE", "ESCALATED", "LINKED", "RESOLVED", "REOPENED"]), actorType: status2(["PLAYER", "STAFF", "SYSTEM", "PROVIDER"]), actorId: requiredText3(), body: requiredText3(), evidenceHash: requiredText3(), visibility: status2(["CUSTOMER", "INTERNAL", "RESTRICTED"]) });
-var IntegrityCase = scoped("canManageCompliance", { player: optionalRelation("Player"), event: optionalRelation("Event"), wager: optionalRelation("Wager"), providerConnection: optionalRelation("ProviderConnection"), type: status2(["SUSPICIOUS_BETTING", "COLLUSION", "INSIDER", "RESULT_DISAGREEMENT", "PROHIBITED_PARTICIPANT"]), status: status2(["OPEN", "INVESTIGATING", "REPORTED", "CLEARED", "CLOSED"]), severity: status2(["LOW", "MEDIUM", "HIGH", "CRITICAL"]), restrictedEvidence: (0, import_fields7.json)(), ownerId: optionalText(), reportedAt: (0, import_fields7.timestamp)(), closedAt: (0, import_fields7.timestamp)() });
-var WebhookEndpoint = scoped("canManageIntegrations", { name: requiredText3(), url: requiredText3(), secretReference: requiredText3(), eventTypes: (0, import_fields7.json)(), status: status2(["PENDING", "ACTIVE", "DEGRADED", "DISABLED"]), failureCount: (0, import_fields7.integer)({ defaultValue: 0 }), disabledAt: (0, import_fields7.timestamp)(), approvalRequest: optionalRelation("ApprovalRequest") });
-var WebhookDelivery = scoped("canManageIntegrations", { endpoint: relation("WebhookEndpoint"), deliveryId: requiredText3(), eventType: requiredText3(), eventVersion: requiredText3(), payloadHash: requiredText3(), signatureKeyId: requiredText3(), status: status2(["PENDING", "PROCESSING", "DELIVERED", "FAILED", "DEAD"]), attempts: (0, import_fields7.integer)({ defaultValue: 0 }), availableAt: requiredTime(), deliveredAt: (0, import_fields7.timestamp)(), lastResponseCode: (0, import_fields7.integer)(), lastError: optionalText() });
-var IntegrationDeliveryAttempt = scoped("canManageIntegrations", { delivery: relation("WebhookDelivery"), attempt: (0, import_fields7.integer)({ validation: { isRequired: true } }), requestedAt: requiredTime(), completedAt: (0, import_fields7.timestamp)(), responseCode: (0, import_fields7.integer)(), latencyMs: (0, import_fields7.integer)(), responseHash: optionalText(), errorClass: optionalText() });
-var ProviderHealthSample = scoped("canManageIntegrations", { providerConnection: relation("ProviderConnection"), capability: requiredText3(), status: status2(["HEALTHY", "DEGRADED", "DOWN"]), latencyMs: (0, import_fields7.integer)(), errorRateBasisPoints: (0, import_fields7.integer)(), sequenceLag: (0, import_fields7.integer)(), oldestWebhookAgeMs: (0, import_fields7.integer)(), reconciliationDifferenceMinor: optionalText(), checkedAt: requiredTime(), details: (0, import_fields7.json)() });
-var AdapterCertificationRun = scoped("canManageIntegrations", { providerConnection: relation("ProviderConnection"), adapterId: requiredText3(), adapterVersion: requiredText3(), suiteVersion: requiredText3(), scenarios: (0, import_fields7.json)(), passed: (0, import_fields7.integer)({ defaultValue: 0 }), failed: (0, import_fields7.integer)({ defaultValue: 0 }), status: status2(["PENDING", "RUNNING", "PASSED", "FAILED"]), inputHash: requiredText3(), artifactReference: optionalText(), startedAt: requiredTime(), completedAt: (0, import_fields7.timestamp)() });
-var Notification = scoped("canManageIntegrations", { player: optionalRelation("Player"), user: optionalRelation("User"), channel: status2(["EMAIL", "SMS", "PUSH", "IN_APP", "WEBHOOK"]), templateKey: requiredText3(), templateVersion: requiredText3(), locale: requiredText3(), payload: (0, import_fields7.json)(), status: status2(["PENDING", "SENT", "DELIVERED", "FAILED", "SUPPRESSED"]), consentEvidenceHash: optionalText(), providerConnection: optionalRelation("ProviderConnection"), externalReference: optionalText(), sentAt: (0, import_fields7.timestamp)() });
-var RetentionPolicyVersion = scoped("canManageCompliance", { recordClass: requiredText3(), jurisdiction: optionalRelation("Jurisdiction"), version: (0, import_fields7.integer)({ validation: { isRequired: true } }), retentionDays: (0, import_fields7.integer)({ validation: { isRequired: true } }), archiveDays: (0, import_fields7.integer)(), deletionMode: status2(["DELETE", "TOKENIZE", "CRYPTO_SHRED", "PRESERVE"]), legalHoldWins: (0, import_fields7.checkbox)({ defaultValue: true }), effectiveFrom: requiredTime(), effectiveTo: (0, import_fields7.timestamp)(), status: status2(["DRAFT", "ACTIVE", "RETIRED"]), evidenceHash: requiredText3() });
-var RetentionExecution = scoped("canManageCompliance", { policyVersion: relation("RetentionPolicyVersion"), windowFrom: requiredTime(), windowTo: requiredTime(), candidateCount: (0, import_fields7.integer)({ defaultValue: 0 }), heldCount: (0, import_fields7.integer)({ defaultValue: 0 }), archivedCount: (0, import_fields7.integer)({ defaultValue: 0 }), deletedCount: (0, import_fields7.integer)({ defaultValue: 0 }), status: status2(["DRY_RUN", "PENDING_APPROVAL", "APPROVED", "COMPLETED", "FAILED"]), dryRunHash: requiredText3(), approvalRequest: optionalRelation("ApprovalRequest"), artifactReference: optionalText(), completedAt: (0, import_fields7.timestamp)() });
-var ReportArtifact = scoped("canManageCompliance", { report: optionalRelation("ComplianceReport"), type: requiredText3(), format: status2(["JSON", "CSV", "PDF", "XML"]), schemaVersion: requiredText3(), rowCount: (0, import_fields7.integer)({ defaultValue: 0 }), contentHash: requiredText3(), storageReference: requiredText3(), encryptionKeyReference: requiredText3(), generatedAt: requiredTime(), expiresAt: (0, import_fields7.timestamp)(), status: status2(["READY", "EXPIRED", "REVOKED"]) });
-var AffiliateAttribution = scoped("canManageSportsbook", { player: relation("Player"), affiliateReference: requiredText3(), campaignReference: requiredText3(), clickReference: optionalText(), attributedAt: requiredTime(), status: status2(["PENDING", "ATTRIBUTED", "REJECTED", "REVERSED"]), evidenceHash: requiredText3() });
-var PamSubjectMapping = scoped("canManageIntegrations", { providerConnection: relation("ProviderConnection"), externalSubjectDigest: requiredText3(), player: relation("Player"), walletMode: status2(["OPENFRONT", "PAM", "TRANSFER"]), status: status2(["ACTIVE", "SUSPENDED", "REVOKED"]), evidenceHash: requiredText3() });
-var DataExport = scoped("canReadAudit", { requestedBy: requiredText3(), type: status2(["AUDIT", "WAGERS", "FINANCE", "CUSTOMERS", "REGULATORY", "PRIVACY"]), scope: (0, import_fields7.json)(), classification: status2(["INTERNAL", "CONFIDENTIAL", "RESTRICTED_PII", "RESTRICTED_FINANCIAL", "RESTRICTED_REGULATORY"]), status: status2(["PENDING", "GENERATING", "READY", "EXPIRED", "REVOKED"]), rowCount: (0, import_fields7.integer)({ defaultValue: 0 }), contentHash: optionalText(), storageReference: optionalText(), expiresAt: requiredTime(), approvalRequest: optionalRelation("ApprovalRequest") });
-
-// features/keystone/models/index.ts
-var rawModels = {
-  User,
-  Role,
-  ...Sportsbook_exports,
-  ...SportsbookP0_exports,
-  ...Customer_exports,
-  ...SportsbookFull_exports
-};
-var userLookups = /* @__PURE__ */ new WeakMap();
-var sharedUserContext = (context) => {
-  const cache = userLookups.get(context) ?? /* @__PURE__ */ new Map();
-  userLookups.set(context, cache);
-  const findUnique = (args) => {
-    const key2 = JSON.stringify(args);
-    if (!cache.has(key2)) cache.set(key2, context.prisma.user.findUnique(args));
-    return cache.get(key2);
-  };
-  return { ...context, prisma: { user: { findUnique } } };
-};
-var models = Object.fromEntries(Object.entries(rawModels).map(([key2, config2]) => {
-  const operationQuery = config2?.access?.operation?.query;
-  const filterQuery = config2?.access?.filter?.query;
-  if (typeof operationQuery !== "function" && typeof filterQuery !== "function") return [key2, config2];
-  const existing = config2?.ui?.isHidden;
-  const isHidden = async (args) => {
-    if (existing === true || typeof existing === "function" && await existing(args)) return true;
-    try {
-      const checked = { ...args, context: args.context ? sharedUserContext(args.context) : args.context };
-      if (typeof operationQuery === "function" && !await operationQuery(checked)) return true;
-      return typeof filterQuery === "function" && await filterQuery(checked) === false;
-    } catch {
-      return false;
-    }
-  };
-  return [key2, { ...config2, ui: { ...config2.ui ?? {}, isHidden } }];
-}));
-
-// features/keystone/ui-create-access.ts
-function createRule(access) {
-  if (typeof access === "function") return access;
-  const operation = access?.operation;
-  if (typeof operation === "function") return operation;
-  if (typeof operation?.create === "function") return operation.create;
-  return void 0;
-}
-async function createAllowed(listKey, list7, args) {
-  const rule = createRule(list7.access);
-  if (!rule) return true;
-  try {
-    return Boolean(await rule({ session: args.session, context: args.context, listKey, operation: "create" }));
-  } catch {
-    return false;
-  }
-}
-function withCreateAwareUi(lists) {
-  const out = {};
-  for (const [listKey, list7] of Object.entries(lists)) {
-    if (list7.ui?.hideCreate !== void 0 || !createRule(list7.access)) {
-      out[listKey] = list7;
-      continue;
-    }
-    out[listKey] = {
-      ...list7,
-      ui: {
-        ...list7.ui,
-        hideCreate: async (args) => !await createAllowed(listKey, list7, args)
-      }
-    };
-  }
-  return out;
-}
-function updateOperationRule(access) {
-  if (typeof access === "function") return access;
-  const rules2 = access?.operation;
-  if (typeof rules2 === "function") return rules2;
-  if (typeof rules2?.update === "function") return rules2.update;
-  return void 0;
-}
-function updateFilterRule(access) {
-  const filter = access?.filter;
-  return typeof filter?.update === "function" ? filter.update : void 0;
-}
-var itemModeCache = /* @__PURE__ */ new WeakMap();
-async function itemUpdateAllowed(listKey, list7, args) {
-  const operation = updateOperationRule(list7.access);
-  if (operation) {
-    try {
-      if (!await operation({ session: args.session, context: args.context, listKey, operation: "update" })) return false;
-    } catch {
-      return false;
-    }
-  }
-  const filterRule = updateFilterRule(list7.access);
-  if (!filterRule || args.item?.id == null) return true;
-  try {
-    const filter = await filterRule({ session: args.session, context: args.context, listKey, operation: "update" });
-    if (filter === true) return true;
-    if (filter === false) return false;
-    if (!filter || typeof filter !== "object") return true;
-    const count = await args.context.sudo().db[listKey].count({ where: { AND: [{ id: { equals: String(args.item.id) } }, filter] } });
-    return count > 0;
-  } catch {
-    return true;
-  }
-}
-function withItemViewAwareUi(lists) {
-  const out = {};
-  for (const [listKey, list7] of Object.entries(lists)) {
-    const itemView = list7.ui?.itemView ?? {};
-    if (itemView.defaultFieldMode !== void 0 || !updateOperationRule(list7.access) && !updateFilterRule(list7.access)) {
-      out[listKey] = list7;
-      continue;
-    }
-    out[listKey] = {
-      ...list7,
-      ui: {
-        ...list7.ui,
-        itemView: {
-          ...itemView,
-          // Called once per field; one decision per request and item.
-          defaultFieldMode: (args) => {
-            const decide = () => itemUpdateAllowed(listKey, list7, args).then((ok) => ok ? "edit" : "read");
-            if (!args.context || typeof args.context !== "object") return decide();
-            const key2 = JSON.stringify([listKey, String(args.item?.id), String(args.session?.itemId ?? ""), String(args.session?.listKey ?? "")]);
-            const scope = args.context;
-            let cache = itemModeCache.get(scope);
-            if (!cache) itemModeCache.set(scope, cache = /* @__PURE__ */ new Map());
-            let decision = cache.get(key2);
-            if (!decision) cache.set(key2, decision = decide());
-            return decision;
-          }
-        }
-      }
-    };
-  }
-  return out;
-}
-function deleteRule(access) {
-  if (typeof access === "function") return access;
-  const operation = access?.operation;
-  if (typeof operation === "function") return operation;
-  if (typeof operation?.delete === "function") return operation.delete;
-  return void 0;
-}
-async function deleteAllowed(listKey, list7, args) {
-  const rule = deleteRule(list7.access);
-  if (!rule) return true;
-  try {
-    return Boolean(await rule({ session: args.session, context: args.context, listKey, operation: "delete" }));
-  } catch {
-    return false;
-  }
-}
-function withDeleteAwareUi(lists) {
-  const out = {};
-  for (const [listKey, list7] of Object.entries(lists)) {
-    if (list7.ui?.hideDelete !== void 0 || !deleteRule(list7.access)) {
-      out[listKey] = list7;
-      continue;
-    }
-    out[listKey] = {
-      ...list7,
-      ui: {
-        ...list7.ui,
-        hideDelete: async (args) => !await deleteAllowed(listKey, list7, args)
-      }
-    };
-  }
-  return out;
-}
-
-// features/keystone/index.ts
-var import_session = require("@keystone-6/core/session");
-
-// features/keystone/mutations/index.ts
-var import_schema = require("@graphql-tools/schema");
-
-// features/keystone/mutations/redirectToInit.ts
-async function redirectToInit(root, args, context) {
-  const userCount = await context.sudo().query.User.count({});
-  if (userCount === 0) {
-    return true;
-  }
-  return false;
-}
-var redirectToInit_default = redirectToInit;
-
-// features/keystone/mutations/sportsbook-full.ts
-var import_node_crypto11 = require("node:crypto");
-init_engine();
-init_ledger();
-init_combination();
-init_sandbox();
-init_sportsbook();
-
 // features/sportsbook/domain/artifact-delivery-contract.ts
-var unavailableArtifactEvents = /* @__PURE__ */ new Set(["report.generate", "export.requested.v1"]);
 function assertArtifactDeliveryHasHandler(eventType) {
   if (typeof eventType !== "string" || unavailableArtifactEvents.has(eventType)) {
     throw new Error(`ARTIFACT_DELIVERY_NOT_IMPLEMENTED:${String(eventType)}`);
   }
 }
-
-// features/keystone/mutations/sportsbook-full.ts
-init_mail();
+var unavailableArtifactEvents;
+var init_artifact_delivery_contract = __esm({
+  "features/sportsbook/domain/artifact-delivery-contract.ts"() {
+    "use strict";
+    unavailableArtifactEvents = /* @__PURE__ */ new Set(["report.generate", "export.requested.v1"]);
+  }
+});
 
 // features/sportsbook/adapters/webhook-egress.ts
-var import_node_crypto9 = require("node:crypto");
-var import_node_net = require("node:net");
-var import_promises = require("node:dns/promises");
-var import_node_https = require("node:https");
-var MAX_WEBHOOK_PAYLOAD_BYTES = 256 * 1024;
-var DNS_DEADLINE_MS = 2e3;
-var nonPublic = new import_node_net.BlockList();
-for (const [network, prefix] of [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.0.2.0", 24], ["192.88.99.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["198.51.100.0", 24], ["203.0.113.0", 24], ["224.0.0.0", 4], ["240.0.0.0", 4]]) nonPublic.addSubnet(network, prefix, "ipv4");
-for (const [network, prefix] of [["::", 127], ["::ffff:0:0", 96], ["64:ff9b::", 96], ["64:ff9b:1::", 48], ["100::", 64], ["2001::", 23], ["2001:db8::", 32], ["2002::", 16], ["fc00::", 7], ["fe80::", 10], ["fec0::", 10], ["ff00::", 8]]) nonPublic.addSubnet(network, prefix, "ipv6");
-var privateIp = (address) => {
-  const family = (0, import_node_net.isIP)(address);
-  return family === 4 ? nonPublic.check(address, "ipv4") : family === 6 ? nonPublic.check(address, "ipv6") : true;
-};
-var bareHost = (hostname) => hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
 async function resolvePublicAddress(hostname) {
   const host = bareHost(hostname), literal = (0, import_node_net.isIP)(host);
   if (literal) {
@@ -4415,25 +3918,200 @@ async function validateWebhookDestination(raw) {
     throw new Error("INVALID_WEBHOOK_URL");
   }
   if (url.protocol !== "https:" || url.username || url.password || url.port && url.port !== "443" || url.pathname.length > 512 || url.search.length > 1024) throw new Error("UNSAFE_WEBHOOK_URL");
-  if (process.env.SPORTSBOOK_DEPLOYMENT_MODE === "sandbox") {
-    if (!url.hostname.endsWith(".local")) throw new Error("SANDBOX_WEBHOOK_REQUIRES_LOCAL_DOMAIN");
-    return url;
-  }
   await resolvePublicAddress(url.hostname);
   const allowlist = (process.env.WEBHOOK_EGRESS_HOSTS ?? "").split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
   if (!allowlist.includes(url.hostname.toLowerCase())) throw new Error("WEBHOOK_HOST_NOT_ALLOWLISTED");
   return url;
 }
+var import_node_crypto7, import_node_net, import_promises, import_node_https, MAX_WEBHOOK_PAYLOAD_BYTES, DNS_DEADLINE_MS, nonPublic, privateIp, bareHost;
+var init_webhook_egress = __esm({
+  "features/sportsbook/adapters/webhook-egress.ts"() {
+    "use strict";
+    import_node_crypto7 = require("node:crypto");
+    import_node_net = require("node:net");
+    import_promises = require("node:dns/promises");
+    import_node_https = require("node:https");
+    MAX_WEBHOOK_PAYLOAD_BYTES = 256 * 1024;
+    DNS_DEADLINE_MS = 2e3;
+    nonPublic = new import_node_net.BlockList();
+    for (const [network, prefix] of [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.0.2.0", 24], ["192.88.99.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["198.51.100.0", 24], ["203.0.113.0", 24], ["224.0.0.0", 4], ["240.0.0.0", 4]]) nonPublic.addSubnet(network, prefix, "ipv4");
+    for (const [network, prefix] of [["::", 127], ["::ffff:0:0", 96], ["64:ff9b::", 96], ["64:ff9b:1::", 48], ["100::", 64], ["2001::", 23], ["2001:db8::", 32], ["2002::", 16], ["fc00::", 7], ["fe80::", 10], ["fec0::", 10], ["ff00::", 8]]) nonPublic.addSubnet(network, prefix, "ipv6");
+    privateIp = (address) => {
+      const family = (0, import_node_net.isIP)(address);
+      return family === 4 ? nonPublic.check(address, "ipv4") : family === 6 ? nonPublic.check(address, "ipv6") : true;
+    };
+    bareHost = (hostname) => hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+  }
+});
 
-// features/keystone/mutations/sportsbook-full.ts
-init_sandbox();
+// features/sportsbook/adapters/internal.ts
+function installedHouseAdapter(connection, webhookSecret) {
+  const kind = String(connection.capabilities?.kind ?? "");
+  if (!HOUSE_KINDS.includes(kind)) return null;
+  const adapter = new HouseAdapter(kind, webhookSecret);
+  if (connection.adapterId !== adapter.manifest().id || connection.certificationStatus !== "INTERNAL" || connection.configReference !== `house:${kind}`) return null;
+  return adapter;
+}
+var import_node_crypto8, HOUSE_KINDS, HOUSE_ENVELOPE_SCHEMA, HouseAdapter;
+var init_internal = __esm({
+  "features/sportsbook/adapters/internal.ts"() {
+    "use strict";
+    import_node_crypto8 = require("node:crypto");
+    HOUSE_KINDS = ["sports", "results", "kyc", "aml", "geo", "payments", "messaging", "analytics", "tax", "reporting", "integrity", "affiliates", "pam"];
+    HOUSE_ENVELOPE_SCHEMA = "house.v1";
+    HouseAdapter = class {
+      constructor(kind, webhookSecret) {
+        this.kind = kind;
+        this.webhookSecret = webhookSecret;
+        this.results = /* @__PURE__ */ new Map();
+        this.fingerprints = /* @__PURE__ */ new Map();
+      }
+      manifest() {
+        return { id: `house-${this.kind}`, version: "1.0.0", schemas: [HOUSE_ENVELOPE_SCHEMA] };
+      }
+      async capabilities() {
+        return { supported: [this.kind, "query", "webhook", "reconcile"], unsupported: ["third-party-certified"] };
+      }
+      async validateConfig(configRef) {
+        return { valid: configRef === `house:${this.kind}`, errors: configRef === `house:${this.kind}` ? [] : [`House config must be house:${this.kind}`] };
+      }
+      /** Records an operator decision under an idempotency key; a different command under the same key is a conflict. */
+      async execute(_ctx, command, idempotencyKey) {
+        const fingerprint = JSON.stringify([command.type, command.externalRef ?? null, command.payload ?? null]);
+        const prior = this.results.get(idempotencyKey);
+        if (prior) {
+          if (this.fingerprints.get(idempotencyKey) !== fingerprint) throw new Error("ADAPTER_IDEMPOTENCY_CONFLICT");
+          return prior;
+        }
+        const result = { status: "SUCCEEDED", externalRef: command.externalRef ?? `${this.kind}-${idempotencyKey}`, payload: command.payload };
+        this.results.set(idempotencyKey, result);
+        this.fingerprints.set(idempotencyKey, fingerprint);
+        this.results.set(result.externalRef, result);
+        return result;
+      }
+      /** Process-local memory only: a miss (e.g. after restart) is not evidence of non-effect, so it reports PENDING. */
+      async query(_ctx, externalRef) {
+        return this.results.get(externalRef) ?? { status: "PENDING", externalRef };
+      }
+      /** `binding` (tenant + installation id) is covered by the MAC so signed bytes cannot be replayed against another installation. */
+      sign(raw, timestamp7, binding) {
+        const mac = (0, import_node_crypto8.createHmac)("sha256", this.webhookSecret).update(timestamp7).update(".");
+        if (binding !== void 0) mac.update(binding).update(".");
+        return mac.update(raw).digest("hex");
+      }
+      verifyWebhook(raw, headers, binding) {
+        const timestamp7 = headers.get("x-openfront-timestamp") ?? "";
+        const supplied = headers.get("x-openfront-signature") ?? "";
+        const expected = this.sign(raw, timestamp7, binding);
+        if (!supplied || supplied.length !== expected.length || !(0, import_node_crypto8.timingSafeEqual)(Buffer.from(supplied), Buffer.from(expected))) return { valid: false, reason: "INVALID_SIGNATURE" };
+        try {
+          return { valid: true, event: JSON.parse(Buffer.from(raw).toString()) };
+        } catch {
+          return { valid: false, reason: "INVALID_JSON" };
+        }
+      }
+      normalize(event) {
+        return [{ id: event.id, type: event.type, occurredAt: event.occurredAt, payload: event.payload, source: { adapterId: this.manifest().id, version: "1.0.0", externalId: event.id } }];
+      }
+      async health() {
+        return { ok: true, latencyMs: 0, details: "in-house" };
+      }
+      async *reconcile() {
+        for (const result of new Set(this.results.values())) yield result;
+      }
+    };
+  }
+});
+
+// features/keystone/database-url.ts
+function pooledDatabaseUrl(url, role) {
+  if (!url || !/^postgres(ql)?:\/\//.test(url)) return url;
+  const parsed = new URL(url);
+  if (parsed.searchParams.has("connection_limit")) return url;
+  const override = Number(process.env[`DATABASE_POOL_${role.toUpperCase()}`]);
+  parsed.searchParams.set("connection_limit", String(Number.isInteger(override) && override > 0 ? override : POOL_SIZES[role]));
+  return parsed.toString();
+}
+var POOL_SIZES;
+var init_database_url = __esm({
+  "features/keystone/database-url.ts"() {
+    "use strict";
+    POOL_SIZES = { web: 20, worker: 8, feed: 3 };
+  }
+});
+
+// features/keystone/prisma.ts
+var import_client, import_client2;
+var init_prisma = __esm({
+  "features/keystone/prisma.ts"() {
+    "use strict";
+    import_client = require("@prisma/client");
+    init_tenant_scope();
+    init_database_url();
+    import_client2 = require("@prisma/client");
+  }
+});
+
+// features/sportsbook/api/durable-abuse.ts
+var import_node_crypto9;
+var init_durable_abuse = __esm({
+  "features/sportsbook/api/durable-abuse.ts"() {
+    "use strict";
+    import_node_crypto9 = require("node:crypto");
+    init_prisma();
+  }
+});
+
+// features/sportsbook/api/bounded-webhook-body.ts
+var init_bounded_webhook_body = __esm({
+  "features/sportsbook/api/bounded-webhook-body.ts"() {
+    "use strict";
+  }
+});
+
+// features/sportsbook/adapters/installation-revision.ts
+var init_installation_revision = __esm({
+  "features/sportsbook/adapters/installation-revision.ts"() {
+    "use strict";
+    init_engine();
+  }
+});
+
+// features/sportsbook/adapters/inbox-handler.ts
+var init_inbox_handler = __esm({
+  "features/sportsbook/adapters/inbox-handler.ts"() {
+    "use strict";
+    init_engine();
+    init_installation_revision();
+    init_internal();
+  }
+});
+
+// features/sportsbook/api/provider-webhook.ts
+function providerWebhookSecret() {
+  const configured = process.env.PROVIDER_WEBHOOK_SECRET;
+  if (configured && configured.length >= 32) return configured;
+  const session = process.env.SESSION_SECRET;
+  return session && session.length >= 32 ? (0, import_node_crypto10.createHmac)("sha256", session).update("provider-webhook:v1").digest("hex") : null;
+}
+var import_node_crypto10, REPLAY_MS;
+var init_provider_webhook = __esm({
+  "features/sportsbook/api/provider-webhook.ts"() {
+    "use strict";
+    import_node_crypto10 = require("node:crypto");
+    init_internal();
+    init_durable_abuse();
+    init_bounded_webhook_body();
+    init_engine();
+    init_tenant_scope();
+    init_inbox_handler();
+    init_sportsbook();
+    init_installation_revision();
+    REPLAY_MS = 5 * 6e4;
+  }
+});
 
 // features/sportsbook/domain/retention.ts
-init_engine();
-var SUPPORTED = /* @__PURE__ */ new Set(["CUSTOMER_SESSION:DELETE", "GEO:TOKENIZE"]);
-var RECORD_CLASS_SCOPES = /* @__PURE__ */ new Set(["AUDIT", "CUSTOMER_SESSION", "GEO"]);
-var MAX_RETENTION_CANDIDATES = 5e3;
-var GEO_TOKENIZED_MARKER = "TOKENIZED_BY_POLICY";
 function retentionUnsupportedReason(policy) {
   const key2 = `${policy.recordClass}:${policy.deletionMode ?? ""}`;
   return SUPPORTED.has(key2) ? null : `RETENTION_DISPOSITION_NOT_SUPPORTED:${key2}`;
@@ -4470,10 +4148,19 @@ async function retentionCandidates(tx, tenantId, policy, windowFrom, windowTo, e
   const manifestHash = evidenceHash({ policyId: policy.id, policyVersion: policy.version, recordClass: policy.recordClass, deletionMode: policy.deletionMode, retentionDays: policy.retentionDays, windowFrom: windowFrom.toISOString(), windowTo: windowTo.toISOString(), cutoff: cutoff.toISOString(), eligible, held });
   return { cutoff, eligible, held, holdIds: holds.map((hold) => hold.id), candidateCount: candidates.length, manifestHash };
 }
+var SUPPORTED, RECORD_CLASS_SCOPES, MAX_RETENTION_CANDIDATES, GEO_TOKENIZED_MARKER;
+var init_retention = __esm({
+  "features/sportsbook/domain/retention.ts"() {
+    "use strict";
+    init_engine();
+    SUPPORTED = /* @__PURE__ */ new Set(["CUSTOMER_SESSION:DELETE", "GEO:TOKENIZE"]);
+    RECORD_CLASS_SCOPES = /* @__PURE__ */ new Set(["AUDIT", "CUSTOMER_SESSION", "GEO"]);
+    MAX_RETENTION_CANDIDATES = 5e3;
+    GEO_TOKENIZED_MARKER = "TOKENIZED_BY_POLICY";
+  }
+});
 
 // features/sportsbook/domain/totp.ts
-var import_node_crypto10 = require("node:crypto");
-var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 function base32Encode(input) {
   let bits = 0, value = 0, result = "";
   for (const byte of input) {
@@ -4505,26 +4192,26 @@ function base32Decode(input) {
 function key() {
   const value = process.env.PII_ENCRYPTION_KEY ?? process.env.SESSION_SECRET;
   if (!value || value.length < 32) throw new Error("MFA_ENCRYPTION_KEY_REQUIRED");
-  return (0, import_node_crypto10.createHash)("sha256").update(value).digest();
+  return (0, import_node_crypto11.createHash)("sha256").update(value).digest();
 }
 function encryptTotpSecret(secret) {
-  const iv = (0, import_node_crypto10.randomBytes)(12), cipher = (0, import_node_crypto10.createCipheriv)("aes-256-gcm", key(), iv), data = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
+  const iv = (0, import_node_crypto11.randomBytes)(12), cipher = (0, import_node_crypto11.createCipheriv)("aes-256-gcm", key(), iv), data = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
   return `totp:v1:${iv.toString("base64url")}:${cipher.getAuthTag().toString("base64url")}:${data.toString("base64url")}`;
 }
 function decryptTotpSecret(value) {
   const [scope, version, ivText, tagText, dataText] = value.split(":");
   if (scope !== "totp" || version !== "v1") throw new Error("INVALID_MFA_SECRET");
-  const decipher = (0, import_node_crypto10.createDecipheriv)("aes-256-gcm", key(), Buffer.from(ivText, "base64url"));
+  const decipher = (0, import_node_crypto11.createDecipheriv)("aes-256-gcm", key(), Buffer.from(ivText, "base64url"));
   decipher.setAuthTag(Buffer.from(tagText, "base64url"));
   return Buffer.concat([decipher.update(Buffer.from(dataText, "base64url")), decipher.final()]).toString("utf8");
 }
 function generateTotpSecret() {
-  return base32Encode((0, import_node_crypto10.randomBytes)(20));
+  return base32Encode((0, import_node_crypto11.randomBytes)(20));
 }
 function totpCode(secret, time = Date.now(), step = 30) {
   const counter = BigInt(Math.floor(time / 1e3 / step)), buffer = Buffer.alloc(8);
   buffer.writeBigUInt64BE(counter);
-  const digest = (0, import_node_crypto10.createHmac)("sha1", base32Decode(secret)).update(buffer).digest(), offset = digest[digest.length - 1] & 15, value = (digest[offset] & 127) << 24 | (digest[offset + 1] & 255) << 16 | (digest[offset + 2] & 255) << 8 | digest[offset + 3] & 255;
+  const digest = (0, import_node_crypto11.createHmac)("sha1", base32Decode(secret)).update(buffer).digest(), offset = digest[digest.length - 1] & 15, value = (digest[offset] & 127) << 24 | (digest[offset + 1] & 255) << 16 | (digest[offset + 2] & 255) << 8 | digest[offset + 3] & 255;
   return String(value % 1e6).padStart(6, "0");
 }
 function verifyTotp(secret, supplied, time = Date.now()) {
@@ -4532,15 +4219,19 @@ function verifyTotp(secret, supplied, time = Date.now()) {
   const actual = Buffer.from(supplied);
   return [-1, 0, 1].some((window) => {
     const expected = Buffer.from(totpCode(secret, time + window * 3e4));
-    return expected.length === actual.length && (0, import_node_crypto10.timingSafeEqual)(expected, actual);
+    return expected.length === actual.length && (0, import_node_crypto11.timingSafeEqual)(expected, actual);
   });
 }
-
-// features/keystone/mutations/sportsbook-full.ts
-init_session_assurance();
+var import_node_crypto11, alphabet;
+var init_totp = __esm({
+  "features/sportsbook/domain/totp.ts"() {
+    "use strict";
+    import_node_crypto11 = require("node:crypto");
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  }
+});
 
 // features/sportsbook/domain/cashout-economics.ts
-var PORTION_SCALE = 1000000n;
 function nonNegativeMinor(value, errorCode) {
   if (!/^\d+$/.test(value)) throw new Error(errorCode);
   return BigInt(value);
@@ -4635,156 +4326,15 @@ function projectCashOutState(totalStakeMinor, rows, parts) {
   }
   return { ...acceptanceState, totalStakeMinor: totalStake, closedStakeMinor, remainingStakeMinor, remainingPartStakeMinor };
 }
+var PORTION_SCALE;
+var init_cashout_economics = __esm({
+  "features/sportsbook/domain/cashout-economics.ts"() {
+    "use strict";
+    PORTION_SCALE = 1000000n;
+  }
+});
 
 // features/keystone/mutations/sportsbook-full.ts
-init_trading_eligibility();
-init_full_straight();
-init_approval_control();
-init_zoned_time();
-var graphql2 = String.raw;
-var operatorInstant = async (context, tenantId, value, label) => resolveOperatorInstant(value, await tenantTimeZone(context.prisma, tenantId), label);
-var allowedEventStates = /* @__PURE__ */ new Set(["SCHEDULED", "LIVE", "ENDED", "CANCELLED", "SUSPENDED"]);
-var allowedProviderStates = /* @__PURE__ */ new Set(["ACTIVE", "DEGRADED", "DISABLED"]);
-var money2 = (value) => {
-  positiveMoney(value, "AMOUNT");
-  return BigInt(value);
-};
-var object = (raw, code) => {
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
-    return parsed;
-  } catch {
-    throw new Error(code);
-  }
-};
-var approved = async (tx, context, capability, tenantId, id, action, payloadHash, consumedKey) => consumeApproval(tx, context, { tenantId, capability, approvalId: id, action, payloadHash, consumedKey });
-var disputeCurrency = async (tx, tenantId, dispute, adjustmentMinor) => {
-  if (dispute.wagerId) {
-    const wager = await tx.wager.findFirst({ where: { id: dispute.wagerId, tenantId } });
-    if (!wager?.currency || wager.playerId !== dispute.playerId) throw new Error("DISPUTE_WAGER_MISMATCH");
-    return String(wager.currency);
-  }
-  if (BigInt(adjustmentMinor) !== 0n) throw new Error("DISPUTE_CURRENCY_REQUIRES_REVIEW");
-  return null;
-};
-var nonnegativeMoney = (value, code) => {
-  const text7 = String(value ?? "");
-  if (!/^\d{1,30}$/.test(text7)) throw new Error(code);
-  return BigInt(text7);
-};
-var strictUtcInstant = (value, code) => {
-  const text7 = String(value ?? "");
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?Z$/.test(text7)) throw new Error(code);
-  const date = new Date(text7);
-  if (Number.isNaN(date.getTime())) throw new Error(code);
-  return date;
-};
-var TAX_BASES = /* @__PURE__ */ new Set(["STAKE", "WINNINGS", "GGR"]);
-var TAX_ROUNDING = /* @__PURE__ */ new Set(["DOWN_AT_POSTING", "UP_AT_POSTING", "HALF_UP_AT_POSTING"]);
-var assertSupportedTaxRule = (basis, roundingRule) => {
-  if (!TAX_BASES.has(basis)) throw new Error("TAX_BASIS_UNSUPPORTED");
-  if (!TAX_ROUNDING.has(roundingRule)) throw new Error("TAX_ROUNDING_UNSUPPORTED");
-};
-var roundTax = (numerator, denominator, rule) => {
-  const q = numerator / denominator, r = numerator % denominator;
-  if (r === 0n || rule === "DOWN_AT_POSTING") return q;
-  if (rule === "UP_AT_POSTING") return q + 1n;
-  if (rule === "HALF_UP_AT_POSTING") return r * 2n >= denominator ? q + 1n : q;
-  throw new Error("TAX_ROUNDING_UNSUPPORTED");
-};
-var playerLiabilityAsOf = async (tx, tenantId, currency, asOf) => {
-  let total = 0n, count = 0, cursor;
-  for (; ; ) {
-    const rows = await tx.journalEntry.findMany({ where: { tenantId, currency, account: { accountClass: "LIABILITY", playerId: { not: null }, currency }, transaction: { effectiveAt: { lte: asOf } } }, select: { id: true, side: true, amountMinor: true }, orderBy: { id: "asc" }, take: 1e3, ...cursor ? { skip: 1, cursor: { id: cursor } } : {} });
-    for (const row of rows) {
-      total += row.side === "CREDIT" ? BigInt(row.amountMinor) : -BigInt(row.amountMinor);
-    }
-    count += rows.length;
-    if (rows.length < 1e3) return { total, count };
-    cursor = rows[rows.length - 1].id;
-  }
-};
-var sportsbookFullTypeDefs = graphql2`
-  type OperatorPasswordResetResult { code: String, message: String! }
-  type OperatorMfaEnrollment { secret: String!, uri: String! }
-  type OperatorMfaCompletion { enabled: Boolean!, recoveryCodes: [String!]!, sessionToken: String! }
-  extend type Query {
-    operatorSessionAssured: Boolean!
-    fullStraightSettlementPlan(wagerId:ID!): String!
-  }
-  extend type Mutation {
-    bootstrapOperatorAdmin(name:String!,email:String!,password:String!): ID!
-    beginOperatorMfaEnrollment: OperatorMfaEnrollment!
-    completeOperatorMfaEnrollment(code:String!): OperatorMfaCompletion!
-    verifyOperatorMfaSession(code:String!): String!
-    regenerateOperatorMfaRecoveryCodes(code:String!): [String!]!
-    sendUserPasswordResetLink(email:String!): Boolean!
-    redeemUserPasswordResetToken(email:String!,token:String!,password:String!): OperatorPasswordResetResult!
-    setEventTradingState(eventId:ID!,status:String!,livePhase:String,clockSeconds:Int,reason:String!): Boolean!
-    createCompetitionSeason(competitionId:ID!,key:String!,name:String!,startsAt:String!,endsAt:String!): ID!
-    createCatalogVenue(key:String!,name:String!,countryCode:String!,timezone:String!): ID!
-    createCatalogCompetitor(key:String!,name:String!): ID!
-    createCatalogSport(key:String!,name:String!): ID!
-    createCatalogCompetition(sportId:ID!,key:String!,name:String!,timezone:String!): ID!
-    createCatalogStage(seasonId:ID!,key:String!,name:String!,sortOrder:Int!): ID!
-    setCatalogReferenceStatus(type:String!,id:ID!,active:Boolean!,reason:String!): Boolean!
-    attachEventParticipant(eventId:ID!,competitorId:ID!,role:String!,sortOrder:Int!): ID!
-    rescheduleEvent(eventId:ID!,startAt:String!,reason:String!): Boolean!
-    createEventMarket(eventId:ID!,definitionKey:String!,parameters:String!,tradingMode:String!,cashOutEnabled:Boolean!,selections:String!): ID!
-    mapProviderEntity(connectionId:ID!,entityType:String!,externalId:String!,canonicalType:String!,canonicalId:ID!,confidence:String!): ID!
-    requestTraderOverride(targetType:String!,targetId:ID!,overrideType:String!,value:String!,expiresAt:String!,reason:String!): ID!
-    requestCorrelationRule(groupKey:String!,sportKey:String!,leftMarketId:ID!,rightMarketId:ID!,decision:String!,reason:String!): ID!
-    applyCorrelationRule(groupKey:String!,sportKey:String!,leftMarketId:ID!,rightMarketId:ID!,decision:String!,approvalId:ID!): ID!
-    applyTraderOverride(overrideId:ID!,approvalId:ID!): Boolean!
-    runTradingReplay(connectionId:ID!,scopeType:String!,scopeId:ID!,frontier:String!): ID!
-    requestLegalEntity(name:String!,countryCode:String!,registrationReference:String!,reason:String!): ID!
-    applyLegalEntity(name:String!,countryCode:String!,registrationReference:String!,approvalId:ID!): ID!
-    createJurisdictionPolicyDraft(jurisdictionId:ID!,authorityCitation:String!,policyDocument:String!,effectiveFrom:String!): ID!
-    requestJurisdictionActivation(policyId:ID!,operatorJurisdictionId:ID!,externalEvidenceHash:String!,reason:String!): ID!
-    applyJurisdictionActivation(policyId:ID!,operatorJurisdictionId:ID!,externalEvidenceHash:String!,approvalId:ID!): Boolean!
-    requestOperatorBrand(name:String!,domain:String!,defaultLocale:String!,defaultTimezone:String!,reason:String!): ID!
-    applyOperatorBrand(name:String!,domain:String!,defaultLocale:String!,defaultTimezone:String!,approvalId:ID!): ID!
-    requestTenantCurrency(code:String!,exponent:Int!,name:String!,depositsEnabled:Boolean!,withdrawalsEnabled:Boolean!,wageringEnabled:Boolean!,defaultForBrand:Boolean!,reason:String!): ID!
-    applyTenantCurrency(code:String!,exponent:Int!,name:String!,depositsEnabled:Boolean!,withdrawalsEnabled:Boolean!,wageringEnabled:Boolean!,defaultForBrand:Boolean!,approvalId:ID!): ID!
-    requestBrandLocale(brandId:ID!,locale:String!,language:String!,timezone:String!,termsVersion:String!,termsContentHash:String!,reason:String!): ID!
-    applyBrandLocale(brandId:ID!,locale:String!,language:String!,timezone:String!,termsVersion:String!,termsContentHash:String!,approvalId:ID!): ID!
-    requestHouseRule(name:String!,sportKey:String!,marketDefinitionKey:String!,rules:String!,effectiveFrom:String!,reason:String!): ID!
-    applyHouseRule(name:String!,sportKey:String!,marketDefinitionKey:String!,rules:String!,effectiveFrom:String!,approvalId:ID!): ID!
-    requestFeatureFlag(key:String!,description:String!,enabled:Boolean!,scopeType:String!,scopeId:String!,expiresAt:String!,reason:String!): ID!
-    applyFeatureFlag(key:String!,description:String!,enabled:Boolean!,scopeType:String!,scopeId:String!,expiresAt:String!,approvalId:ID!): ID!
-    createPromotionCampaign(key:String!,name:String!,description:String!,type:String!,startsAt:String!,endsAt:String!,budgetMinor:String!,currency:String!,economics:String!,requirements:String!): ID!
-    requestPromotionActivation(promotionId:ID!,reason:String!): ID!
-    applyPromotionActivation(promotionId:ID!,approvalId:ID!): Boolean!
-    requestWebhookEndpoint(name:String!,url:String!,eventTypes:String!,secretReference:String!,reason:String!): ID!
-    applyWebhookEndpoint(name:String!,url:String!,eventTypes:String!,secretReference:String!,approvalId:ID!): ID!
-    runAdapterCertification(connectionId:ID!): ID!
-    setProviderOperationalState(connectionId:ID!,status:String!,reason:String!): Boolean!
-    settleCombinationWager(wagerId:ID!,idempotencyKey:String!,planHash:String,expectedActorId:ID,expectedTenantId:ID): ID!
-    requestCombinationResettlement(settlementId:ID!,reason:String!): ID!
-    resettleCombinationWager(settlementId:ID!,approvalId:ID!,idempotencyKey:String!): ID!
-    requestCashOutCorrection(acceptanceId:ID!,reason:String!): ID!
-    correctCashOut(acceptanceId:ID!,approvalId:ID!,idempotencyKey:String!): ID!
-    recordComplianceScreening(playerId:ID!,screeningType:String!,status:String!,reason:String!,evidenceReference:String!): ID!
-    requestDisputeResolution(disputeId:ID!,resolution:String!,adjustmentMinor:String!,reason:String!): ID!
-    withdrawDisputeProposal(disputeId:ID!,reason:String!): ID!
-    transitionPrivacyRequest(requestId:ID!,status:String!,reason:String!,artifactReference:String): Boolean!
-    applyDisputeResolution(disputeId:ID!,resolution:String!,adjustmentMinor:String!,approvalId:ID!): Boolean!
-    setSupportCaseStatus(caseId:ID!,status:String!,customerMessage:String!,reason:String!): Boolean!
-    runSafeguardingReconciliation(accountId:ID!,assetMinor:String!,asOf:String!): ID!
-    openChargeback(paymentIntentId:ID!,amountMinor:String!,idempotencyKey:String!,reason:String!): ID!
-    requestTaxRule(jurisdictionId:ID!,key:String!,basis:String!,rateNumerator:String!,rateDenominator:String!,roundingRule:String!,effectiveFrom:String!,reason:String!): ID!
-    applyTaxRule(jurisdictionId:ID!,key:String!,basis:String!,rateNumerator:String!,rateDenominator:String!,roundingRule:String!,effectiveFrom:String!,approvalId:ID!): ID!
-    assessSettlementTax(settlementId:ID!,taxRuleId:ID!,idempotencyKey:String!): ID!
-    requestLedgerAdjustment(accountId:ID!,amountMinor:String!,direction:String!,reasonCode:String!,evidence:String!): ID!
-    applyLedgerAdjustment(adjustmentId:ID!,approvalId:ID!,idempotencyKey:String!): ID!
-    runRetentionDryRun(policyId:ID!,windowFrom:String!,windowTo:String!): ID!
-    requestRetentionExecution(executionId:ID!,reason:String!): ID!
-    applyRetentionExecution(executionId:ID!,approvalId:ID!): Boolean!
-    requestDataExport(type:String!,classification:String!,scope:String!,expiresAt:String!): ID!
-    applyApprovedDataExport(exportId:ID!,approvalId:ID!): Boolean!
-  }
-`;
 async function combinationSettlement(tx, tenantId, actorId, wagerId, idempotencyKey, correctionOf) {
   const prior = await tx.settlement.findFirst({ where: { tenantId, wagerId, inputHash: idempotencyKey } });
   if (prior) return prior.id;
@@ -4924,1107 +4474,1288 @@ async function combinationSettlement(tx, tenantId, actorId, wagerId, idempotency
   await appendAudit(tx, tenantId, actorId, correctionOf ? "wager.resettled_full" : "wager.settled_full", "Wager", wagerId, correctionOf ? "DUAL_APPROVED_CORRECTION" : "APPROVED_RESULTS", { settlementId: settlement.id, runId: run.id, payoutMinor: String(totalPayout), inputHash, resultVersionIds: resultVersions.map((item) => item.id) });
   return settlement.id;
 }
-var sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, context) => hasOperatorMfaAssurance(context.session), fullStraightSettlementPlan: async (_r, a, context) => {
-  const tenantId = await requireTenant(context, "canManageRisk");
-  return JSON.stringify(await getFullStraightPlan(context.prisma, tenantId, context.session.itemId, a.wagerId, context.session));
-} }, Mutation: {
-  bootstrapOperatorAdmin: async (_r, a, context) => {
-    if (!/^\S+@\S+\.\S+$/.test(a.email) || String(a.password).length < 12 || String(a.name).trim().length < 2) throw new Error("INVALID_INITIAL_ADMIN");
-    return context.transaction(async (txContext) => {
-      await txContext.prisma.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('openfront-initial-admin'))`;
-      if (await txContext.prisma.user.count()) throw new Error("INITIAL_ADMIN_ALREADY_EXISTS");
-      const role = await txContext.sudo().query.Role.createOne({ data: { name: "Admin", canSeeOtherPeople: true, canEditOtherPeople: true, canManagePeople: true, canManageRoles: true, canAccessDashboard: true, canManageOnboarding: true, canManageSportsbook: true, canTrade: true, canManageRisk: true, canManageCompliance: true, canManageFinance: true, canManageIntegrations: true, canApproveSensitiveActions: false, canReadAudit: true }, query: "id" });
-      const user = await txContext.sudo().query.User.createOne({ data: { name: String(a.name).trim(), email: String(a.email).trim().toLowerCase(), password: a.password, role: { connect: { id: role.id } } }, query: "id" });
-      return user.id;
-    });
-  },
-  beginOperatorMfaEnrollment: async (_r, _a, context) => {
-    const userId = context.session?.itemId;
-    if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
-    const user = await context.prisma.user.findUnique({ where: { id: userId }, include: { role: true } });
-    if (!user || !user.role || !["canManagePeople", "canManageRoles", "canManageOnboarding", "canManageSportsbook", "canTrade", "canManageRisk", "canManageCompliance", "canManageFinance", "canManageIntegrations", "canApproveSensitiveActions", "canReadAudit"].some((capability) => Boolean(user.role[capability]))) throw new Error("OPERATOR_ACCOUNT_REQUIRED");
-    if (user.operatorMfaEnabled) throw new Error("MFA_ALREADY_ENROLLED_STEP_UP_REQUIRED");
-    const secret = generateTotpSecret(), uri = `otpauth://totp/${encodeURIComponent("Openfront Sportsbook")}:${encodeURIComponent(user.email)}?secret=${secret}&issuer=${encodeURIComponent("Openfront Sportsbook")}&algorithm=SHA1&digits=6&period=30`;
-    await context.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;
-      const current = await tx.user.findUnique({ where: { id: user.id } });
-      if (!current || current.operatorMfaEnabled) throw new Error("MFA_ALREADY_ENROLLED_STEP_UP_REQUIRED");
-      await tx.user.update({ where: { id: user.id }, data: { operatorMfaSecret: encryptTotpSecret(secret) } });
-      if (user.tenantId) await appendAudit(tx, user.tenantId, user.id, "operator.mfa_enrollment_started", "User", user.id, "OPERATOR_SECURITY", {});
-    });
-    return { secret, uri };
-  },
-  completeOperatorMfaEnrollment: async (_r, a, context) => {
-    const userId = context.session?.itemId;
-    if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
-    const recoveryCodes = Array.from({ length: 8 }, () => `${(0, import_node_crypto11.randomBytes)(4).toString("hex").slice(0, 4)}-${(0, import_node_crypto11.randomBytes)(4).toString("hex").slice(0, 4)}`.toUpperCase()), recoveryHashes = recoveryCodes.map((code) => evidenceHash(code));
-    const result = await context.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
-      const current = await tx.user.findUnique({ where: { id: userId }, include: { role: true } });
-      if (!current || current.operatorMfaEnabled || !current.operatorMfaSecret) throw new Error(current?.operatorMfaEnabled ? "MFA_ALREADY_ENROLLED" : "MFA_ENROLLMENT_REQUIRED");
-      if (current.operatorMfaLockedUntil && current.operatorMfaLockedUntil > /* @__PURE__ */ new Date()) throw new Error("MFA_TEMPORARILY_LOCKED");
-      if (!current.role || !["canManagePeople", "canManageRoles", "canManageOnboarding", "canManageSportsbook", "canTrade", "canManageRisk", "canManageCompliance", "canManageFinance", "canManageIntegrations", "canApproveSensitiveActions", "canReadAudit"].some((capability) => Boolean(current.role[capability]))) throw new Error("OPERATOR_ACCOUNT_REQUIRED");
-      if (!verifyTotp(decryptTotpSecret(current.operatorMfaSecret), String(a.code))) {
-        const attempts = Number(current.operatorMfaFailedAttempts ?? 0) + 1;
-        await tx.user.update({ where: { id: current.id }, data: { operatorMfaFailedAttempts: attempts, operatorMfaLockedUntil: attempts >= 5 ? new Date(Date.now() + 15 * 6e4) : null } });
-        return { user: null };
-      }
-      const updated = await tx.user.update({ where: { id: current.id }, data: { operatorMfaEnabled: true, operatorMfaRecoveryHashes: recoveryHashes, operatorMfaEnrolledAt: /* @__PURE__ */ new Date(), operatorMfaFailedAttempts: 0, operatorMfaLockedUntil: null } });
-      if (updated.tenantId) await appendAudit(tx, updated.tenantId, updated.id, "operator.mfa_enabled", "User", updated.id, "OPERATOR_SECURITY", { recoveryCodeCount: recoveryCodes.length });
-      return { user: updated };
-    });
-    if (!result.user) throw new Error("INVALID_MFA_CODE");
-    const sessionToken = await startOperatorMfaSession(context, result.user.id);
-    return { enabled: true, recoveryCodes, sessionToken };
-  },
-  // Replace every recovery code (old ones stop working). Requires a verified session AND a fresh authenticator code, never a recovery code.
-  regenerateOperatorMfaRecoveryCodes: async (_r, a, context) => {
-    const userId = context.session?.itemId;
-    if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
-    if (!hasOperatorMfaAssurance(context.session)) throw new Error("MFA_STEP_UP_REQUIRED");
-    const supplied = String(a.code ?? "").trim();
-    if (!/^\d{6}$/.test(supplied)) throw new Error("AUTHENTICATOR_CODE_REQUIRED");
-    const recoveryCodes = Array.from({ length: 8 }, () => `${(0, import_node_crypto11.randomBytes)(4).toString("hex").slice(0, 4)}-${(0, import_node_crypto11.randomBytes)(4).toString("hex").slice(0, 4)}`.toUpperCase());
-    const ok = await context.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
-      const user = await tx.user.findUnique({ where: { id: userId } });
-      if (!user?.operatorMfaEnabled || !user.operatorMfaSecret) throw new Error("MFA_NOT_ENROLLED");
-      const now = /* @__PURE__ */ new Date();
-      if (user.operatorMfaLockedUntil && user.operatorMfaLockedUntil > now) throw new Error("MFA_TEMPORARILY_LOCKED");
-      if (!verifyTotp(decryptTotpSecret(user.operatorMfaSecret), supplied)) {
-        const attempts = Number(user.operatorMfaFailedAttempts ?? 0) + 1;
-        await tx.user.update({ where: { id: user.id }, data: { operatorMfaFailedAttempts: attempts, operatorMfaLockedUntil: attempts >= 5 ? new Date(now.getTime() + 15 * 6e4) : null } });
-        return false;
-      }
-      await tx.user.update({ where: { id: user.id }, data: { operatorMfaRecoveryHashes: recoveryCodes.map((code) => evidenceHash(code)), operatorMfaFailedAttempts: 0, operatorMfaLockedUntil: null } });
-      if (user.tenantId) await appendAudit(tx, user.tenantId, user.id, "operator.mfa_recovery_codes_regenerated", "User", user.id, "OPERATOR_SECURITY", { recoveryCodeCount: recoveryCodes.length });
-      return true;
-    });
-    if (!ok) throw new Error("INVALID_MFA_CODE");
-    return recoveryCodes;
-  },
-  verifyOperatorMfaSession: async (_r, a, context) => {
-    const userId = context.session?.itemId;
-    if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
-    const verified = await context.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
-      const user = await tx.user.findUnique({ where: { id: userId } });
-      if (!user?.operatorMfaEnabled || !user.operatorMfaSecret) throw new Error("MFA_NOT_ENROLLED");
-      const now = /* @__PURE__ */ new Date();
-      if (user.operatorMfaLockedUntil && user.operatorMfaLockedUntil > now) throw new Error("MFA_TEMPORARILY_LOCKED");
-      const supplied = String(a.code ?? "").trim().toUpperCase(), hashes = Array.isArray(user.operatorMfaRecoveryHashes) ? user.operatorMfaRecoveryHashes.map(String) : [], recoveryIndex = hashes.indexOf(evidenceHash(supplied)), valid = verifyTotp(decryptTotpSecret(user.operatorMfaSecret), supplied) || recoveryIndex >= 0;
-      if (!valid) {
-        const attempts = Number(user.operatorMfaFailedAttempts ?? 0) + 1;
-        await tx.user.update({ where: { id: user.id }, data: { operatorMfaFailedAttempts: attempts, operatorMfaLockedUntil: attempts >= 5 ? new Date(now.getTime() + 15 * 6e4) : null } });
-        return null;
-      }
-      if (recoveryIndex >= 0) hashes.splice(recoveryIndex, 1);
-      await tx.user.update({ where: { id: user.id }, data: { operatorMfaFailedAttempts: 0, operatorMfaLockedUntil: null, ...recoveryIndex >= 0 ? { operatorMfaRecoveryHashes: hashes } : {} } });
-      if (user.tenantId) await appendAudit(tx, user.tenantId, user.id, "operator.mfa_verified", "User", user.id, recoveryIndex >= 0 ? "RECOVERY_CODE" : "TOTP", {});
-      return user.id;
-    });
-    if (!verified) throw new Error("INVALID_MFA_CODE");
-    return startOperatorMfaSession(context, verified);
-  },
-  sendUserPasswordResetLink: async (_r, a, context) => {
-    const email = String(a.email ?? "").trim().toLowerCase();
-    if (!/^\S+@\S+\.\S+$/.test(email)) return true;
-    const user = await context.prisma.user.findUnique({ where: { email } });
-    if (!user) return true;
-    const token = (0, import_node_crypto11.randomBytes)(32).toString("base64url"), digest = evidenceHash(token);
-    await context.prisma.user.update({ where: { id: user.id }, data: { passwordResetToken: digest, passwordResetIssuedAt: /* @__PURE__ */ new Date() } });
-    void sendPasswordResetEmail(token, email).catch(() => console.error("Operator password reset email could not be sent."));
-    return true;
-  },
-  redeemUserPasswordResetToken: async (_r, a, context) => {
-    const email = String(a.email ?? "").trim().toLowerCase(), token = String(a.token ?? ""), password2 = String(a.password ?? "");
-    if (password2.length < 12) return { code: "WEAK_PASSWORD", message: "Use at least 12 characters." };
-    const digest = evidenceHash(token), invalid = { code: "INVALID_TOKEN", message: "The reset token is invalid or expired." };
-    if (!token) return invalid;
-    const redeemed = await context.transaction(async (txContext) => {
-      const rows = await txContext.prisma.$queryRaw`SELECT id FROM "User" WHERE email = ${email} FOR UPDATE`, id = rows?.[0]?.id;
-      if (!id) return false;
-      const redeemedAt = /* @__PURE__ */ new Date(), claimed = await txContext.prisma.user.updateMany({ where: { id, passwordResetToken: digest, passwordResetIssuedAt: { gte: new Date(redeemedAt.getTime() - 30 * 6e4) } }, data: { passwordResetToken: null, passwordResetRedeemedAt: redeemedAt } });
-      if (claimed.count !== 1) return false;
-      await txContext.sudo().query.User.updateOne({ where: { id }, data: { password: password2 }, query: "id" });
-      return true;
-    });
-    return redeemed ? { code: null, message: "Password reset complete." } : invalid;
-  },
-  setEventTradingState: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade");
-    if (!allowedEventStates.has(a.status)) throw new Error("INVALID_EVENT_STATUS");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canTrade");
-      const event = await tx.event.findFirst({ where: { id: a.eventId, tenantId } });
-      if (!event) throw new Error("Not found");
-      assertEventTradingTransition(event.status, a.status);
-      assertEventTransition(event.status, a.status);
-      if (a.clockSeconds !== void 0 && a.clockSeconds !== null && (!Number.isSafeInteger(a.clockSeconds) || a.clockSeconds < 0 || a.clockSeconds > 2147483647)) throw new Error("INVALID_CLOCK_SECONDS");
-      const nextPhase = a.livePhase ?? event.livePhase, nextClock = a.clockSeconds ?? event.clockSeconds;
-      if (event.status === a.status && event.livePhase === nextPhase && (event.clockSeconds ?? null) === (nextClock ?? null)) return true;
-      const updated = await tx.event.updateMany({ where: { id: event.id, tenantId, status: event.status, version: event.version }, data: { status: a.status, livePhase: nextPhase, clockSeconds: nextClock, version: Number(event.version ?? 0) + 1 } });
-      if (updated.count !== 1) throw new Error("STALE_EVENT_STATE");
-      if (["SUSPENDED", "ENDED", "CANCELLED"].includes(a.status)) {
-        const marketStatus = a.status === "SUSPENDED" ? "SUSPENDED" : "CLOSED", now = /* @__PURE__ */ new Date();
-        const openMarkets = await tx.market.findMany({ where: { tenantId, eventId: event.id, status: "OPEN" }, select: { id: true, version: true } });
-        for (const market of openMarkets) {
-          const closed = await tx.market.updateMany({ where: { id: market.id, tenantId, status: "OPEN", version: market.version }, data: { status: marketStatus, version: Number(market.version ?? 0) + 1 } });
-          if (closed.count !== 1) throw new Error("STALE_MARKET_STATE");
-          await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "MARKET", scopeId: market.id, fromStatus: "OPEN", toStatus: marketStatus, reason: `Event ${String(a.status).toLowerCase()} \xB7 ${a.reason}`, source: "EVENT", actorId: context.session.itemId, effectiveAt: now } });
-        }
-      }
-      await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "EVENT", scopeId: event.id, fromStatus: event.status, toStatus: a.status, reason: a.reason, source: "OPERATOR", actorId: context.session.itemId, effectiveAt: /* @__PURE__ */ new Date() } });
-      await appendAudit(tx, tenantId, context.session.itemId, "event.status_changed", "Event", event.id, a.reason, { from: event.status, to: a.status, livePhase: a.livePhase, clockSeconds: a.clockSeconds });
-      return true;
-    });
-  },
-  createCompetitionSeason: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade"), startsAt = await operatorInstant(context, tenantId, a.startsAt, "STARTS_AT"), endsAt = await operatorInstant(context, tenantId, a.endsAt, "ENDS_AT");
-    if (startsAt >= endsAt) throw new Error("INVALID_SEASON");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canTrade");
-      const competition = await tx.competition.findFirst({ where: { id: a.competitionId, tenantId } });
-      if (!competition) throw new Error("Not found");
-      const season = await tx.season.create({ data: { tenantId, competitionId: competition.id, key: a.key, name: a.name, startsAt, endsAt, status: startsAt <= /* @__PURE__ */ new Date() ? "ACTIVE" : "SCHEDULED" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "catalog.season_created", "Season", season.id, "OPERATOR_ENTRY", { competitionId: competition.id, key: a.key, startsAt, endsAt });
-      return season.id;
-    });
-  },
-  createCatalogVenue: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canTrade");
-      const row = await tx.venue.create({ data: { tenantId, key: a.key, name: a.name, countryCode: a.countryCode, timezone: a.timezone, address: {}, status: "ACTIVE" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "catalog.venue_created", "Venue", row.id, "OPERATOR_ENTRY", { key: a.key, countryCode: a.countryCode });
-      return row.id;
-    });
-  },
-  /** Operator catalog entry for a sport or competition, with the same key/name rules as other reference data. */
-  createCatalogSport: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade");
-    const key2 = String(a.key ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim();
-    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key2)) throw new Error("INVALID_CATALOG_KEY");
-    if (!name || name.length > 120) throw new Error("INVALID_CATALOG_NAME");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canTrade");
-      if (await tx.sport.findFirst({ where: { tenantId, key: key2 }, select: { id: true } })) throw new Error("CATALOG_KEY_EXISTS");
-      const row = await tx.sport.create({ data: { tenantId, key: key2, name, active: true } });
-      await appendAudit(tx, tenantId, context.session.itemId, "catalog.sport_created", "Sport", row.id, "OPERATOR_ENTRY", { key: key2 });
-      return row.id;
-    });
-  },
-  createCatalogCompetition: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade");
-    const key2 = String(a.key ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim(), timezone = String(a.timezone ?? "").trim();
-    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key2)) throw new Error("INVALID_CATALOG_KEY");
-    if (!name || name.length > 120) throw new Error("INVALID_CATALOG_NAME");
-    try {
-      new Intl.DateTimeFormat("en-US", { timeZone: timezone });
-    } catch {
-      throw new Error("INVALID_TIMEZONE");
-    }
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canTrade");
-      const sport = await tx.sport.findFirst({ where: { id: a.sportId, tenantId, active: true }, select: { id: true } });
-      if (!sport) throw new Error("SPORT_NOT_FOUND");
-      if (await tx.competition.findFirst({ where: { tenantId, sportId: sport.id, key: key2 }, select: { id: true } })) throw new Error("CATALOG_KEY_EXISTS");
-      const row = await tx.competition.create({ data: { tenantId, sportId: sport.id, key: key2, name, timezone, status: "ACTIVE" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "catalog.competition_created", "Competition", row.id, "OPERATOR_ENTRY", { key: key2, sportId: sport.id });
-      return row.id;
-    });
-  },
-  createCatalogCompetitor: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canTrade");
-      if (await tx.competitor.findFirst({ where: { tenantId, key: a.key }, select: { id: true } })) throw new Error("CATALOG_KEY_EXISTS");
-      const row = await tx.competitor.create({ data: { tenantId, key: a.key, name: a.name, status: "ACTIVE" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "catalog.competitor_created", "Competitor", row.id, "OPERATOR_ENTRY", { key: a.key });
-      return row.id;
-    });
-  },
-  createCatalogStage: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade");
-    const key2 = String(a.key ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim();
-    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key2)) throw new Error("INVALID_CATALOG_KEY");
-    if (!name || name.length > 120) throw new Error("INVALID_CATALOG_NAME");
-    if (!Number.isSafeInteger(a.sortOrder) || a.sortOrder < 0 || a.sortOrder > 1e4) throw new Error("INVALID_SORT_ORDER");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canTrade");
-      const season = await tx.season.findFirst({ where: { id: a.seasonId, tenantId, status: { not: "CANCELLED" } }, select: { id: true } });
-      if (!season) throw new Error("SEASON_NOT_FOUND");
-      if (await tx.competitionStage.findFirst({ where: { tenantId, seasonId: season.id, key: key2 }, select: { id: true } })) throw new Error("CATALOG_KEY_EXISTS");
-      const row = await tx.competitionStage.create({ data: { tenantId, seasonId: season.id, key: key2, name, sortOrder: a.sortOrder, status: "SCHEDULED" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "catalog.stage_created", "CompetitionStage", row.id, "OPERATOR_ENTRY", { seasonId: season.id, key: key2, sortOrder: a.sortOrder });
-      return row.id;
-    });
-  },
-  /** Activate/deactivate catalog reference data. Seasons cancel only when no event references them; stages toggle ACTIVE/COMPLETE. */
-  setCatalogReferenceStatus: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade");
-    const type = String(a.type ?? "").trim().toUpperCase(), reason = String(a.reason ?? "").trim(), active = a.active === true;
-    const models2 = { SPORT: { model: "sport", target: "Sport" }, COMPETITION: { model: "competition", target: "Competition" }, VENUE: { model: "venue", target: "Venue" }, COMPETITOR: { model: "competitor", target: "Competitor" }, SEASON: { model: "season", target: "Season" }, STAGE: { model: "competitionStage", target: "CompetitionStage" } };
-    const spec = models2[type];
-    if (!spec) throw new Error("INVALID_REFERENCE_TYPE");
-    if (reason.length < 3 || reason.length > 500) throw new Error("REASON_REQUIRED");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canTrade");
-      const row = await tx[spec.model].findFirst({ where: { id: a.id, tenantId } });
-      if (!row) throw new Error("Not found");
-      let from, to, data;
-      if (type === "SPORT") {
-        from = row.active ? "ACTIVE" : "INACTIVE";
-        to = active ? "ACTIVE" : "INACTIVE";
-        data = { active };
-      } else if (type === "SEASON") {
-        from = String(row.status ?? "SCHEDULED");
-        to = active ? "ACTIVE" : "CANCELLED";
-        if (!active && from !== "CANCELLED" && await tx.event.count({ where: { tenantId, seasonId: row.id } })) throw new Error("SEASON_IN_USE");
-        data = { status: to };
-      } else if (type === "STAGE") {
-        from = String(row.status ?? "SCHEDULED");
-        to = active ? "ACTIVE" : "COMPLETE";
-        data = { status: to };
-      } else {
-        from = String(row.status ?? "ACTIVE");
-        to = active ? "ACTIVE" : "INACTIVE";
-        data = { status: to };
-      }
-      if (from === to) return true;
-      await tx[spec.model].update({ where: { id: row.id }, data });
-      await appendAudit(tx, tenantId, context.session.itemId, active ? "catalog.reference_activated" : "catalog.reference_deactivated", spec.target, row.id, reason, { type, from, to });
-      return true;
-    });
-  },
-  attachEventParticipant: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canTrade");
-      const [event, competitor] = await Promise.all([tx.event.findFirst({ where: { id: a.eventId, tenantId } }), tx.competitor.findFirst({ where: { id: a.competitorId, tenantId } })]);
-      if (!event || !competitor) throw new Error("Not found");
-      const row = await tx.eventParticipant.create({ data: { tenantId, eventId: event.id, competitorId: competitor.id, role: a.role, sortOrder: a.sortOrder } });
-      await appendAudit(tx, tenantId, context.session.itemId, "catalog.participant_attached", "Event", event.id, "OPERATOR_ENTRY", { participantId: row.id, competitorId: competitor.id, role: a.role });
-      return row.id;
-    });
-  },
-  rescheduleEvent: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade"), startAt = await operatorInstant(context, tenantId, a.startAt, "START_AT");
-    if (Number.isNaN(startAt.getTime())) throw new Error("INVALID_START");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canTrade");
-      const event = await tx.event.findFirst({ where: { id: a.eventId, tenantId } });
-      if (!event) throw new Error("Not found");
-      await tx.eventScheduleChange.create({ data: { tenantId, eventId: event.id, fromStartAt: event.startAt, toStartAt: startAt, reasonCode: a.reason, source: "OPERATOR", actorId: context.session.itemId, evidenceHash: evidenceHash({ eventId: event.id, from: event.startAt, to: startAt, reason: a.reason }) } });
-      await tx.event.update({ where: { id: event.id }, data: { startAt, version: { increment: 1 } } });
-      await tx.market.updateMany({ where: { tenantId, eventId: event.id, status: "OPEN" }, data: { status: "SUSPENDED", version: { increment: 1 } } });
-      await appendAudit(tx, tenantId, context.session.itemId, "catalog.event_rescheduled", "Event", event.id, a.reason, { from: event.startAt, to: startAt });
-      return true;
-    });
-  },
-  createEventMarket: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade"), parameters = object(a.parameters, "INVALID_PARAMETERS"), selections = object(a.selections, "INVALID_SELECTIONS");
-    if (!Array.isArray(selections.items) || selections.items.length < 2) throw new Error("INVALID_SELECTIONS");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canTrade");
-      await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${a.eventId} AND tenant = ${tenantId} FOR UPDATE`;
-      const [event, definition] = await Promise.all([tx.event.findFirst({ where: { id: a.eventId, tenantId } }), tx.marketDefinition.findFirst({ where: { tenantId, key: a.definitionKey, status: "ACTIVE" }, orderBy: { version: "desc" } })]);
-      if (!event || !definition) throw new Error("Not found");
-      assertEventAllowsNewMarket(event.status);
-      const market = await tx.market.create({ data: { tenantId, eventId: event.id, definitionId: definition.id, definitionKey: definition.key, parameters, tradingMode: a.tradingMode, line: String(parameters.line ?? ""), cashOutEnabled: a.cashOutEnabled, status: "OPEN", version: 1 } });
-      await tx.selection.createMany({ data: selections.items.map((item) => ({ tenantId, marketId: market.id, key: String(item.key), label: String(item.label), status: "OPEN" })) });
-      await appendAudit(tx, tenantId, context.session.itemId, "catalog.market_created", "Market", market.id, "OPERATOR_ENTRY", { eventId: event.id, definitionId: definition.id, parameters, tradingMode: a.tradingMode, cashOutEnabled: a.cashOutEnabled, selections: selections.items });
-      return market.id;
-    });
-  },
-  mapProviderEntity: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canTrade");
-      const connection = await tx.providerConnection.findFirst({ where: { id: a.connectionId, tenantId } });
-      if (!connection) throw new Error("Not found");
-      const row = await tx.providerEntityMapping.create({ data: { tenantId, providerConnectionId: connection.id, entityType: a.entityType, externalId: a.externalId, canonicalType: a.canonicalType, canonicalId: a.canonicalId, confidence: a.confidence, status: "APPROVED" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "catalog.provider_mapped", "ProviderEntityMapping", row.id, "OPERATOR_REVIEW", { connectionId: connection.id, externalId: a.externalId, canonicalType: a.canonicalType, canonicalId: a.canonicalId, confidence: a.confidence });
-      return row.id;
-    });
-  },
-  requestTraderOverride: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade");
-    const expiresAt = await operatorInstant(context, tenantId, a.expiresAt, "EXPIRES_AT");
-    if (Number.isNaN(expiresAt.getTime()) || expiresAt <= /* @__PURE__ */ new Date()) throw new Error("INVALID_EXPIRY");
-    if (a.targetType !== "MARKET" || a.overrideType !== "STATUS") throw new Error("OVERRIDE_TYPE_UNSUPPORTED");
-    const value = object(a.value, "INVALID_OVERRIDE_VALUE");
-    if (!["SUSPENDED", "CLOSED"].includes(value.status)) throw new Error("INVALID_OVERRIDE");
-    const target = await context.prisma.market.findFirst({ where: { id: a.targetId, tenantId }, select: { id: true } });
-    if (!target) throw new Error("Not found");
-    if (a.targetType === "MARKET" && a.overrideType === "STATUS" && value.status === "OPEN") throw new Error("TRADING_REOPENING_REQUIRES_REVIEWED_POLICY");
-    const payloadHash = evidenceHash({ targetType: a.targetType, targetId: a.targetId, overrideType: a.overrideType, value, expiresAt });
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canTrade");
-      const approval = await tx.approvalRequest.create({ data: { tenantId, action: `TRADER_OVERRIDE:${a.targetType}:${a.targetId}:${a.overrideType}`, payloadHash, ...approvalReview({ targetType: a.targetType, targetId: a.targetId, overrideType: a.overrideType, value, expiresAt }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-      const override = await tx.traderOverride.create({ data: { tenantId, targetType: a.targetType, targetId: a.targetId, overrideType: a.overrideType, value, reasonCode: a.reason, startsAt: /* @__PURE__ */ new Date(), expiresAt, status: "PENDING", requesterId: context.session.itemId, approvalRequestId: approval.id } });
-      await appendAudit(tx, tenantId, context.session.itemId, "trading.override_requested", "TraderOverride", override.id, a.reason, { approvalId: approval.id, payloadHash });
-      return override.id;
-    });
-  },
-  applyTraderOverride: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canTrade");
-    return context.prisma.$transaction(async (tx) => {
-      const now = /* @__PURE__ */ new Date(), row = await tx.traderOverride.findFirst({ where: { id: a.overrideId, tenantId, status: "PENDING" } });
-      if (!row?.approvalRequestId) throw new Error("Not found");
-      if (!(row.expiresAt instanceof Date) || row.expiresAt <= now) throw new Error("OVERRIDE_EXPIRED");
-      if (row.targetType !== "MARKET" || row.overrideType !== "STATUS") throw new Error("OVERRIDE_TYPE_UNSUPPORTED");
-      if (row.targetType === "MARKET" && row.overrideType === "STATUS" && row.value?.status === "OPEN") throw new Error("TRADING_REOPENING_REQUIRES_REVIEWED_POLICY");
-      const payloadHash = evidenceHash({ targetType: row.targetType, targetId: row.targetId, overrideType: row.overrideType, value: row.value, expiresAt: row.expiresAt });
-      await approved(tx, context, "canTrade", tenantId, a.approvalId, `TRADER_OVERRIDE:${row.targetType}:${row.targetId}:${row.overrideType}`, payloadHash);
-      const claimed = await tx.traderOverride.updateMany({ where: { id: row.id, tenantId, status: "PENDING", expiresAt: { gt: now } }, data: { status: "ACTIVE", startsAt: now } });
-      if (claimed.count !== 1) throw new Error("OVERRIDE_EXPIRED");
-      {
-        const value = row.value;
-        if (!["SUSPENDED", "CLOSED"].includes(value?.status)) throw new Error("INVALID_OVERRIDE");
-        const market = await tx.market.updateMany({ where: { id: row.targetId, tenantId, status: { in: ["OPEN", "SUSPENDED"] } }, data: { status: value.status, version: { increment: 1 } } });
-        if (market.count !== 1) throw new Error("Not found");
-      }
-      await appendAudit(tx, tenantId, context.session.itemId, "trading.override_applied", "TraderOverride", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
-      return true;
-    });
-  },
-  requestCorrelationRule: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageRisk");
-    if (!["ALLOW", "DENY", "PROVIDER_PRICE_REQUIRED"].includes(a.decision) || a.leftMarketId === a.rightMarketId) throw new Error("INVALID_CORRELATION_RULE");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageRisk");
-      const markets = await tx.market.count({ where: { tenantId, id: { in: [a.leftMarketId, a.rightMarketId] } } });
-      if (markets !== 2) throw new Error("Not found");
-      const payloadHash = evidenceHash({ action: "CORRELATION_RULE", groupKey: a.groupKey, sportKey: a.sportKey, leftMarketId: a.leftMarketId, rightMarketId: a.rightMarketId, decision: a.decision });
-      const approval = await tx.approvalRequest.create({ data: { tenantId, action: `CORRELATION_RULE:${a.groupKey}:${a.leftMarketId}:${a.rightMarketId}:${a.decision}`, payloadHash, ...approvalReview({ action: "CORRELATION_RULE", groupKey: a.groupKey, sportKey: a.sportKey, leftMarketId: a.leftMarketId, rightMarketId: a.rightMarketId, decision: a.decision }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-      await appendAudit(tx, tenantId, context.session.itemId, "correlation.rule_requested", "ApprovalRequest", approval.id, a.reason, { payloadHash });
-      return approval.id;
-    });
-  },
-  applyCorrelationRule: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageRisk");
-    return context.prisma.$transaction(async (tx) => {
-      const payloadHash = evidenceHash({ action: "CORRELATION_RULE", groupKey: a.groupKey, sportKey: a.sportKey, leftMarketId: a.leftMarketId, rightMarketId: a.rightMarketId, decision: a.decision });
-      await approved(tx, context, "canManageRisk", tenantId, a.approvalId, `CORRELATION_RULE:${a.groupKey}:${a.leftMarketId}:${a.rightMarketId}:${a.decision}`, payloadHash);
-      let group = await tx.correlationGroup.findFirst({ where: { tenantId, key: a.groupKey, status: "ACTIVE" }, orderBy: { version: "desc" } });
-      if (!group) group = await tx.correlationGroup.create({ data: { tenantId, key: a.groupKey, name: a.groupKey.replaceAll("-", " "), sportKey: a.sportKey, status: "ACTIVE", version: 1 } });
-      const existing = await tx.correlationRule.findFirst({ where: { tenantId, groupId: group.id, leftPattern: { equals: { marketId: a.leftMarketId } }, rightPattern: { equals: { marketId: a.rightMarketId } } } });
-      if (existing) throw new Error("CORRELATION_RULE_EXISTS");
-      const rule = await tx.correlationRule.create({ data: { tenantId, groupId: group.id, leftPattern: { marketId: a.leftMarketId }, rightPattern: { marketId: a.rightMarketId }, decision: a.decision, reasonCode: "DUAL_APPROVED", priority: 100 } });
-      await appendAudit(tx, tenantId, context.session.itemId, "correlation.rule_applied", "CorrelationRule", rule.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
-      return rule.id;
-    });
-  },
-  runTradingReplay: async (_r, _a, context) => {
-    await requireTenant(context, "canManageIntegrations");
-    throw new Error("DETERMINISTIC_REPLAY_COMPARISON_NOT_IMPLEMENTED");
-  },
-  requestLegalEntity: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook");
-    if (!/^[A-Z]{2}$|^UNCONFIGURED$/.test(a.countryCode) || !a.registrationReference) throw new Error("INVALID_LEGAL_ENTITY");
-    const payloadHash = evidenceHash({ action: "LEGAL_ENTITY", name: a.name, countryCode: a.countryCode, registrationReference: a.registrationReference });
-    return (await context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
-      return tx.approvalRequest.create({ data: { tenantId, action: `LEGAL_ENTITY:${a.countryCode}:${a.registrationReference}`, payloadHash, ...approvalReview({ action: "LEGAL_ENTITY", name: a.name, countryCode: a.countryCode, registrationReference: a.registrationReference }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-    })).id;
-  },
-  applyLegalEntity: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook"), payloadHash = evidenceHash({ action: "LEGAL_ENTITY", name: a.name, countryCode: a.countryCode, registrationReference: a.registrationReference });
-    return context.prisma.$transaction(async (tx) => {
-      await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `LEGAL_ENTITY:${a.countryCode}:${a.registrationReference}`, payloadHash);
-      const row = await tx.legalEntity.create({ data: { tenantId, name: a.name, countryCode: a.countryCode, registrationReference: a.registrationReference, status: "PENDING" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "legal_entity.configured", "LegalEntity", row.id, "DUAL_APPROVED_EXTERNAL_VALIDATION_PENDING", { approvalId: a.approvalId, payloadHash });
-      return row.id;
-    });
-  },
-  createJurisdictionPolicyDraft: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook"), document = object(a.policyDocument, "INVALID_POLICY_DOCUMENT"), effectiveFrom = await operatorInstant(context, tenantId, a.effectiveFrom, "EFFECTIVE_FROM");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
-      const jurisdiction = await tx.jurisdiction.findUnique({ where: { id: a.jurisdictionId } });
-      if (!jurisdiction) throw new Error("Not found");
-      const version = await tx.jurisdictionPolicyVersion.count({ where: { tenantId, jurisdictionId: jurisdiction.id } }) + 1, evidence = evidenceHash({ jurisdictionId: jurisdiction.id, authorityCitation: a.authorityCitation, document, effectiveFrom, version }), row = await tx.jurisdictionPolicyVersion.create({ data: { tenantId, jurisdictionId: jurisdiction.id, version, authorityCitation: a.authorityCitation, policyDocument: document, effectiveFrom, status: "DRAFT", evidenceHash: evidence } });
-      await appendAudit(tx, tenantId, context.session.itemId, "jurisdiction_policy.drafted", "JurisdictionPolicyVersion", row.id, "OPERATOR_DRAFT", { evidenceHash: evidence });
-      return row.id;
-    });
-  },
-  requestJurisdictionActivation: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook");
-    if (!/^[a-f0-9]{64}$/i.test(a.externalEvidenceHash)) throw new Error("EXTERNAL_EVIDENCE_HASH_REQUIRED");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
-      const [policy, scope] = await Promise.all([tx.jurisdictionPolicyVersion.findFirst({ where: { id: a.policyId, tenantId, status: "DRAFT" } }), tx.operatorJurisdiction.findFirst({ where: { id: a.operatorJurisdictionId, tenantId, status: "PENDING" } })]);
-      if (!policy || !scope || policy.jurisdictionId !== scope.jurisdictionId) throw new Error("Not found");
-      const payloadHash = evidenceHash({ action: "JURISDICTION_ACTIVATION", policyId: policy.id, operatorJurisdictionId: scope.id, policyEvidenceHash: policy.evidenceHash, externalEvidenceHash: a.externalEvidenceHash });
-      const approval = await tx.approvalRequest.create({ data: { tenantId, action: `JURISDICTION_ACTIVATION:${policy.id}:${scope.id}`, payloadHash, ...approvalReview({ action: "JURISDICTION_ACTIVATION", policyId: policy.id, operatorJurisdictionId: scope.id, policyVersion: policy.version, authorityCitation: policy.authorityCitation, policyEvidenceHash: policy.evidenceHash, externalEvidenceHash: a.externalEvidenceHash }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-      return approval.id;
-    });
-  },
-  applyJurisdictionActivation: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook");
-    return context.prisma.$transaction(async (tx) => {
-      const [policy, scope] = await Promise.all([tx.jurisdictionPolicyVersion.findFirst({ where: { id: a.policyId, tenantId, status: "DRAFT" } }), tx.operatorJurisdiction.findFirst({ where: { id: a.operatorJurisdictionId, tenantId, status: "PENDING" } })]);
-      if (!policy || !scope) throw new Error("Not found");
-      const payloadHash = evidenceHash({ action: "JURISDICTION_ACTIVATION", policyId: policy.id, operatorJurisdictionId: scope.id, policyEvidenceHash: policy.evidenceHash, externalEvidenceHash: a.externalEvidenceHash });
-      await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `JURISDICTION_ACTIVATION:${policy.id}:${scope.id}`, payloadHash);
-      await tx.jurisdictionPolicyVersion.updateMany({ where: { tenantId, jurisdictionId: policy.jurisdictionId, status: "ACTIVE" }, data: { status: "RETIRED", effectiveTo: /* @__PURE__ */ new Date() } });
-      await tx.jurisdictionPolicyVersion.update({ where: { id: policy.id }, data: { status: "ACTIVE", approvedBy: context.session.itemId, approvedAt: /* @__PURE__ */ new Date() } });
-      await tx.operatorJurisdiction.update({ where: { id: scope.id }, data: { status: "ACTIVE", policyVersion: `${policy.id}:${a.externalEvidenceHash}` } });
-      await appendAudit(tx, tenantId, context.session.itemId, "jurisdiction.activated", "OperatorJurisdiction", scope.id, "DUAL_APPROVED_EXTERNAL_EVIDENCE", { approvalId: a.approvalId, payloadHash, externalEvidenceHash: a.externalEvidenceHash });
-      return true;
-    });
-  },
-  requestOperatorBrand: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook"), domain = String(a.domain).trim().toLowerCase();
-    if (!/^[a-z0-9.-]+(?::\d+)?$/.test(domain)) throw new Error("INVALID_BRAND_DOMAIN");
-    const payloadHash = evidenceHash({ action: "OPERATOR_BRAND", name: a.name, domain, defaultLocale: a.defaultLocale, defaultTimezone: a.defaultTimezone });
-    return (await context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
-      return tx.approvalRequest.create({ data: { tenantId, action: `OPERATOR_BRAND:${domain}`, payloadHash, ...approvalReview({ action: "OPERATOR_BRAND", name: a.name, domain, defaultLocale: a.defaultLocale, defaultTimezone: a.defaultTimezone }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-    })).id;
-  },
-  applyOperatorBrand: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook"), domain = String(a.domain).trim().toLowerCase(), payloadHash = evidenceHash({ action: "OPERATOR_BRAND", name: a.name, domain, defaultLocale: a.defaultLocale, defaultTimezone: a.defaultTimezone });
-    return context.prisma.$transaction(async (tx) => {
-      await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `OPERATOR_BRAND:${domain}`, payloadHash);
-      const row = await tx.brand.create({ data: { tenantId, name: a.name, domain, defaultLocale: a.defaultLocale, defaultTimezone: a.defaultTimezone, supportedLocales: [a.defaultLocale], designTokens: { mode: "operator-configured" }, termsReference: "PENDING_LOCALIZED_TERMS", status: "ACTIVE" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "brand.created", "Brand", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
-      return row.id;
-    });
-  },
-  requestTenantCurrency: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook");
-    if (!/^[A-Z]{3}$/.test(a.code) || a.exponent < 0 || a.exponent > 6) throw new Error("INVALID_CURRENCY");
-    const payloadHash = evidenceHash({ action: "TENANT_CURRENCY", code: a.code, exponent: a.exponent, name: a.name, depositsEnabled: a.depositsEnabled, withdrawalsEnabled: a.withdrawalsEnabled, wageringEnabled: a.wageringEnabled, defaultForBrand: a.defaultForBrand });
-    return (await context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
-      return tx.approvalRequest.create({ data: { tenantId, action: `TENANT_CURRENCY:${a.code}`, payloadHash, ...approvalReview({ action: "TENANT_CURRENCY", code: a.code, exponent: a.exponent, name: a.name, depositsEnabled: a.depositsEnabled, withdrawalsEnabled: a.withdrawalsEnabled, wageringEnabled: a.wageringEnabled, defaultForBrand: a.defaultForBrand }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-    })).id;
-  },
-  applyTenantCurrency: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook"), payloadHash = evidenceHash({ action: "TENANT_CURRENCY", code: a.code, exponent: a.exponent, name: a.name, depositsEnabled: a.depositsEnabled, withdrawalsEnabled: a.withdrawalsEnabled, wageringEnabled: a.wageringEnabled, defaultForBrand: a.defaultForBrand });
-    return context.prisma.$transaction(async (tx) => {
-      await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `TENANT_CURRENCY:${a.code}`, payloadHash);
-      const currency = await tx.currencyDefinition.findUnique({ where: { code: a.code } }) ?? await tx.currencyDefinition.create({ data: { code: a.code, exponent: a.exponent, name: a.name, status: "ACTIVE" } });
-      if (Number(currency.exponent) !== Number(a.exponent)) throw new Error("CURRENCY_EXPONENT_CONFLICT");
-      if (currency.status !== "ACTIVE") throw new Error("CURRENCY_NOT_ACTIVE");
-      if (a.defaultForBrand) await tx.tenantCurrency.updateMany({ where: { tenantId, defaultForBrand: true }, data: { defaultForBrand: false } });
-      const existing = await tx.tenantCurrency.findFirst({ where: { tenantId, currencyId: currency.id } }), row = existing ? await tx.tenantCurrency.update({ where: { id: existing.id }, data: { depositsEnabled: a.depositsEnabled, withdrawalsEnabled: a.withdrawalsEnabled, wageringEnabled: a.wageringEnabled, defaultForBrand: a.defaultForBrand, status: "ACTIVE" } }) : await tx.tenantCurrency.create({ data: { tenantId, currencyId: currency.id, depositsEnabled: a.depositsEnabled, withdrawalsEnabled: a.withdrawalsEnabled, wageringEnabled: a.wageringEnabled, defaultForBrand: a.defaultForBrand, status: "ACTIVE" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "tenant.currency_enabled", "TenantCurrency", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
-      return row.id;
-    });
-  },
-  requestBrandLocale: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook"), brand = await context.prisma.brand.findFirst({ where: { id: a.brandId, tenantId } });
-    if (!brand || !/^[a-z]{2}(?:-[A-Z]{2})?$/.test(a.locale) || a.termsContentHash.length < 32) throw new Error("INVALID_BRAND_LOCALE");
-    const payloadHash = evidenceHash({ action: "BRAND_LOCALE", brandId: a.brandId, locale: a.locale, language: a.language, timezone: a.timezone, termsVersion: a.termsVersion, termsContentHash: a.termsContentHash });
-    return (await context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
-      return tx.approvalRequest.create({ data: { tenantId, action: `BRAND_LOCALE:${a.brandId}:${a.locale}:${a.termsVersion}`, payloadHash, ...approvalReview({ action: "BRAND_LOCALE", brandId: a.brandId, locale: a.locale, language: a.language, timezone: a.timezone, termsVersion: a.termsVersion, termsContentHash: a.termsContentHash }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-    })).id;
-  },
-  applyBrandLocale: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook"), payloadHash = evidenceHash({ action: "BRAND_LOCALE", brandId: a.brandId, locale: a.locale, language: a.language, timezone: a.timezone, termsVersion: a.termsVersion, termsContentHash: a.termsContentHash });
-    return context.prisma.$transaction(async (tx) => {
-      await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `BRAND_LOCALE:${a.brandId}:${a.locale}:${a.termsVersion}`, payloadHash);
-      const brand = await tx.brand.findFirst({ where: { id: a.brandId, tenantId } });
-      if (!brand) throw new Error("Not found");
-      const row = await tx.brandLocale.create({ data: { tenantId, brandId: brand.id, locale: a.locale, language: a.language, timezone: a.timezone, termsVersion: a.termsVersion, termsContentHash: a.termsContentHash, default: false, status: "ACTIVE" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "brand.locale_activated", "BrandLocale", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
-      return row.id;
-    });
-  },
-  requestHouseRule: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook"), rules2 = object(a.rules, "INVALID_RULES"), effectiveFrom = await operatorInstant(context, tenantId, a.effectiveFrom, "EFFECTIVE_FROM"), payloadHash = evidenceHash({ action: "HOUSE_RULE", name: a.name, sportKey: a.sportKey, marketDefinitionKey: a.marketDefinitionKey, rules: rules2, effectiveFrom });
-    return (await context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
-      return tx.approvalRequest.create({ data: { tenantId, action: `HOUSE_RULE:${a.name}`, payloadHash, ...approvalReview({ action: "HOUSE_RULE", name: a.name, sportKey: a.sportKey, marketDefinitionKey: a.marketDefinitionKey, rules: rules2, effectiveFrom }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-    })).id;
-  },
-  applyHouseRule: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook"), rules2 = object(a.rules, "INVALID_RULES"), effectiveFrom = await operatorInstant(context, tenantId, a.effectiveFrom, "EFFECTIVE_FROM"), payloadHash = evidenceHash({ action: "HOUSE_RULE", name: a.name, sportKey: a.sportKey, marketDefinitionKey: a.marketDefinitionKey, rules: rules2, effectiveFrom });
-    return context.prisma.$transaction(async (tx) => {
-      await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `HOUSE_RULE:${a.name}`, payloadHash);
-      const version = await tx.houseRuleVersion.count({ where: { tenantId, name: a.name } }) + 1;
-      await tx.houseRuleVersion.updateMany({ where: { tenantId, name: a.name, status: "ACTIVE" }, data: { status: "RETIRED", effectiveTo: effectiveFrom } });
-      const row = await tx.houseRuleVersion.create({ data: { tenantId, name: a.name, version, sportKey: a.sportKey, marketDefinitionKey: a.marketDefinitionKey, rules: rules2, semanticHash: payloadHash, effectiveFrom, status: "ACTIVE", approvalRequestId: a.approvalId } });
-      await appendAudit(tx, tenantId, context.session.itemId, "house_rule.activated", "HouseRuleVersion", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
-      return row.id;
-    });
-  },
-  requestFeatureFlag: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook"), expiresAt = await operatorInstant(context, tenantId, a.expiresAt, "EXPIRES_AT"), payloadHash = evidenceHash({ action: "FEATURE_FLAG", key: a.key, description: a.description, enabled: a.enabled, scopeType: a.scopeType, scopeId: a.scopeId, expiresAt });
-    return (await context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
-      return tx.approvalRequest.create({ data: { tenantId, action: `FEATURE_FLAG:${a.key}:${a.scopeType}:${a.scopeId}`, payloadHash, ...approvalReview({ action: "FEATURE_FLAG", key: a.key, description: a.description, enabled: a.enabled, scopeType: a.scopeType, scopeId: a.scopeId, expiresAt }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-    })).id;
-  },
-  applyFeatureFlag: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook"), expiresAt = await operatorInstant(context, tenantId, a.expiresAt, "EXPIRES_AT"), payloadHash = evidenceHash({ action: "FEATURE_FLAG", key: a.key, description: a.description, enabled: a.enabled, scopeType: a.scopeType, scopeId: a.scopeId, expiresAt });
-    return context.prisma.$transaction(async (tx) => {
-      await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `FEATURE_FLAG:${a.key}:${a.scopeType}:${a.scopeId}`, payloadHash);
-      const existing = await tx.featureFlag.findFirst({ where: { tenantId, key: a.key, scopeType: a.scopeType, scopeId: a.scopeId } }), row = existing ? await tx.featureFlag.update({ where: { id: existing.id }, data: { description: a.description, enabled: a.enabled, expiresAt, approvalRequestId: a.approvalId, ownerId: context.session.itemId } }) : await tx.featureFlag.create({ data: { tenantId, key: a.key, description: a.description, enabled: a.enabled, scopeType: a.scopeType, scopeId: a.scopeId, safeDefault: false, ownerId: context.session.itemId, expiresAt, approvalRequestId: a.approvalId } });
-      await appendAudit(tx, tenantId, context.session.itemId, "feature_flag.changed", "FeatureFlag", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
-      return row.id;
-    });
-  },
-  createPromotionCampaign: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook"), startsAt = await operatorInstant(context, tenantId, a.startsAt, "STARTS_AT"), endsAt = await operatorInstant(context, tenantId, a.endsAt, "ENDS_AT");
-    money2(a.budgetMinor);
-    if (startsAt >= endsAt) throw new Error("INVALID_PROMOTION_WINDOW");
-    const economics = object(a.economics, "INVALID_ECONOMICS"), requirements = object(a.requirements, "INVALID_REQUIREMENTS"), termsHash = evidenceHash({ key: a.key, type: a.type, economics, requirements, startsAt, endsAt });
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
-      const promotion = await tx.promotion.create({ data: { tenantId, key: a.key, name: a.name, description: a.description, type: a.type, status: "DRAFT", startsAt, endsAt, budgetMinor: a.budgetMinor, currency: a.currency, termsVersion: "operator-draft-v1", termsHash } });
-      const rule = await tx.promotionRuleVersion.create({ data: { tenantId, promotionId: promotion.id, version: 1, eligibility: { kyc: "APPROVED" }, economics, wageringRequirements: requirements, abuseControls: { duplicateAccount: "DENY" }, contributionRules: { sportsbook: 100 }, status: "DRAFT", effectiveFrom: startsAt, evidenceHash: termsHash } });
-      await tx.campaignBudget.create({ data: { tenantId, promotionId: promotion.id, allocatedMinor: a.budgetMinor, awardedMinor: "0", redeemedMinor: "0", forfeitedMinor: "0", currency: a.currency, version: 1, status: "ACTIVE" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "promotion.created", "Promotion", promotion.id, "DRAFT", { ruleId: rule.id, termsHash });
-      return promotion.id;
-    });
-  },
-  requestPromotionActivation: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
-      const p2 = await tx.promotion.findFirst({ where: { id: a.promotionId, tenantId, status: "DRAFT" } });
-      if (!p2) throw new Error("Not found");
-      const payloadHash = evidenceHash({ action: "ACTIVATE_PROMOTION", promotionId: p2.id, termsHash: p2.termsHash });
-      const approval = await tx.approvalRequest.create({ data: { tenantId, action: `ACTIVATE_PROMOTION:${p2.id}`, payloadHash, ...approvalReview({ action: "ACTIVATE_PROMOTION", promotionId: p2.id, termsHash: p2.termsHash, key: p2.key, name: p2.name, type: p2.type, budgetMinor: p2.budgetMinor, currency: p2.currency, startsAt: p2.startsAt, endsAt: p2.endsAt }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-      await tx.promotion.update({ where: { id: p2.id }, data: { approvalRequestId: approval.id } });
-      return approval.id;
-    });
-  },
-  applyPromotionActivation: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageSportsbook");
-    return context.prisma.$transaction(async (tx) => {
-      const p2 = await tx.promotion.findFirst({ where: { id: a.promotionId, tenantId, status: "DRAFT" } });
-      if (!p2) throw new Error("Not found");
-      const payloadHash = evidenceHash({ action: "ACTIVATE_PROMOTION", promotionId: p2.id, termsHash: p2.termsHash });
-      await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `ACTIVATE_PROMOTION:${p2.id}`, payloadHash);
-      await tx.promotion.update({ where: { id: p2.id }, data: { status: p2.startsAt > /* @__PURE__ */ new Date() ? "SCHEDULED" : "ACTIVE" } });
-      await tx.promotionRuleVersion.updateMany({ where: { tenantId, promotionId: p2.id, status: "DRAFT" }, data: { status: "ACTIVE" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "promotion.activated", "Promotion", p2.id, "DUAL_APPROVED", { approvalId: a.approvalId, termsHash: p2.termsHash });
-      return true;
-    });
-  },
-  requestWebhookEndpoint: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageIntegrations"), url = (await validateWebhookDestination(a.url)).toString(), eventTypes = JSON.parse(a.eventTypes);
-    if (!Array.isArray(eventTypes) || !eventTypes.length || eventTypes.some((item) => typeof item !== "string")) throw new Error("INVALID_WEBHOOK_EVENTS");
-    const payloadHash = evidenceHash({ action: "WEBHOOK_ENDPOINT", name: a.name, url, eventTypes, secretReference: a.secretReference });
-    return (await context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
-      return tx.approvalRequest.create({ data: { tenantId, action: `WEBHOOK_ENDPOINT:${Buffer.from(url).toString("base64url")}`, payloadHash, ...approvalReview({ action: "WEBHOOK_ENDPOINT", name: a.name, url, eventTypes, secretReference: a.secretReference }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-    })).id;
-  },
-  applyWebhookEndpoint: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageIntegrations"), url = (await validateWebhookDestination(a.url)).toString(), eventTypes = JSON.parse(a.eventTypes), payloadHash = evidenceHash({ action: "WEBHOOK_ENDPOINT", name: a.name, url, eventTypes, secretReference: a.secretReference });
-    return context.prisma.$transaction(async (tx) => {
-      await approved(tx, context, "canManageIntegrations", tenantId, a.approvalId, `WEBHOOK_ENDPOINT:${Buffer.from(url).toString("base64url")}`, payloadHash);
-      const row = await tx.webhookEndpoint.create({ data: { tenantId, name: a.name, url, secretReference: a.secretReference, eventTypes, status: "ACTIVE", failureCount: 0, approvalRequestId: a.approvalId } });
-      await appendAudit(tx, tenantId, context.session.itemId, "webhook.endpoint_activated", "WebhookEndpoint", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash, url, eventTypes });
-      return row.id;
-    });
-  },
-  runAdapterCertification: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageIntegrations");
-    const connection = await context.prisma.providerConnection.findFirst({ where: { id: a.connectionId, tenantId } });
-    if (!connection) throw new Error("Not found");
-    const adapter = installedSandboxAdapter(connection);
-    if (!adapter) throw new Error("CERTIFICATION_ADAPTER_UNAVAILABLE:NO_INSTALLED_SANDBOX_IMPLEMENTATION");
-    const configCheck = await adapter.validateConfig(connection.configReference);
-    if (!configCheck.valid) throw new Error("CERTIFICATION_CONFIG_INVALID");
-    const startedAt = /* @__PURE__ */ new Date(), inputHash = evidenceHash({ connectionId: connection.id, adapterId: connection.adapterId, adapterVersion: connection.adapterVersion, manifest: adapter.manifest(), configReference: connection.configReference, connectionRevision: new Date(connection.updatedAt).toISOString(), suite: "sandbox-conformance-v1" }), scenarios = [];
-    const run = await context.prisma.adapterCertificationRun.create({ data: { tenantId, providerConnectionId: connection.id, adapterId: connection.adapterId, adapterVersion: connection.adapterVersion, suiteVersion: "sandbox-conformance-v1", scenarios: [], passed: 0, failed: 0, status: "RUNNING", inputHash, startedAt } });
-    for (const name of ["happy", "duplicate", "pending", "failure"]) {
+var import_node_crypto12, graphql2, operatorInstant, allowedEventStates, allowedProviderStates, money2, object, approved, disputeCurrency, nonnegativeMoney, strictUtcInstant, TAX_BASES, TAX_ROUNDING, assertSupportedTaxRule, roundTax, playerLiabilityAsOf, sportsbookFullTypeDefs, sportsbookFullResolvers;
+var init_sportsbook_full = __esm({
+  "features/keystone/mutations/sportsbook-full.ts"() {
+    "use strict";
+    import_node_crypto12 = require("node:crypto");
+    init_engine();
+    init_ledger();
+    init_combination();
+    init_sportsbook();
+    init_artifact_delivery_contract();
+    init_mail();
+    init_webhook_egress();
+    init_internal();
+    init_provider_webhook();
+    init_retention();
+    init_totp();
+    init_session_assurance();
+    init_cashout_economics();
+    init_trading_eligibility();
+    init_full_straight();
+    init_approval_control();
+    init_zoned_time();
+    graphql2 = String.raw;
+    operatorInstant = async (context, tenantId, value, label) => resolveOperatorInstant(value, await tenantTimeZone(context.prisma, tenantId), label);
+    allowedEventStates = /* @__PURE__ */ new Set(["SCHEDULED", "LIVE", "ENDED", "CANCELLED", "SUSPENDED"]);
+    allowedProviderStates = /* @__PURE__ */ new Set(["ACTIVE", "DEGRADED", "DISABLED"]);
+    money2 = (value) => {
+      positiveMoney(value, "AMOUNT");
+      return BigInt(value);
+    };
+    object = (raw, code) => {
       try {
-        const command = { type: name === "pending" ? "simulate_pending" : name === "failure" ? "simulate_failure" : "execute", payload: { scenario: name } }, key2 = `cert:${run.id}:${name}`, first = await adapter.execute({}, command, key2), second = await adapter.execute({}, command, key2);
-        const expected = name === "pending" ? "PENDING" : name === "failure" ? "FAILED" : "SUCCEEDED";
-        scenarios.push({ name, passed: first.status === expected && first.externalRef === second.externalRef, status: first.status });
-      } catch (error) {
-        scenarios.push({ name, passed: false, error: error instanceof Error ? error.message : "UNKNOWN" });
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+        return parsed;
+      } catch {
+        throw new Error(code);
       }
-    }
-    const health = await adapter.health();
-    scenarios.push({ name: "health", passed: health.ok, health, simulated: true });
-    const passed = scenarios.filter((item) => item.passed).length, failed = scenarios.length - passed;
-    await context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
-      await tx.adapterCertificationRun.update({ where: { id: run.id }, data: { scenarios, passed, failed, status: failed ? "FAILED" : "PASSED", completedAt: /* @__PURE__ */ new Date(), artifactReference: `sandbox:${inputHash}` } });
-      await appendAudit(tx, tenantId, context.session.itemId, "adapter.certification_completed", "AdapterCertificationRun", run.id, failed ? "FAILED" : "PASSED", { inputHash, passed, failed, scenarios });
-    });
-    return run.id;
-  },
-  setProviderOperationalState: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageIntegrations");
-    if (!allowedProviderStates.has(a.status)) throw new Error("INVALID_PROVIDER_STATUS");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
-      const connection = await tx.providerConnection.findFirst({ where: { id: a.connectionId, tenantId } });
-      if (!connection) throw new Error("Not found");
-      await tx.providerConnection.update({ where: { id: connection.id }, data: { status: a.status } });
-      const kind = String(connection.capabilities?.kind ?? "");
-      let suspended = 0, failoverId = null;
-      if (a.status !== "ACTIVE" && ["sports", "results"].includes(kind)) {
-        const failover = await tx.providerConnection.findFirst({ where: { tenantId, id: { not: connection.id }, status: "ACTIVE", certificationStatus: { in: ["SANDBOX", "CERTIFIED"] }, capabilities: { equals: { kind, mode: "sandbox" } } }, orderBy: { failoverPriority: "asc" } });
-        failoverId = failover?.id ?? null;
-        if (!failover) {
-          const update = await tx.market.updateMany({ where: { tenantId, status: "OPEN" }, data: { status: "SUSPENDED", version: { increment: 1 } } });
-          suspended = update.count;
+    };
+    approved = async (tx, context, capability, tenantId, id, action, payloadHash, consumedKey) => consumeApproval(tx, context, { tenantId, capability, approvalId: id, action, payloadHash, consumedKey });
+    disputeCurrency = async (tx, tenantId, dispute, adjustmentMinor) => {
+      if (dispute.wagerId) {
+        const wager = await tx.wager.findFirst({ where: { id: dispute.wagerId, tenantId } });
+        if (!wager?.currency || wager.playerId !== dispute.playerId) throw new Error("DISPUTE_WAGER_MISMATCH");
+        return String(wager.currency);
+      }
+      if (BigInt(adjustmentMinor) !== 0n) throw new Error("DISPUTE_CURRENCY_REQUIRES_REVIEW");
+      return null;
+    };
+    nonnegativeMoney = (value, code) => {
+      const text7 = String(value ?? "");
+      if (!/^\d{1,30}$/.test(text7)) throw new Error(code);
+      return BigInt(text7);
+    };
+    strictUtcInstant = (value, code) => {
+      const text7 = String(value ?? "");
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?Z$/.test(text7)) throw new Error(code);
+      const date = new Date(text7);
+      if (Number.isNaN(date.getTime())) throw new Error(code);
+      return date;
+    };
+    TAX_BASES = /* @__PURE__ */ new Set(["STAKE", "WINNINGS", "GGR"]);
+    TAX_ROUNDING = /* @__PURE__ */ new Set(["DOWN_AT_POSTING", "UP_AT_POSTING", "HALF_UP_AT_POSTING"]);
+    assertSupportedTaxRule = (basis, roundingRule) => {
+      if (!TAX_BASES.has(basis)) throw new Error("TAX_BASIS_UNSUPPORTED");
+      if (!TAX_ROUNDING.has(roundingRule)) throw new Error("TAX_ROUNDING_UNSUPPORTED");
+    };
+    roundTax = (numerator, denominator, rule) => {
+      const q = numerator / denominator, r = numerator % denominator;
+      if (r === 0n || rule === "DOWN_AT_POSTING") return q;
+      if (rule === "UP_AT_POSTING") return q + 1n;
+      if (rule === "HALF_UP_AT_POSTING") return r * 2n >= denominator ? q + 1n : q;
+      throw new Error("TAX_ROUNDING_UNSUPPORTED");
+    };
+    playerLiabilityAsOf = async (tx, tenantId, currency, asOf) => {
+      let total = 0n, count = 0, cursor;
+      for (; ; ) {
+        const rows = await tx.journalEntry.findMany({ where: { tenantId, currency, account: { accountClass: "LIABILITY", playerId: { not: null }, currency }, transaction: { effectiveAt: { lte: asOf } } }, select: { id: true, side: true, amountMinor: true }, orderBy: { id: "asc" }, take: 1e3, ...cursor ? { skip: 1, cursor: { id: cursor } } : {} });
+        for (const row of rows) {
+          total += row.side === "CREDIT" ? BigInt(row.amountMinor) : -BigInt(row.amountMinor);
         }
+        count += rows.length;
+        if (rows.length < 1e3) return { total, count };
+        cursor = rows[rows.length - 1].id;
       }
-      await appendAudit(tx, tenantId, context.session.itemId, "provider.status_changed", "ProviderConnection", connection.id, a.reason, { from: connection.status, to: a.status, kind, failoverId, suspended, source: "OPERATOR_ATTESTATION" });
-      return true;
-    });
-  },
-  settleCombinationWager: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageRisk");
-    return serializable2(context.prisma, async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageRisk");
-      await requireTenant({ ...context, prisma: tx }, "canManageRisk");
-      const wager = await tx.wager.findFirst({ where: { id: a.wagerId, tenantId } });
-      if (wager?.structure === "STRAIGHT") return settleFullStraight(tx, tenantId, context.session.itemId, a, context.session);
-      return combinationSettlement(tx, tenantId, context.session.itemId, a.wagerId, a.idempotencyKey);
-    });
-  },
-  requestCombinationResettlement: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageRisk");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageRisk");
-      const settlement = await tx.settlement.findFirst({ where: { id: a.settlementId, tenantId } });
-      if (!settlement?.wagerId) throw new Error("Not found");
-      const reviewedLines = await tx.settlementLine.findMany({ where: { tenantId, settlementId: settlement.id } });
-      if (reviewedLines.some((line) => line.trace?.contract === "openfront.full-straight.initial.v1")) throw new Error("REVIEWED_STRAIGHT_CORRECTION_PLAN_REQUIRED");
-      await lockWagerForSettlement(tx, tenantId, settlement.wagerId);
-      await assertCurrentSettlement(tx, tenantId, settlement.wagerId, settlement.id);
-      const payloadHash = evidenceHash({ action: "FULL_RESETTLEMENT", settlementId: settlement.id, wagerId: settlement.wagerId });
-      const approval = await tx.approvalRequest.create({ data: { tenantId, action: `FULL_RESETTLEMENT:${settlement.id}`, payloadHash, ...approvalReview({ action: "FULL_RESETTLEMENT", settlementId: settlement.id, wagerId: settlement.wagerId, version: settlement.version, outcome: settlement.outcome, payoutMinor: settlement.payoutMinor }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-      return approval.id;
-    });
-  },
-  resettleCombinationWager: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageRisk");
-    return serializable2(context.prisma, async (tx) => {
-      const old = await tx.settlement.findFirst({ where: { id: a.settlementId, tenantId }, include: { journalTransaction: { include: { from_JournalEntry_transaction: true } }, from_SettlementLine_settlement: true } });
-      if (!old) throw new Error("Not found");
-      const payloadHash = evidenceHash({ action: "FULL_RESETTLEMENT", settlementId: old.id, wagerId: old.wagerId });
-      await approved(tx, context, "canManageRisk", tenantId, a.approvalId, `FULL_RESETTLEMENT:${old.id}`, payloadHash, a.idempotencyKey);
-      return combinationSettlement(tx, tenantId, context.session.itemId, old.wagerId, a.idempotencyKey, old);
-    });
-  },
-  requestCashOutCorrection: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageRisk");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageRisk");
-      const candidate = await tx.cashOutAcceptance.findFirst({ where: { id: a.acceptanceId, tenantId, status: "ACCEPTED" }, select: { wagerId: true } });
-      if (!candidate?.wagerId) throw new Error("Not found");
-      await lockWagerForSettlement(tx, tenantId, candidate.wagerId);
-      const acceptance = await tx.cashOutAcceptance.findFirst({ where: { id: a.acceptanceId, tenantId, status: "ACCEPTED" } });
-      if (!acceptance) throw new Error("Not found");
-      if (await tx.settlement.findFirst({ where: { tenantId, wagerId: acceptance.wagerId } })) throw new Error("CASHOUT_CORRECTION_REQUIRES_SETTLEMENT_CORRECTION");
-      const [rows, wager] = await Promise.all([tx.cashOutAcceptance.findMany({ where: { tenantId, wagerId: acceptance.wagerId } }), tx.wager.findFirst({ where: { id: acceptance.wagerId, tenantId }, select: { stakeMinor: true } })]);
-      if (!wager) throw new Error("Not found");
-      const state = projectCashOutState(wager.stakeMinor, rows);
-      if (!state.accepted.some((item) => item.id === acceptance.id)) throw new Error("CASHOUT_ALREADY_CORRECTED");
-      const payloadHash = evidenceHash({ action: "CASHOUT_CORRECTION", acceptanceId: acceptance.id, evidenceHash: acceptance.evidenceHash });
-      const approval = await tx.approvalRequest.create({ data: { tenantId, action: `CASHOUT_CORRECTION:${acceptance.id}`, payloadHash, ...approvalReview({ action: "CASHOUT_CORRECTION", acceptanceId: acceptance.id, evidenceHash: acceptance.evidenceHash, wagerId: acceptance.wagerId, amountMinor: acceptance.amountMinor, currency: acceptance.currency }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-      return approval.id;
-    });
-  },
-  correctCashOut: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageRisk");
-    return serializable2(context.prisma, async (tx) => {
-      const candidate = await tx.cashOutAcceptance.findFirst({ where: { id: a.acceptanceId, tenantId, status: "ACCEPTED" }, select: { wagerId: true } });
-      if (!candidate?.wagerId) throw new Error("Not found");
-      await lockWagerForSettlement(tx, tenantId, candidate.wagerId);
-      const acceptance = await tx.cashOutAcceptance.findFirst({ where: { id: a.acceptanceId, tenantId, status: "ACCEPTED" }, include: { journalTransaction: { include: { from_JournalEntry_transaction: true } }, wager: true } });
-      if (!acceptance?.journalTransaction || !acceptance.wager) throw new Error("Not found");
-      const payloadHash = evidenceHash({ action: "CASHOUT_CORRECTION", acceptanceId: acceptance.id, evidenceHash: acceptance.evidenceHash });
-      await approved(tx, context, "canManageRisk", tenantId, a.approvalId, `CASHOUT_CORRECTION:${acceptance.id}`, payloadHash, a.idempotencyKey);
-      const prior = await tx.cashOutAcceptance.findFirst({ where: { tenantId, idempotencyKey: a.idempotencyKey } });
-      if (prior) {
-        const expectedEvidence = evidenceHash({ reversalOf: acceptance.id, approvalId: a.approvalId, journalId: prior.journalTransactionId });
-        if (prior.status === "REVERSED" && prior.reversalOfId === acceptance.id && prior.evidenceHash === expectedEvidence) return prior.id;
-        throw new Error("CASHOUT_CORRECTION_IDEMPOTENCY_CONFLICT");
-      }
-      if (await tx.settlement.findFirst({ where: { tenantId, wagerId: acceptance.wagerId } })) throw new Error("CASHOUT_CORRECTION_REQUIRES_SETTLEMENT_CORRECTION");
-      const currentRows = await tx.cashOutAcceptance.findMany({ where: { tenantId, wagerId: acceptance.wagerId } }), currentState = projectCashOutState(acceptance.wager.stakeMinor, currentRows);
-      if (!currentState.accepted.some((item) => item.id === acceptance.id)) throw new Error("CASHOUT_ALREADY_CORRECTED");
-      const original = { idempotencyKey: acceptance.journalTransaction.idempotencyKey, type: acceptance.journalTransaction.type, entries: acceptance.journalTransaction.from_JournalEntry_transaction.map((entry) => ({ accountId: entry.accountId, currency: entry.currency, side: entry.side, amount: BigInt(entry.amountMinor) })) };
-      const reversal = await postJournal(tx, tenantId, reverseJournal(original, `cashout-correction:${a.idempotencyKey}`), acceptance.wagerId);
-      const cash = await tx.ledgerAccount.findFirst({ where: { tenantId, playerId: acceptance.playerId, key: "PLAYER_CASH", currency: acceptance.currency } }), balance = cash ? await tx.balanceProjection.findFirst({ where: { tenantId, accountId: cash.id }, orderBy: { version: "desc" } }) : null;
-      if (!cash || !balance || BigInt(balance.postedMinor) < BigInt(acceptance.amountMinor)) throw new Error("CASHOUT_CORRECTION_REQUIRES_RECEIVABLE_REVIEW");
-      const next = BigInt(balance.postedMinor) - BigInt(acceptance.amountMinor);
-      await tx.balanceProjection.create({ data: { tenantId, accountId: cash.id, postedMinor: String(next), pendingMinor: balance.pendingMinor, availableMinor: String(BigInt(balance.availableMinor) + (next - BigInt(balance.postedMinor))), version: Number(balance.version) + 1, asOf: /* @__PURE__ */ new Date() } });
-      const corrected = await tx.cashOutAcceptance.create({ data: { tenantId, offerId: acceptance.offerId, wagerId: acceptance.wagerId, playerId: acceptance.playerId, amountMinor: acceptance.amountMinor, currency: acceptance.currency, portionNumerator: acceptance.portionNumerator, portionDenominator: acceptance.portionDenominator, wagerVersion: Number(acceptance.wager.version ?? 1) + 1, acceptedAt: /* @__PURE__ */ new Date(), journalTransactionId: reversal.id, status: "REVERSED", reversalOfId: acceptance.id, idempotencyKey: a.idempotencyKey, evidenceHash: evidenceHash({ reversalOf: acceptance.id, approvalId: a.approvalId, journalId: reversal.id }) } });
-      const effectiveRows = await tx.cashOutAcceptance.findMany({ where: { tenantId, wagerId: acceptance.wagerId } }), effectivePortion = projectCashOutState(acceptance.wager.stakeMinor, effectiveRows).closedMillionths, wagerStatus = effectivePortion >= 1000000n ? "CASHED_OUT" : effectivePortion > 0n ? "PARTIALLY_CASHED_OUT" : "OPEN";
-      await tx.wager.update({ where: { id: acceptance.wagerId }, data: { status: wagerStatus, version: { increment: 1 } } });
-      if (wagerStatus !== "CASHED_OUT") await tx.wagerPart.updateMany({ where: { tenantId, wagerId: acceptance.wagerId, status: "CASHED_OUT" }, data: { status: "OPEN" } });
-      const allocations = await tx.wagerExposureAllocation.findMany({ where: { tenantId, wagerId: acceptance.wagerId } }), remainingStakes = remainingStakeByPart(allocations, effectivePortion), remainingLiabilities = remainingStakeByPart(allocations.map((item) => ({ stakeMinor: item.liabilityMinor })), effectivePortion);
-      for (const [index, allocation] of allocations.entries()) {
-        const remainingStake = remainingStakes[index], remainingLiability = remainingLiabilities[index];
-        await tx.wagerExposureAllocation.update({ where: { id: allocation.id }, data: { remainingStakeMinor: String(remainingStake), remainingLiabilityMinor: String(remainingLiability), status: remainingStake === 0n ? "CLOSED" : remainingStake === BigInt(allocation.stakeMinor) ? "OPEN" : "PARTIALLY_CLOSED", version: { increment: 1 } } });
-      }
-      for (const marketId of new Set(allocations.map((item) => item.marketId))) {
-        const active = await tx.wagerExposureAllocation.findMany({ where: { tenantId, marketId, status: { not: "CLOSED" } } }), stake = active.reduce((sum, item) => sum + BigInt(item.remainingStakeMinor), 0n), liability = active.reduce((sum, item) => sum + BigInt(item.remainingLiabilityMinor), 0n), projection = await tx.exposurePosition.findFirst({ where: { tenantId, scopeType: "MARKET", scopeId: marketId, currency: acceptance.currency } });
-        if (projection) await tx.exposurePosition.update({ where: { id: projection.id }, data: { stakeMinor: String(stake), liabilityMinor: String(liability), version: { increment: 1 }, asOf: /* @__PURE__ */ new Date() } });
-      }
-      await appendAudit(tx, tenantId, context.session.itemId, "cashout.corrected", "CashOutAcceptance", corrected.id, "DUAL_APPROVED", { approvalId: a.approvalId, reversalOf: acceptance.id });
-      return corrected.id;
-    });
-  },
-  recordComplianceScreening: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageCompliance");
-    if (!["SANCTIONS", "PEP", "ADVERSE_MEDIA", "SOURCE_OF_FUNDS"].includes(a.screeningType) || !["POTENTIAL", "REVIEW", "CONFIRMED", "CLEARED", "FALSE_POSITIVE"].includes(a.status)) throw new Error("INVALID_SCREENING");
-    const provider = await context.prisma.providerConnection.findFirst({ where: { tenantId, adapterId: "sandbox-aml", status: "ACTIVE" } });
-    if (!provider) throw new Error("AML_PROVIDER_UNAVAILABLE");
-    const result = await sandboxAdapters.aml.execute({}, { type: "screen", payload: { screeningType: a.screeningType, status: a.status } }, `screening:${a.playerId}:${(0, import_node_crypto11.randomBytes)(12).toString("hex")}`);
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
-      const player = await tx.player.findFirst({ where: { id: a.playerId, tenantId } });
-      if (!player) throw new Error("Not found");
-      let aml = await tx.aMLCase.findFirst({ where: { tenantId, playerId: player.id, status: { not: "CLOSED" } }, orderBy: { createdAt: "desc" } });
-      if (!aml) aml = await tx.aMLCase.create({ data: { tenantId, playerId: player.id, status: "OPEN", riskBand: a.status === "CONFIRMED" ? "HIGH" : "MEDIUM", restrictedEvidence: { provider: provider.id }, ownerId: context.session.itemId } });
-      const resolved = ["CONFIRMED", "CLEARED", "FALSE_POSITIVE"].includes(a.status), hit = await tx.screeningHit.create({ data: { tenantId, amlCaseId: aml.id, providerConnectionId: provider.id, screeningType: a.screeningType, matchToken: evidenceHash({ playerId: player.id, externalReference: result.externalRef, screeningType: a.screeningType }), status: a.status, dispositionReason: a.reason, evidenceReference: a.evidenceReference, screenedAt: /* @__PURE__ */ new Date(), resolvedAt: resolved ? /* @__PURE__ */ new Date() : null, ownerId: context.session.itemId } });
-      if (a.status === "CONFIRMED") {
-        for (const capability of ["WAGER", "DEPOSIT", "MARKETING"]) if (!await tx.accountRestriction.findFirst({ where: { tenantId, playerId: player.id, capability, status: "ACTIVE" } })) await tx.accountRestriction.create({ data: { tenantId, playerId: player.id, capability, reasonCode: `${a.screeningType}_CONFIRMED`, startsAt: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
-      }
-      await appendAudit(tx, tenantId, context.session.itemId, "compliance.screening_recorded", "ScreeningHit", hit.id, a.status, { playerId: player.id, screeningType: a.screeningType, evidenceReference: a.evidenceReference, providerExternalReference: result.externalRef });
-      return hit.id;
-    });
-  },
-  requestDisputeResolution: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageCompliance");
-    if (!/^-?[0-9]+$/.test(a.adjustmentMinor)) throw new Error("INVALID_ADJUSTMENT");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
-      const dispute = await tx.dispute.findFirst({ where: { id: a.disputeId, tenantId, status: { in: ["OPEN", "TRIAGED", "INVESTIGATING", "APPEALED"] } } });
-      if (!dispute) throw new Error("Not found");
-      const currency = await disputeCurrency(tx, tenantId, dispute, a.adjustmentMinor);
-      const payloadHash = evidenceHash({ action: "DISPUTE_RESOLUTION", disputeId: dispute.id, resolution: a.resolution, adjustmentMinor: a.adjustmentMinor, currency, wagerId: dispute.wagerId ?? null });
-      const approval = await tx.approvalRequest.create({ data: { tenantId, action: `DISPUTE_RESOLUTION:${dispute.id}`, payloadHash, ...approvalReview({ action: "DISPUTE_RESOLUTION", disputeId: dispute.id, playerId: dispute.playerId, wagerId: dispute.wagerId, category: dispute.category, resolution: a.resolution, adjustmentMinor: a.adjustmentMinor, currency }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-      await tx.dispute.update({ where: { id: dispute.id }, data: { status: "PROPOSED_RESOLUTION", resolution: a.resolution, approvalRequestId: approval.id } });
-      return approval.id;
-    });
-  },
-  // Privacy request servicing: OPEN -> VERIFYING (identity review) -> IN_PROGRESS -> COMPLETED, or DENIED from any open state.
-  // An active legal hold on the player or tenant blocks completing erasure/correction/restriction. NEEDS OWNER: lawful
-  // grounds, retention exceptions and response deadlines are merchant policy; this only enforces the declared lifecycle.
-  transitionPrivacyRequest: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageCompliance"), next = String(a.status), reason = String(a.reason ?? "").trim(), artifact = String(a.artifactReference ?? "").trim(), allowed = { OPEN: ["VERIFYING", "DENIED"], VERIFYING: ["IN_PROGRESS", "DENIED"], IN_PROGRESS: ["COMPLETED", "DENIED"] };
-    if (!reason) throw new Error("PRIVACY_DECISION_REASON_REQUIRED");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
-      const request = await tx.customerPrivacyRequest.findFirst({ where: { id: a.requestId, tenantId } });
-      if (!request?.playerId) throw new Error("Not found");
-      if (!(allowed[request.status] ?? []).includes(next)) throw new Error("INVALID_PRIVACY_TRANSITION");
-      const now = /* @__PURE__ */ new Date();
-      if (next === "COMPLETED") {
-        if (["DELETE", "CORRECT", "RESTRICT"].includes(request.type) && await tx.legalHold.findFirst({ where: { tenantId, status: "ACTIVE", startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gt: now } }], AND: [{ OR: [{ scopeType: "PLAYER", scopeId: request.playerId }, { scopeType: "TENANT", scopeId: tenantId }] }] } })) throw new Error("LEGAL_HOLD_ACTIVE");
-      }
-      const terminal = next === "COMPLETED" || next === "DENIED";
-      const delivered = next === "COMPLETED" && ["ACCESS", "EXPORT", "PORTABILITY"].includes(request.type) ? artifact || "customer-download:on-demand-v1" : artifact;
-      const updated = await tx.customerPrivacyRequest.updateMany({ where: { id: request.id, tenantId, status: request.status }, data: { status: next, ...terminal ? { completedAt: now, decisionReason: reason } : {}, ...delivered ? { artifactReference: delivered } : {} } });
-      if (updated.count !== 1) throw new Error("STALE_PRIVACY_REQUEST");
-      await appendAudit(tx, tenantId, context.session.itemId, "privacy.request_transitioned", "CustomerPrivacyRequest", request.id, reason, { from: request.status, to: next, type: request.type, playerId: request.playerId, artifactReference: delivered || null });
-      return true;
-    });
-  },
-  // A rejected, expired or still-pending proposal returns the dispute to INVESTIGATING so a revised proposal can be
-  // requested with fresh independent approval. The old request keeps its decision and can never authorize the revision.
-  withdrawDisputeProposal: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageCompliance");
-    return serializable2(context.prisma, async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
-      await tx.$queryRaw`SELECT id FROM "Dispute" WHERE id = ${a.disputeId} AND tenant = ${tenantId} FOR UPDATE`;
-      const dispute = await tx.dispute.findFirst({ where: { id: a.disputeId, tenantId, status: "PROPOSED_RESOLUTION" } });
-      if (!dispute) throw new Error("Not found");
-      const proposal = dispute.approvalRequestId ? await tx.approvalRequest.findFirst({ where: { id: dispute.approvalRequestId, tenantId } }) : null, now = /* @__PURE__ */ new Date();
-      if (proposal?.status === "PENDING") {
-        const expired = await tx.approvalRequest.updateMany({ where: { id: proposal.id, tenantId, status: "PENDING" }, data: { status: "EXPIRED" } });
-        if (expired.count !== 1) throw new Error("APPROVAL_ALREADY_DECIDED");
-      } else if (proposal?.status === "APPROVED" && !proposal.consumedAt && proposal.expiresAt && new Date(proposal.expiresAt) > now) throw new Error("APPROVED_PROPOSAL_STILL_APPLICABLE");
-      const moved = await tx.dispute.updateMany({ where: { id: dispute.id, tenantId, status: "PROPOSED_RESOLUTION", approvalRequestId: dispute.approvalRequestId }, data: { status: "INVESTIGATING" } });
-      if (moved.count !== 1) throw new Error("STALE_DISPUTE_STATE");
-      const event = await tx.disputeEvent.create({ data: { tenantId, disputeId: dispute.id, type: "PROPOSAL_WITHDRAWN", actorId: context.session.itemId, evidenceHash: proposal?.payloadHash ?? evidenceHash({ disputeId: dispute.id, resolution: dispute.resolution }), details: { approvalId: proposal?.id ?? null, approvalStatus: proposal?.status ?? null, previousResolution: dispute.resolution, reason: a.reason } } });
-      await appendAudit(tx, tenantId, context.session.itemId, "dispute.proposal_withdrawn", "Dispute", dispute.id, a.reason, { approvalId: proposal?.id ?? null, approvalStatus: proposal?.status ?? null });
-      return event.id;
-    });
-  },
-  applyDisputeResolution: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageCompliance");
-    return serializable2(context.prisma, async (tx) => {
-      const dispute = await tx.dispute.findFirst({ where: { id: a.disputeId, tenantId, status: "PROPOSED_RESOLUTION" } });
-      if (!dispute?.playerId) throw new Error("Not found");
-      if (!/^-?[0-9]+$/.test(String(a.adjustmentMinor ?? ""))) throw new Error("INVALID_ADJUSTMENT");
-      const currency = await disputeCurrency(tx, tenantId, dispute, a.adjustmentMinor);
-      const payloadHash = evidenceHash({ action: "DISPUTE_RESOLUTION", disputeId: dispute.id, resolution: a.resolution, adjustmentMinor: a.adjustmentMinor, currency, wagerId: dispute.wagerId ?? null });
-      await approved(tx, context, "canManageCompliance", tenantId, a.approvalId, `DISPUTE_RESOLUTION:${dispute.id}`, payloadHash);
-      const adjustment = BigInt(a.adjustmentMinor);
-      if (adjustment !== 0n) {
-        if (!currency) throw new Error("DISPUTE_CURRENCY_REQUIRES_REVIEW");
-        const accounts = await accountMap(tx, tenantId, dispute.playerId, currency), amount = adjustment < 0n ? -adjustment : adjustment, journal = await postJournal(tx, tenantId, { idempotencyKey: `dispute:${dispute.id}:${a.approvalId}`, type: "DISPUTE_ADJUSTMENT", entries: adjustment > 0n ? [{ accountId: accounts.WINNINGS_EXPENSE.id, currency, side: "DEBIT", amount }, { accountId: accounts.PLAYER_CASH.id, currency, side: "CREDIT", amount }] : [{ accountId: accounts.PLAYER_CASH.id, currency, side: "DEBIT", amount }, { accountId: accounts.GAMING_REVENUE.id, currency, side: "CREDIT", amount }] }, dispute.id);
-        if (journal.replayed) throw new Error("JOURNAL_ALREADY_POSTED");
-        const balance = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } }), next = BigInt(balance?.postedMinor ?? "0") + adjustment;
-        if (!balance || next < 0n || BigInt(balance.availableMinor) + adjustment < 0n) throw new Error("ADJUSTMENT_REQUIRES_RECEIVABLE_REVIEW");
-        await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, postedMinor: String(next), pendingMinor: balance.pendingMinor, availableMinor: String(BigInt(balance.availableMinor) + (next - BigInt(balance.postedMinor))), version: Number(balance.version) + 1, asOf: /* @__PURE__ */ new Date() } });
-        await tx.disputeEvent.create({ data: { tenantId, disputeId: dispute.id, type: "MONETARY_ADJUSTMENT", actorId: context.session.itemId, evidenceHash: payloadHash, details: { journalId: journal.id, adjustmentMinor: a.adjustmentMinor, currency } } });
-      }
-      await tx.dispute.update({ where: { id: dispute.id }, data: { status: "RESOLVED", resolution: a.resolution, resolvedAt: /* @__PURE__ */ new Date() } });
-      await tx.disputeEvent.create({ data: { tenantId, disputeId: dispute.id, type: "RESOLVED", actorId: context.session.itemId, evidenceHash: payloadHash, details: { resolution: a.resolution, approvalId: a.approvalId } } });
-      await appendAudit(tx, tenantId, context.session.itemId, "dispute.resolved", "Dispute", dispute.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash, adjustmentMinor: a.adjustmentMinor });
-      return true;
-    });
-  },
-  setSupportCaseStatus: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageCompliance");
-    if (!["TRIAGED", "WAITING_CUSTOMER", "WAITING_OPERATOR", "RESOLVED", "CLOSED"].includes(a.status)) throw new Error("INVALID_CASE_STATUS");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
-      const item = await tx.supportCase.findFirst({ where: { id: a.caseId, tenantId } });
-      if (!item) throw new Error("Not found");
-      assertSupportCaseTransition(item.status, a.status);
-      const caseMoved = await tx.supportCase.updateMany({ where: { id: item.id, tenantId, status: item.status }, data: { status: a.status, ownerId: context.session.itemId, resolvedAt: ["RESOLVED", "CLOSED"].includes(a.status) ? /* @__PURE__ */ new Date() : null } });
-      if (caseMoved.count !== 1) throw new Error("STALE_SUPPORT_CASE");
-      await tx.supportCaseEvent.create({ data: { tenantId, supportCaseId: item.id, type: a.status === "RESOLVED" ? "RESOLVED" : "OPERATOR_MESSAGE", actorType: "STAFF", actorId: context.session.itemId, body: a.customerMessage, evidenceHash: evidenceHash({ caseId: item.id, status: a.status, message: a.customerMessage, reason: a.reason }), visibility: "CUSTOMER" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "support.status_changed", "SupportCase", item.id, a.reason, { from: item.status, to: a.status });
-      return true;
-    });
-  },
-  runSafeguardingReconciliation: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageFinance"), asset = nonnegativeMoney(a.assetMinor, "INVALID_ASSET_AMOUNT"), asOf = strictUtcInstant(a.asOf, "INVALID_AS_OF");
-    if (asOf.getTime() > Date.now()) throw new Error("AS_OF_IN_FUTURE");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageFinance");
-      const account = await tx.safeguardingAccount.findFirst({ where: { id: a.accountId, tenantId, status: "ACTIVE" } });
-      if (!account) throw new Error("Not found");
-      const ledger = await playerLiabilityAsOf(tx, tenantId, account.currency, asOf);
-      const liability = ledger.total, difference = asset - liability, row = await tx.safeguardingReconciliation.create({ data: { tenantId, safeguardingAccountId: account.id, asOf, safeguardedAssetMinor: String(asset), playerLiabilityMinor: String(liability), differenceMinor: String(difference), status: difference === 0n ? "MATCHED" : difference < 0n ? "SHORTFALL" : "SURPLUS", evidenceHash: evidenceHash({ accountId: account.id, accountReference: account.accountReference, currency: account.currency, asOf, asset: String(asset), assetSource: "OPERATOR_ATTESTED", liability: String(liability), liabilityBasis: "PLAYER_LIABILITY_LEDGER_AS_OF", journalEntryCount: ledger.count, difference: String(difference) }) } });
-      await appendAudit(tx, tenantId, context.session.itemId, "safeguarding.reconciled", "SafeguardingReconciliation", row.id, "FINANCE_CONTROL", { differenceMinor: String(difference), assetSource: "OPERATOR_ATTESTED", liabilityBasis: "PLAYER_LIABILITY_LEDGER_AS_OF", journalEntryCount: ledger.count, asOf });
-      return row.id;
-    });
-  },
-  openChargeback: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageFinance"), amount = money2(a.amountMinor);
-    return serializable2(context.prisma, async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageFinance");
-      const prior = await tx.paymentIntent.findFirst({ where: { tenantId, idempotencyKey: a.idempotencyKey } });
-      if (prior) {
-        if (prior.type !== "CHARGEBACK" || prior.riskEvidence?.originalPaymentIntentId !== a.paymentIntentId || prior.amountMinor !== String(amount)) throw new Error("IDEMPOTENCY_KEY_CONFLICT");
-        return prior.id;
-      }
-      await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${String(a.paymentIntentId ?? "")} AND tenant = ${tenantId} FOR UPDATE`;
-      const original = await tx.paymentIntent.findFirst({ where: { id: a.paymentIntentId, tenantId, type: "DEPOSIT", status: "SUCCEEDED" } });
-      if (!original?.playerId) throw new Error("INVALID_CHARGEBACK");
-      const priorChargebacks = await tx.paymentIntent.findMany({ where: { tenantId, type: "CHARGEBACK", providerSessionReference: `chargeback:${original.id}`, status: { notIn: ["FAILED", "CANCELLED"] } }, select: { amountMinor: true } }), alreadyReversed = priorChargebacks.reduce((sum, item) => sum + BigInt(item.amountMinor), 0n);
-      if (alreadyReversed + amount > BigInt(original.amountMinor)) throw new Error("CHARGEBACK_EXCEEDS_REMAINING_AMOUNT");
-      const [cash, clearing, loss] = await Promise.all([tx.ledgerAccount.findFirst({ where: { tenantId, playerId: original.playerId, key: "PLAYER_CASH", currency: original.currency } }), tx.ledgerAccount.findFirst({ where: { tenantId, playerId: null, key: "PAYMENT_CLEARING", currency: original.currency } }), tx.ledgerAccount.findFirst({ where: { tenantId, playerId: null, key: "CHARGEBACK_LOSS", currency: original.currency } })]);
-      const balance = cash ? await tx.balanceProjection.findFirst({ where: { tenantId, accountId: cash.id }, orderBy: { version: "desc" } }) : null;
-      if (!cash || !clearing || !loss || !balance) throw new Error("CHARGEBACK_LEDGER_UNAVAILABLE");
-      const recoverable = BigInt(balance.availableMinor) < amount ? BigInt(balance.availableMinor) : amount, shortage = amount - recoverable;
-      const intent = await tx.paymentIntent.create({ data: { tenantId, playerId: original.playerId, providerConnectionId: original.providerConnectionId, type: "CHARGEBACK", amountMinor: String(amount), feeMinor: "0", currency: original.currency, idempotencyKey: a.idempotencyKey, paymentMethodReference: original.paymentMethodReference, providerSessionReference: `chargeback:${original.id}`, riskEvidence: { originalPaymentIntentId: original.id, reason: a.reason, shortageMinor: String(shortage), priorReversedMinor: String(alreadyReversed), evidenceType: "OPERATOR_ATTESTED", externalConfirmation: null }, status: "REVIEW", completedAt: null } });
-      const entries = [];
-      if (recoverable > 0n) entries.push({ accountId: cash.id, currency: original.currency, side: "DEBIT", amount: recoverable });
-      if (shortage > 0n) entries.push({ accountId: loss.id, currency: original.currency, side: "DEBIT", amount: shortage });
-      entries.push({ accountId: clearing.id, currency: original.currency, side: "CREDIT", amount });
-      const journal = await postJournal(tx, tenantId, { idempotencyKey: `chargeback:${a.idempotencyKey}`, type: "CHARGEBACK", entries }, intent.id), next = BigInt(balance.postedMinor) - recoverable;
-      if (journal.replayed) throw new Error("JOURNAL_ALREADY_POSTED");
-      await tx.balanceProjection.create({ data: { tenantId, accountId: cash.id, postedMinor: String(next), pendingMinor: balance.pendingMinor, availableMinor: String(BigInt(balance.availableMinor) + (next - BigInt(balance.postedMinor))), version: Number(balance.version) + 1, asOf: /* @__PURE__ */ new Date() } });
-      if (shortage > 0n) await tx.accountRestriction.create({ data: { tenantId, playerId: original.playerId, capability: "WAGER", reasonCode: "CHARGEBACK_SHORTFALL", startsAt: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "payment.chargeback_opened", "PaymentIntent", intent.id, a.reason, { originalPaymentIntentId: original.id, amountMinor: String(amount), shortageMinor: String(shortage), journalId: journal.id });
-      return intent.id;
-    });
-  },
-  requestTaxRule: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageFinance");
-    if (!/^\d+$/.test(a.rateNumerator) || !/^\d+$/.test(a.rateDenominator) || BigInt(a.rateDenominator) <= 0n) throw new Error("INVALID_TAX_RATE");
-    assertSupportedTaxRule(a.basis, a.roundingRule);
-    const effectiveFrom = await operatorInstant(context, tenantId, a.effectiveFrom, "EFFECTIVE_FROM"), payloadHash = evidenceHash({ action: "TAX_RULE", jurisdictionId: a.jurisdictionId, key: a.key, basis: a.basis, rateNumerator: a.rateNumerator, rateDenominator: a.rateDenominator, roundingRule: a.roundingRule, effectiveFrom });
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageFinance");
-      const jurisdiction = await tx.jurisdiction.findUnique({ where: { id: a.jurisdictionId } });
-      if (!jurisdiction) throw new Error("Not found");
-      const approval = await tx.approvalRequest.create({ data: { tenantId, action: `TAX_RULE:${a.jurisdictionId}:${a.key}`, payloadHash, ...approvalReview({ action: "TAX_RULE", jurisdictionId: a.jurisdictionId, key: a.key, basis: a.basis, rateNumerator: a.rateNumerator, rateDenominator: a.rateDenominator, roundingRule: a.roundingRule, effectiveFrom }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-      return approval.id;
-    });
-  },
-  applyTaxRule: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageFinance"), effectiveFrom = await operatorInstant(context, tenantId, a.effectiveFrom, "EFFECTIVE_FROM"), payloadHash = evidenceHash({ action: "TAX_RULE", jurisdictionId: a.jurisdictionId, key: a.key, basis: a.basis, rateNumerator: a.rateNumerator, rateDenominator: a.rateDenominator, roundingRule: a.roundingRule, effectiveFrom });
-    return context.prisma.$transaction(async (tx) => {
-      await approved(tx, context, "canManageFinance", tenantId, a.approvalId, `TAX_RULE:${a.jurisdictionId}:${a.key}`, payloadHash);
-      const version = await tx.taxRuleVersion.count({ where: { tenantId, jurisdictionId: a.jurisdictionId, key: a.key } }) + 1, row = await tx.taxRuleVersion.create({ data: { tenantId, jurisdictionId: a.jurisdictionId, key: a.key, version, basis: a.basis, rateNumerator: a.rateNumerator, rateDenominator: a.rateDenominator, roundingRule: a.roundingRule, effectiveFrom, status: "ACTIVE", evidenceHash: payloadHash } });
-      await appendAudit(tx, tenantId, context.session.itemId, "tax.rule_activated", "TaxRuleVersion", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
-      return row.id;
-    });
-  },
-  assessSettlementTax: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageFinance");
-    return serializable2(context.prisma, async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageFinance");
-      const settlement = await tx.settlement.findFirst({ where: { id: a.settlementId, tenantId }, include: { wager: true } }), rule = await tx.taxRuleVersion.findFirst({ where: { id: a.taxRuleId, tenantId, status: "ACTIVE" } });
-      if (!settlement?.wager || !rule) throw new Error("Not found");
-      assertSupportedTaxRule(String(rule.basis), rule.roundingRule);
-      if (settlement.reversalOfId || await tx.settlement.findFirst({ where: { tenantId, reversalOfId: settlement.id } })) throw new Error("TAX_SETTLEMENT_NOT_CURRENT");
-      const ruleIdentity = `${rule.key}:v${rule.version}:${rule.id}`;
-      await tx.$queryRaw`SELECT id FROM "Wager" WHERE id = ${settlement.wagerId} FOR UPDATE`;
-      const existing = await tx.taxAssessment.findFirst({ where: { tenantId, wagerId: settlement.wagerId, ruleVersion: ruleIdentity, status: { not: "REVERSED" } } });
-      if (existing) return existing.id;
-      const settledAt = settlement.createdAt;
-      if (rule.effectiveFrom > settledAt || rule.effectiveTo && rule.effectiveTo <= settledAt) throw new Error("TAX_RULE_NOT_EFFECTIVE");
-      const operatorJurisdiction = settlement.wager.operatorJurisdictionId ? await tx.operatorJurisdiction.findFirst({ where: { id: settlement.wager.operatorJurisdictionId, tenantId } }) : null;
-      if (!operatorJurisdiction?.jurisdictionId || operatorJurisdiction.jurisdictionId !== rule.jurisdictionId) throw new Error("TAX_RULE_JURISDICTION_MISMATCH");
-      const stake = BigInt(settlement.wager.stakeMinor), payout = BigInt(settlement.payoutMinor), basis = rule.basis === "STAKE" ? stake : rule.basis === "WINNINGS" ? payout : stake - payout, nonnegative = basis < 0n ? 0n : basis, amount = roundTax(nonnegative * BigInt(rule.rateNumerator), BigInt(rule.rateDenominator), rule.roundingRule);
-      let journalId = null;
-      if (amount > 0n) {
-        const [expense, payable] = await Promise.all([tx.ledgerAccount.findFirst({ where: { tenantId, key: "TAX_EXPENSE", currency: settlement.wager.currency } }), tx.ledgerAccount.findFirst({ where: { tenantId, key: "TAX_PAYABLE", currency: settlement.wager.currency } })]);
-        if (!expense || !payable) throw new Error("TAX_LEDGER_UNAVAILABLE");
-        journalId = (await postJournal(tx, tenantId, { idempotencyKey: `tax:${settlement.id}:${rule.id}`, type: "TAX_ASSESSMENT", entries: [{ accountId: expense.id, currency: settlement.wager.currency, side: "DEBIT", amount }, { accountId: payable.id, currency: settlement.wager.currency, side: "CREDIT", amount }] }, settlement.id)).id;
-      }
-      const assessment = await tx.taxAssessment.create({ data: { tenantId, wagerId: settlement.wagerId, ruleVersion: ruleIdentity, basisMinor: String(nonnegative), amountMinor: String(amount), currency: settlement.wager.currency, status: amount > 0n ? "POSTED" : "CALCULATED" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "tax.assessed", "TaxAssessment", assessment.id, rule.key, { settlementId: settlement.id, taxRuleId: rule.id, ruleIdentity, basis: rule.basis, basisSemantics: rule.basis === "WINNINGS" ? "GROSS_PAYOUT" : rule.basis === "GGR" ? "STAKE_MINUS_PAYOUT" : "STAKE", rateNumerator: rule.rateNumerator, rateDenominator: rule.rateDenominator, roundingRule: rule.roundingRule, jurisdictionId: rule.jurisdictionId, requestKey: a.idempotencyKey, basisMinor: String(nonnegative), amountMinor: String(amount), journalId });
-      return assessment.id;
-    });
-  },
-  requestLedgerAdjustment: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageFinance");
-    money2(a.amountMinor);
-    if (!["DEBIT", "CREDIT"].includes(a.direction)) throw new Error("INVALID_DIRECTION");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageFinance");
-      const account = await tx.ledgerAccount.findFirst({ where: { id: a.accountId, tenantId } });
-      if (!account) throw new Error("Not found");
-      const evidence = object(a.evidence, "INVALID_EVIDENCE");
-      if (evidence.reconciliationItemId !== void 0) {
-        const item = await tx.reconciliationItem.findFirst({ where: { id: String(evidence.reconciliationItemId), tenantId, status: "OPEN" } }), difference = item ? BigInt(item.differenceMinor || "0") : 0n;
-        if (!item) throw new Error("RECONCILIATION_ITEM_NOT_OPEN");
-        if (item.currency !== account.currency || (difference < 0n ? -difference : difference) !== BigInt(a.amountMinor)) throw new Error("RECONCILIATION_ITEM_MISMATCH");
-      }
-      const payloadHash = evidenceHash({ action: "LEDGER_ADJUSTMENT", accountId: account.id, amountMinor: a.amountMinor, direction: a.direction, reasonCode: a.reasonCode, evidence });
-      const approval = await tx.approvalRequest.create({ data: { tenantId, action: `LEDGER_ADJUSTMENT:${account.id}:${a.amountMinor}:${a.direction}`, payloadHash, ...approvalReview({ action: "LEDGER_ADJUSTMENT", accountId: account.id, accountKey: account.key, playerId: account.playerId, currency: account.currency, amountMinor: a.amountMinor, direction: a.direction, reasonCode: a.reasonCode, evidence }), requesterId: context.session.itemId, status: "PENDING", reason: a.reasonCode } });
-      const row = await tx.ledgerAdjustmentRequest.create({ data: { tenantId, playerId: account.playerId, accountId: account.id, amountMinor: a.amountMinor, currency: account.currency, direction: a.direction, reasonCode: a.reasonCode, evidence, status: "PENDING", requesterId: context.session.itemId, approvalRequestId: approval.id } });
-      return row.id;
-    });
-  },
-  applyLedgerAdjustment: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageFinance");
-    return serializable2(context.prisma, async (tx) => {
-      const row = await tx.ledgerAdjustmentRequest.findFirst({ where: { id: a.adjustmentId, tenantId }, include: { account: true } });
-      if (!row?.account || row.approvalRequestId !== a.approvalId) throw new Error("Not found");
-      if (row.status === "POSTED" && row.journalTransactionId) return row.journalTransactionId;
-      if (row.status !== "PENDING") throw new Error("Not found");
-      const payloadHash = evidenceHash({ action: "LEDGER_ADJUSTMENT", accountId: row.account.id, amountMinor: row.amountMinor, direction: row.direction, reasonCode: row.reasonCode, evidence: row.evidence });
-      await approved(tx, context, "canManageFinance", tenantId, a.approvalId, `LEDGER_ADJUSTMENT:${row.account.id}:${row.amountMinor}:${row.direction}`, payloadHash);
-      const offset = await tx.ledgerAccount.findFirst({ where: { tenantId, key: row.direction === "CREDIT" ? "WINNINGS_EXPENSE" : "GAMING_REVENUE", currency: row.currency } });
-      if (!offset) throw new Error("MISSING_OFFSET_ACCOUNT");
-      const amount = BigInt(row.amountMinor), journal = await postJournal(tx, tenantId, { idempotencyKey: `ledger-adjustment:${row.id}`, type: "LEDGER_ADJUSTMENT", entries: row.direction === "CREDIT" ? [{ accountId: offset.id, currency: row.currency, side: "DEBIT", amount }, { accountId: row.account.id, currency: row.currency, side: "CREDIT", amount }] : [{ accountId: row.account.id, currency: row.currency, side: "DEBIT", amount }, { accountId: offset.id, currency: row.currency, side: "CREDIT", amount }] }, row.id);
-      if (journal.replayed) throw new Error("JOURNAL_ALREADY_POSTED");
-      if (row.account.playerId) {
-        const balance = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: row.account.id }, orderBy: { version: "desc" } }), next = BigInt(balance?.postedMinor ?? "0") + (row.direction === "CREDIT" ? amount : -amount);
-        if (!balance || next < 0n || BigInt(balance.availableMinor) + (next - BigInt(balance.postedMinor)) < 0n) throw new Error("ADJUSTMENT_REQUIRES_RECEIVABLE_REVIEW");
-        await tx.balanceProjection.create({ data: { tenantId, accountId: row.account.id, postedMinor: String(next), pendingMinor: balance.pendingMinor, availableMinor: String(BigInt(balance.availableMinor) + (next - BigInt(balance.postedMinor))), version: Number(balance.version) + 1, asOf: /* @__PURE__ */ new Date() } });
-      }
-      await tx.ledgerAdjustmentRequest.update({ where: { id: row.id }, data: { status: "POSTED", journalTransactionId: journal.id } });
-      await appendAudit(tx, tenantId, context.session.itemId, "ledger.adjusted", "LedgerAdjustmentRequest", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, journalId: journal.id, payloadHash, requestKey: a.idempotencyKey });
-      const linkedItemId = row.evidence?.reconciliationItemId;
-      if (linkedItemId !== void 0) {
-        const linked = await tx.reconciliationItem.updateMany({ where: { id: String(linkedItemId), tenantId, status: "OPEN", currency: row.currency }, data: { status: "RESOLVED", resolutionJournalId: journal.id } });
-        if (linked.count !== 1) throw new Error("RECONCILIATION_ITEM_NOT_OPEN");
-      }
-      return journal.id;
-    });
-  },
-  runRetentionDryRun: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageCompliance"), from = await operatorInstant(context, tenantId, a.windowFrom, "WINDOW_FROM"), to = await operatorInstant(context, tenantId, a.windowTo, "WINDOW_TO");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
-      const policy = await tx.retentionPolicyVersion.findFirst({ where: { id: a.policyId, tenantId, status: "ACTIVE" } });
-      if (!policy || Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) throw new Error("INVALID_RETENTION_RUN");
-      const asOf = /* @__PURE__ */ new Date(), manifest = await retentionCandidates(tx, tenantId, policy, from, to, asOf, asOf), dryRunHash = manifest.manifestHash;
-      const run = await tx.retentionExecution.create({ data: { tenantId, policyVersionId: policy.id, windowFrom: from, windowTo: to, candidateCount: manifest.candidateCount, heldCount: manifest.held.length, archivedCount: 0, deletedCount: 0, status: "DRY_RUN", dryRunHash, createdAt: asOf } });
-      await appendAudit(tx, tenantId, context.session.itemId, "retention.dry_run", "RetentionExecution", run.id, "NO_DATA_MUTATION", { dryRunHash, candidateCount: manifest.candidateCount, eligibleCount: manifest.eligible.length, heldCount: manifest.held.length, cutoff: manifest.cutoff.toISOString(), holdIds: manifest.holdIds });
-      return run.id;
-    });
-  },
-  requestRetentionExecution: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageCompliance");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
-      const run = await tx.retentionExecution.findFirst({ where: { id: a.executionId, tenantId, status: "DRY_RUN" } });
-      if (!run) throw new Error("Not found");
-      const payloadHash = evidenceHash({ action: "RETENTION_EXECUTION", executionId: run.id, dryRunHash: run.dryRunHash, candidateCount: run.candidateCount, heldCount: run.heldCount });
-      const approval = await tx.approvalRequest.create({ data: { tenantId, action: `RETENTION_EXECUTION:${run.id}`, payloadHash, ...approvalReview({ action: "RETENTION_EXECUTION", executionId: run.id, policyVersionId: run.policyVersionId, windowFrom: run.windowFrom, windowTo: run.windowTo, dryRunHash: run.dryRunHash, candidateCount: run.candidateCount, heldCount: run.heldCount }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
-      await tx.retentionExecution.update({ where: { id: run.id }, data: { status: "PENDING_APPROVAL", approvalRequestId: approval.id } });
-      return approval.id;
-    });
-  },
-  applyRetentionExecution: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canManageCompliance");
-    return context.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`LOCK TABLE "LegalHold" IN SHARE MODE`;
-      const run = await tx.retentionExecution.findFirst({ where: { id: a.executionId, tenantId, status: "PENDING_APPROVAL" }, include: { policyVersion: true } });
-      if (!run?.policyVersion) throw new Error("Not found");
-      const payloadHash = evidenceHash({ action: "RETENTION_EXECUTION", executionId: run.id, dryRunHash: run.dryRunHash, candidateCount: run.candidateCount, heldCount: run.heldCount });
-      await approved(tx, context, "canManageCompliance", tenantId, a.approvalId, `RETENTION_EXECUTION:${run.id}`, payloadHash);
-      await tx.$queryRaw`SELECT id FROM "RetentionPolicyVersion" WHERE id = ${run.policyVersion.id} AND tenant = ${tenantId} FOR SHARE`;
-      const policy = await tx.retentionPolicyVersion.findFirst({ where: { id: run.policyVersion.id, tenantId, status: "ACTIVE" } });
-      if (!policy) throw new Error("RETENTION_POLICY_NOT_ACTIVE");
-      const now = /* @__PURE__ */ new Date(), manifest = await retentionCandidates(tx, tenantId, policy, run.windowFrom, run.windowTo, new Date(run.createdAt), now);
-      if (manifest.manifestHash !== run.dryRunHash) throw new Error("RETENTION_MANIFEST_CHANGED_REVIEW_REQUIRED");
-      let deletedCount = 0, tokenizedCount = 0;
-      if (manifest.eligible.length && policy.recordClass === "CUSTOMER_SESSION") {
-        deletedCount = (await tx.customerSession.deleteMany({ where: { tenantId, id: { in: manifest.eligible } } })).count;
-      } else if (manifest.eligible.length && policy.recordClass === "GEO") {
-        tokenizedCount = (await tx.geoCheck.updateMany({ where: { tenantId, id: { in: manifest.eligible } }, data: { coarseEvidence: { retained: GEO_TOKENIZED_MARKER, policyVersionId: policy.id } } })).count;
-      }
-      if (deletedCount + tokenizedCount !== manifest.eligible.length) throw new Error("RETENTION_EFFECT_MISMATCH");
-      const audit = await appendAudit(tx, tenantId, context.session.itemId, "retention.executed", "RetentionExecution", run.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash, manifestHash: manifest.manifestHash, disposition: `${policy.recordClass}:${policy.deletionMode}`, deletedCount, tokenizedCount, heldCount: manifest.held.length, eligible: manifest.eligible, held: manifest.held });
-      const done = await tx.retentionExecution.updateMany({ where: { id: run.id, tenantId, status: "PENDING_APPROVAL" }, data: { status: "COMPLETED", archivedCount: tokenizedCount, deletedCount, heldCount: manifest.held.length, artifactReference: `audit:${audit.id}`, completedAt: now } });
-      if (done.count !== 1) throw new Error("RETENTION_EXECUTION_CHANGED");
-      return true;
-    });
-  },
-  requestDataExport: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canReadAudit"), scope = object(a.scope, "INVALID_EXPORT_SCOPE"), expiresAt = await operatorInstant(context, tenantId, a.expiresAt, "EXPIRES_AT");
-    if (expiresAt <= /* @__PURE__ */ new Date()) throw new Error("INVALID_EXPIRY");
-    const requiresApproval = ["RESTRICTED_PII", "RESTRICTED_FINANCIAL", "RESTRICTED_REGULATORY"].includes(a.classification), payloadHash = evidenceHash({ type: a.type, classification: a.classification, scope, expiresAt });
-    assertArtifactDeliveryHasHandler("export.requested.v1");
-    return context.prisma.$transaction(async (tx) => {
-      await assertCurrentActor(tx, context, tenantId, "canReadAudit");
-      let approval = null;
-      if (requiresApproval) approval = await tx.approvalRequest.create({ data: { tenantId, action: `DATA_EXPORT:${a.type}:${a.classification}`, payloadHash, ...approvalReview({ type: a.type, classification: a.classification, scope, expiresAt }), requesterId: context.session.itemId, status: "PENDING", reason: "RESTRICTED_EXPORT" } });
-      const row = await tx.dataExport.create({ data: { tenantId, requestedBy: context.session.itemId, type: a.type, scope, classification: a.classification, status: requiresApproval ? "PENDING" : "GENERATING", rowCount: 0, expiresAt, approvalRequestId: approval?.id } });
-      await appendAudit(tx, tenantId, context.session.itemId, "export.requested", "DataExport", row.id, a.classification, { payloadHash, approvalId: approval?.id ?? null });
-      return row.id;
-    });
-  },
-  applyApprovedDataExport: async (_r, a, context) => {
-    const tenantId = await requireTenant(context, "canReadAudit");
-    assertArtifactDeliveryHasHandler("export.requested.v1");
-    return context.prisma.$transaction(async (tx) => {
-      const row = await tx.dataExport.findFirst({ where: { id: a.exportId, tenantId, status: "PENDING" } });
-      if (!row) throw new Error("Not found");
-      const payloadHash = evidenceHash({ type: row.type, classification: row.classification, scope: row.scope, expiresAt: row.expiresAt });
-      await approved(tx, context, "canReadAudit", tenantId, a.approvalId, `DATA_EXPORT:${row.type}:${row.classification}`, payloadHash);
-      await tx.dataExport.update({ where: { id: row.id }, data: { status: "GENERATING" } });
-      await appendAudit(tx, tenantId, context.session.itemId, "export.approved", "DataExport", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
-      return true;
-    });
+    };
+    sportsbookFullTypeDefs = graphql2`
+  type OperatorPasswordResetResult { code: String, message: String! }
+  type OperatorMfaEnrollment { secret: String!, uri: String! }
+  type OperatorMfaCompletion { enabled: Boolean!, recoveryCodes: [String!]!, sessionToken: String! }
+  extend type Query {
+    operatorSessionAssured: Boolean!
+    fullStraightSettlementPlan(wagerId:ID!): String!
   }
-} };
-
-// features/keystone/mutations/createInitialUser.ts
-var graphql3 = String.raw;
-var createInitialUserTypeDefs = graphql3`
-  input CreateInitialUserInput {
-    name: String
-    email: String
-    password: String
-  }
-
-  type Mutation {
-    createInitialUser(data: CreateInitialUserInput!): UserAuthenticationWithPasswordSuccess!
+  extend type Mutation {
+    bootstrapOperatorAdmin(name:String!,email:String!,password:String!): ID!
+    beginOperatorMfaEnrollment: OperatorMfaEnrollment!
+    completeOperatorMfaEnrollment(code:String!): OperatorMfaCompletion!
+    verifyOperatorMfaSession(code:String!): String!
+    regenerateOperatorMfaRecoveryCodes(code:String!): [String!]!
+    sendUserPasswordResetLink(email:String!): Boolean!
+    redeemUserPasswordResetToken(email:String!,token:String!,password:String!): OperatorPasswordResetResult!
+    setEventTradingState(eventId:ID!,status:String!,livePhase:String,clockSeconds:Int,reason:String!): Boolean!
+    createCompetitionSeason(competitionId:ID!,key:String!,name:String!,startsAt:String!,endsAt:String!): ID!
+    createCatalogVenue(key:String!,name:String!,countryCode:String!,timezone:String!): ID!
+    createCatalogCompetitor(key:String!,name:String!): ID!
+    createCatalogSport(key:String!,name:String!): ID!
+    createCatalogCompetition(sportId:ID!,key:String!,name:String!,timezone:String!): ID!
+    createCatalogStage(seasonId:ID!,key:String!,name:String!,sortOrder:Int!): ID!
+    setCatalogReferenceStatus(type:String!,id:ID!,active:Boolean!,reason:String!): Boolean!
+    attachEventParticipant(eventId:ID!,competitorId:ID!,role:String!,sortOrder:Int!): ID!
+    rescheduleEvent(eventId:ID!,startAt:String!,reason:String!): Boolean!
+    createEventMarket(eventId:ID!,definitionKey:String!,parameters:String!,tradingMode:String!,cashOutEnabled:Boolean!,selections:String!): ID!
+    mapProviderEntity(connectionId:ID!,entityType:String!,externalId:String!,canonicalType:String!,canonicalId:ID!,confidence:String!): ID!
+    requestTraderOverride(targetType:String!,targetId:ID!,overrideType:String!,value:String!,expiresAt:String!,reason:String!): ID!
+    requestCorrelationRule(groupKey:String!,sportKey:String!,leftMarketId:ID!,rightMarketId:ID!,decision:String!,reason:String!): ID!
+    applyCorrelationRule(groupKey:String!,sportKey:String!,leftMarketId:ID!,rightMarketId:ID!,decision:String!,approvalId:ID!): ID!
+    applyTraderOverride(overrideId:ID!,approvalId:ID!): Boolean!
+    runTradingReplay(connectionId:ID!,scopeType:String!,scopeId:ID!,frontier:String!): ID!
+    requestLegalEntity(name:String!,countryCode:String!,registrationReference:String!,reason:String!): ID!
+    applyLegalEntity(name:String!,countryCode:String!,registrationReference:String!,approvalId:ID!): ID!
+    createJurisdictionPolicyDraft(jurisdictionId:ID!,authorityCitation:String!,policyDocument:String!,effectiveFrom:String!): ID!
+    requestJurisdictionActivation(policyId:ID!,operatorJurisdictionId:ID!,externalEvidenceHash:String!,reason:String!): ID!
+    applyJurisdictionActivation(policyId:ID!,operatorJurisdictionId:ID!,externalEvidenceHash:String!,approvalId:ID!): Boolean!
+    requestOperatorBrand(name:String!,domain:String!,defaultLocale:String!,defaultTimezone:String!,reason:String!): ID!
+    applyOperatorBrand(name:String!,domain:String!,defaultLocale:String!,defaultTimezone:String!,approvalId:ID!): ID!
+    requestTenantCurrency(code:String!,exponent:Int!,name:String!,depositsEnabled:Boolean!,withdrawalsEnabled:Boolean!,wageringEnabled:Boolean!,defaultForBrand:Boolean!,reason:String!): ID!
+    applyTenantCurrency(code:String!,exponent:Int!,name:String!,depositsEnabled:Boolean!,withdrawalsEnabled:Boolean!,wageringEnabled:Boolean!,defaultForBrand:Boolean!,approvalId:ID!): ID!
+    requestBrandLocale(brandId:ID!,locale:String!,language:String!,timezone:String!,termsVersion:String!,termsContentHash:String!,reason:String!): ID!
+    applyBrandLocale(brandId:ID!,locale:String!,language:String!,timezone:String!,termsVersion:String!,termsContentHash:String!,approvalId:ID!): ID!
+    requestHouseRule(name:String!,sportKey:String!,marketDefinitionKey:String!,rules:String!,effectiveFrom:String!,reason:String!): ID!
+    applyHouseRule(name:String!,sportKey:String!,marketDefinitionKey:String!,rules:String!,effectiveFrom:String!,approvalId:ID!): ID!
+    requestFeatureFlag(key:String!,description:String!,enabled:Boolean!,scopeType:String!,scopeId:String!,expiresAt:String!,reason:String!): ID!
+    applyFeatureFlag(key:String!,description:String!,enabled:Boolean!,scopeType:String!,scopeId:String!,expiresAt:String!,approvalId:ID!): ID!
+    createPromotionCampaign(key:String!,name:String!,description:String!,type:String!,startsAt:String!,endsAt:String!,budgetMinor:String!,currency:String!,economics:String!,requirements:String!): ID!
+    requestPromotionActivation(promotionId:ID!,reason:String!): ID!
+    applyPromotionActivation(promotionId:ID!,approvalId:ID!): Boolean!
+    requestWebhookEndpoint(name:String!,url:String!,eventTypes:String!,secretReference:String!,reason:String!): ID!
+    applyWebhookEndpoint(name:String!,url:String!,eventTypes:String!,secretReference:String!,approvalId:ID!): ID!
+    runAdapterCertification(connectionId:ID!): ID!
+    setProviderOperationalState(connectionId:ID!,status:String!,reason:String!): Boolean!
+    settleCombinationWager(wagerId:ID!,idempotencyKey:String!,planHash:String,expectedActorId:ID,expectedTenantId:ID): ID!
+    requestCombinationResettlement(settlementId:ID!,reason:String!): ID!
+    resettleCombinationWager(settlementId:ID!,approvalId:ID!,idempotencyKey:String!): ID!
+    requestCashOutCorrection(acceptanceId:ID!,reason:String!): ID!
+    correctCashOut(acceptanceId:ID!,approvalId:ID!,idempotencyKey:String!): ID!
+    recordComplianceScreening(playerId:ID!,screeningType:String!,status:String!,reason:String!,evidenceReference:String!): ID!
+    requestDisputeResolution(disputeId:ID!,resolution:String!,adjustmentMinor:String!,reason:String!): ID!
+    withdrawDisputeProposal(disputeId:ID!,reason:String!): ID!
+    transitionPrivacyRequest(requestId:ID!,status:String!,reason:String!,artifactReference:String): Boolean!
+    applyDisputeResolution(disputeId:ID!,resolution:String!,adjustmentMinor:String!,approvalId:ID!): Boolean!
+    setSupportCaseStatus(caseId:ID!,status:String!,customerMessage:String!,reason:String!): Boolean!
+    runSafeguardingReconciliation(accountId:ID!,assetMinor:String!,asOf:String!): ID!
+    openChargeback(paymentIntentId:ID!,amountMinor:String!,idempotencyKey:String!,reason:String!): ID!
+    requestTaxRule(jurisdictionId:ID!,key:String!,basis:String!,rateNumerator:String!,rateDenominator:String!,roundingRule:String!,effectiveFrom:String!,reason:String!): ID!
+    applyTaxRule(jurisdictionId:ID!,key:String!,basis:String!,rateNumerator:String!,rateDenominator:String!,roundingRule:String!,effectiveFrom:String!,approvalId:ID!): ID!
+    assessSettlementTax(settlementId:ID!,taxRuleId:ID!,idempotencyKey:String!): ID!
+    requestLedgerAdjustment(accountId:ID!,amountMinor:String!,direction:String!,reasonCode:String!,evidence:String!): ID!
+    applyLedgerAdjustment(adjustmentId:ID!,approvalId:ID!,idempotencyKey:String!): ID!
+    runRetentionDryRun(policyId:ID!,windowFrom:String!,windowTo:String!): ID!
+    requestRetentionExecution(executionId:ID!,reason:String!): ID!
+    applyRetentionExecution(executionId:ID!,approvalId:ID!): Boolean!
+    requestDataExport(type:String!,classification:String!,scope:String!,expiresAt:String!): ID!
+    applyApprovedDataExport(exportId:ID!,approvalId:ID!): Boolean!
   }
 `;
+    sportsbookFullResolvers = { Query: { operatorSessionAssured: (_r, _a, context) => hasOperatorMfaAssurance(context.session), fullStraightSettlementPlan: async (_r, a, context) => {
+      const tenantId = await requireTenant(context, "canManageRisk");
+      return JSON.stringify(await getFullStraightPlan(context.prisma, tenantId, context.session.itemId, a.wagerId, context.session));
+    } }, Mutation: {
+      bootstrapOperatorAdmin: async (_r, a, context) => {
+        if (!/^\S+@\S+\.\S+$/.test(a.email) || String(a.password).length < 12 || String(a.name).trim().length < 2) throw new Error("INVALID_INITIAL_ADMIN");
+        return context.transaction(async (txContext) => {
+          await txContext.prisma.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('openfront-initial-admin'))`;
+          if (await txContext.prisma.user.count()) throw new Error("INITIAL_ADMIN_ALREADY_EXISTS");
+          const role = await txContext.sudo().query.Role.createOne({ data: { name: "Admin", canSeeOtherPeople: true, canEditOtherPeople: true, canManagePeople: true, canManageRoles: true, canAccessDashboard: true, canManageOnboarding: true, canManageSportsbook: true, canTrade: true, canManageRisk: true, canManageCompliance: true, canManageFinance: true, canManageIntegrations: true, canApproveSensitiveActions: false, canReadAudit: true }, query: "id" });
+          const user = await txContext.sudo().query.User.createOne({ data: { name: String(a.name).trim(), email: String(a.email).trim().toLowerCase(), password: a.password, role: { connect: { id: role.id } } }, query: "id" });
+          return user.id;
+        });
+      },
+      beginOperatorMfaEnrollment: async (_r, _a, context) => {
+        const userId = context.session?.itemId;
+        if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
+        const user = await context.prisma.user.findUnique({ where: { id: userId }, include: { role: true } });
+        if (!user || !user.role || !["canManagePeople", "canManageRoles", "canManageOnboarding", "canManageSportsbook", "canTrade", "canManageRisk", "canManageCompliance", "canManageFinance", "canManageIntegrations", "canApproveSensitiveActions", "canReadAudit"].some((capability) => Boolean(user.role[capability]))) throw new Error("OPERATOR_ACCOUNT_REQUIRED");
+        if (user.operatorMfaEnabled) throw new Error("MFA_ALREADY_ENROLLED_STEP_UP_REQUIRED");
+        const secret = generateTotpSecret(), uri = `otpauth://totp/${encodeURIComponent("Openfront Sportsbook")}:${encodeURIComponent(user.email)}?secret=${secret}&issuer=${encodeURIComponent("Openfront Sportsbook")}&algorithm=SHA1&digits=6&period=30`;
+        await context.prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;
+          const current = await tx.user.findUnique({ where: { id: user.id } });
+          if (!current || current.operatorMfaEnabled) throw new Error("MFA_ALREADY_ENROLLED_STEP_UP_REQUIRED");
+          await tx.user.update({ where: { id: user.id }, data: { operatorMfaSecret: encryptTotpSecret(secret) } });
+          if (user.tenantId) await appendAudit(tx, user.tenantId, user.id, "operator.mfa_enrollment_started", "User", user.id, "OPERATOR_SECURITY", {});
+        });
+        return { secret, uri };
+      },
+      completeOperatorMfaEnrollment: async (_r, a, context) => {
+        const userId = context.session?.itemId;
+        if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
+        const recoveryCodes = Array.from({ length: 8 }, () => `${(0, import_node_crypto12.randomBytes)(4).toString("hex").slice(0, 4)}-${(0, import_node_crypto12.randomBytes)(4).toString("hex").slice(0, 4)}`.toUpperCase()), recoveryHashes = recoveryCodes.map((code) => evidenceHash(code));
+        const result = await context.prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+          const current = await tx.user.findUnique({ where: { id: userId }, include: { role: true } });
+          if (!current || current.operatorMfaEnabled || !current.operatorMfaSecret) throw new Error(current?.operatorMfaEnabled ? "MFA_ALREADY_ENROLLED" : "MFA_ENROLLMENT_REQUIRED");
+          if (current.operatorMfaLockedUntil && current.operatorMfaLockedUntil > /* @__PURE__ */ new Date()) throw new Error("MFA_TEMPORARILY_LOCKED");
+          if (!current.role || !["canManagePeople", "canManageRoles", "canManageOnboarding", "canManageSportsbook", "canTrade", "canManageRisk", "canManageCompliance", "canManageFinance", "canManageIntegrations", "canApproveSensitiveActions", "canReadAudit"].some((capability) => Boolean(current.role[capability]))) throw new Error("OPERATOR_ACCOUNT_REQUIRED");
+          if (!verifyTotp(decryptTotpSecret(current.operatorMfaSecret), String(a.code))) {
+            const attempts = Number(current.operatorMfaFailedAttempts ?? 0) + 1;
+            await tx.user.update({ where: { id: current.id }, data: { operatorMfaFailedAttempts: attempts, operatorMfaLockedUntil: attempts >= 5 ? new Date(Date.now() + 15 * 6e4) : null } });
+            return { user: null };
+          }
+          const updated = await tx.user.update({ where: { id: current.id }, data: { operatorMfaEnabled: true, operatorMfaRecoveryHashes: recoveryHashes, operatorMfaEnrolledAt: /* @__PURE__ */ new Date(), operatorMfaFailedAttempts: 0, operatorMfaLockedUntil: null } });
+          if (updated.tenantId) await appendAudit(tx, updated.tenantId, updated.id, "operator.mfa_enabled", "User", updated.id, "OPERATOR_SECURITY", { recoveryCodeCount: recoveryCodes.length });
+          return { user: updated };
+        });
+        if (!result.user) throw new Error("INVALID_MFA_CODE");
+        const sessionToken = await startOperatorMfaSession(context, result.user.id);
+        return { enabled: true, recoveryCodes, sessionToken };
+      },
+      // Replace every recovery code (old ones stop working). Requires a verified session AND a fresh authenticator code, never a recovery code.
+      regenerateOperatorMfaRecoveryCodes: async (_r, a, context) => {
+        const userId = context.session?.itemId;
+        if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
+        if (!hasOperatorMfaAssurance(context.session)) throw new Error("MFA_STEP_UP_REQUIRED");
+        const supplied = String(a.code ?? "").trim();
+        if (!/^\d{6}$/.test(supplied)) throw new Error("AUTHENTICATOR_CODE_REQUIRED");
+        const recoveryCodes = Array.from({ length: 8 }, () => `${(0, import_node_crypto12.randomBytes)(4).toString("hex").slice(0, 4)}-${(0, import_node_crypto12.randomBytes)(4).toString("hex").slice(0, 4)}`.toUpperCase());
+        const ok = await context.prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+          const user = await tx.user.findUnique({ where: { id: userId } });
+          if (!user?.operatorMfaEnabled || !user.operatorMfaSecret) throw new Error("MFA_NOT_ENROLLED");
+          const now = /* @__PURE__ */ new Date();
+          if (user.operatorMfaLockedUntil && user.operatorMfaLockedUntil > now) throw new Error("MFA_TEMPORARILY_LOCKED");
+          if (!verifyTotp(decryptTotpSecret(user.operatorMfaSecret), supplied)) {
+            const attempts = Number(user.operatorMfaFailedAttempts ?? 0) + 1;
+            await tx.user.update({ where: { id: user.id }, data: { operatorMfaFailedAttempts: attempts, operatorMfaLockedUntil: attempts >= 5 ? new Date(now.getTime() + 15 * 6e4) : null } });
+            return false;
+          }
+          await tx.user.update({ where: { id: user.id }, data: { operatorMfaRecoveryHashes: recoveryCodes.map((code) => evidenceHash(code)), operatorMfaFailedAttempts: 0, operatorMfaLockedUntil: null } });
+          if (user.tenantId) await appendAudit(tx, user.tenantId, user.id, "operator.mfa_recovery_codes_regenerated", "User", user.id, "OPERATOR_SECURITY", { recoveryCodeCount: recoveryCodes.length });
+          return true;
+        });
+        if (!ok) throw new Error("INVALID_MFA_CODE");
+        return recoveryCodes;
+      },
+      verifyOperatorMfaSession: async (_r, a, context) => {
+        const userId = context.session?.itemId;
+        if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
+        const verified = await context.prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+          const user = await tx.user.findUnique({ where: { id: userId } });
+          if (!user?.operatorMfaEnabled || !user.operatorMfaSecret) throw new Error("MFA_NOT_ENROLLED");
+          const now = /* @__PURE__ */ new Date();
+          if (user.operatorMfaLockedUntil && user.operatorMfaLockedUntil > now) throw new Error("MFA_TEMPORARILY_LOCKED");
+          const supplied = String(a.code ?? "").trim().toUpperCase(), hashes = Array.isArray(user.operatorMfaRecoveryHashes) ? user.operatorMfaRecoveryHashes.map(String) : [], recoveryIndex = hashes.indexOf(evidenceHash(supplied)), valid = verifyTotp(decryptTotpSecret(user.operatorMfaSecret), supplied) || recoveryIndex >= 0;
+          if (!valid) {
+            const attempts = Number(user.operatorMfaFailedAttempts ?? 0) + 1;
+            await tx.user.update({ where: { id: user.id }, data: { operatorMfaFailedAttempts: attempts, operatorMfaLockedUntil: attempts >= 5 ? new Date(now.getTime() + 15 * 6e4) : null } });
+            return null;
+          }
+          if (recoveryIndex >= 0) hashes.splice(recoveryIndex, 1);
+          await tx.user.update({ where: { id: user.id }, data: { operatorMfaFailedAttempts: 0, operatorMfaLockedUntil: null, ...recoveryIndex >= 0 ? { operatorMfaRecoveryHashes: hashes } : {} } });
+          if (user.tenantId) await appendAudit(tx, user.tenantId, user.id, "operator.mfa_verified", "User", user.id, recoveryIndex >= 0 ? "RECOVERY_CODE" : "TOTP", {});
+          return user.id;
+        });
+        if (!verified) throw new Error("INVALID_MFA_CODE");
+        return startOperatorMfaSession(context, verified);
+      },
+      sendUserPasswordResetLink: async (_r, a, context) => {
+        const email = String(a.email ?? "").trim().toLowerCase();
+        if (!/^\S+@\S+\.\S+$/.test(email)) return true;
+        const user = await context.prisma.user.findUnique({ where: { email } });
+        if (!user) return true;
+        const token = (0, import_node_crypto12.randomBytes)(32).toString("base64url"), digest = evidenceHash(token);
+        await context.prisma.user.update({ where: { id: user.id }, data: { passwordResetToken: digest, passwordResetIssuedAt: /* @__PURE__ */ new Date() } });
+        void sendPasswordResetEmail(token, email).catch(() => console.error("Operator password reset email could not be sent."));
+        return true;
+      },
+      redeemUserPasswordResetToken: async (_r, a, context) => {
+        const email = String(a.email ?? "").trim().toLowerCase(), token = String(a.token ?? ""), password2 = String(a.password ?? "");
+        if (password2.length < 12) return { code: "WEAK_PASSWORD", message: "Use at least 12 characters." };
+        const digest = evidenceHash(token), invalid = { code: "INVALID_TOKEN", message: "The reset token is invalid or expired." };
+        if (!token) return invalid;
+        const redeemed = await context.transaction(async (txContext) => {
+          const rows = await txContext.prisma.$queryRaw`SELECT id FROM "User" WHERE email = ${email} FOR UPDATE`, id = rows?.[0]?.id;
+          if (!id) return false;
+          const redeemedAt = /* @__PURE__ */ new Date(), claimed = await txContext.prisma.user.updateMany({ where: { id, passwordResetToken: digest, passwordResetIssuedAt: { gte: new Date(redeemedAt.getTime() - 30 * 6e4) } }, data: { passwordResetToken: null, passwordResetRedeemedAt: redeemedAt } });
+          if (claimed.count !== 1) return false;
+          await txContext.sudo().query.User.updateOne({ where: { id }, data: { password: password2 }, query: "id" });
+          return true;
+        });
+        return redeemed ? { code: null, message: "Password reset complete." } : invalid;
+      },
+      setEventTradingState: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade");
+        if (!allowedEventStates.has(a.status)) throw new Error("INVALID_EVENT_STATUS");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canTrade");
+          const event = await tx.event.findFirst({ where: { id: a.eventId, tenantId } });
+          if (!event) throw new Error("Not found");
+          assertEventTradingTransition(event.status, a.status);
+          assertEventTransition(event.status, a.status);
+          if (a.clockSeconds !== void 0 && a.clockSeconds !== null && (!Number.isSafeInteger(a.clockSeconds) || a.clockSeconds < 0 || a.clockSeconds > 2147483647)) throw new Error("INVALID_CLOCK_SECONDS");
+          const nextPhase = a.livePhase ?? event.livePhase, nextClock = a.clockSeconds ?? event.clockSeconds;
+          if (event.status === a.status && event.livePhase === nextPhase && (event.clockSeconds ?? null) === (nextClock ?? null)) return true;
+          const updated = await tx.event.updateMany({ where: { id: event.id, tenantId, status: event.status, version: event.version }, data: { status: a.status, livePhase: nextPhase, clockSeconds: nextClock, version: Number(event.version ?? 0) + 1 } });
+          if (updated.count !== 1) throw new Error("STALE_EVENT_STATE");
+          if (["SUSPENDED", "ENDED", "CANCELLED"].includes(a.status)) {
+            const marketStatus = a.status === "SUSPENDED" ? "SUSPENDED" : "CLOSED", now = /* @__PURE__ */ new Date();
+            const openMarkets = await tx.market.findMany({ where: { tenantId, eventId: event.id, status: "OPEN" }, select: { id: true, version: true } });
+            for (const market of openMarkets) {
+              const closed = await tx.market.updateMany({ where: { id: market.id, tenantId, status: "OPEN", version: market.version }, data: { status: marketStatus, version: Number(market.version ?? 0) + 1 } });
+              if (closed.count !== 1) throw new Error("STALE_MARKET_STATE");
+              await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "MARKET", scopeId: market.id, fromStatus: "OPEN", toStatus: marketStatus, reason: `Event ${String(a.status).toLowerCase()} \xB7 ${a.reason}`, source: "EVENT", actorId: context.session.itemId, effectiveAt: now } });
+            }
+          }
+          await tx.tradingStatusChange.create({ data: { tenantId, scopeType: "EVENT", scopeId: event.id, fromStatus: event.status, toStatus: a.status, reason: a.reason, source: "OPERATOR", actorId: context.session.itemId, effectiveAt: /* @__PURE__ */ new Date() } });
+          await appendAudit(tx, tenantId, context.session.itemId, "event.status_changed", "Event", event.id, a.reason, { from: event.status, to: a.status, livePhase: a.livePhase, clockSeconds: a.clockSeconds });
+          return true;
+        });
+      },
+      createCompetitionSeason: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade"), startsAt = await operatorInstant(context, tenantId, a.startsAt, "STARTS_AT"), endsAt = await operatorInstant(context, tenantId, a.endsAt, "ENDS_AT");
+        if (startsAt >= endsAt) throw new Error("INVALID_SEASON");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canTrade");
+          const competition = await tx.competition.findFirst({ where: { id: a.competitionId, tenantId } });
+          if (!competition) throw new Error("Not found");
+          const season = await tx.season.create({ data: { tenantId, competitionId: competition.id, key: a.key, name: a.name, startsAt, endsAt, status: startsAt <= /* @__PURE__ */ new Date() ? "ACTIVE" : "SCHEDULED" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "catalog.season_created", "Season", season.id, "OPERATOR_ENTRY", { competitionId: competition.id, key: a.key, startsAt, endsAt });
+          return season.id;
+        });
+      },
+      createCatalogVenue: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canTrade");
+          const row = await tx.venue.create({ data: { tenantId, key: a.key, name: a.name, countryCode: a.countryCode, timezone: a.timezone, address: {}, status: "ACTIVE" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "catalog.venue_created", "Venue", row.id, "OPERATOR_ENTRY", { key: a.key, countryCode: a.countryCode });
+          return row.id;
+        });
+      },
+      /** Operator catalog entry for a sport or competition, with the same key/name rules as other reference data. */
+      createCatalogSport: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade");
+        const key2 = String(a.key ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim();
+        if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key2)) throw new Error("INVALID_CATALOG_KEY");
+        if (!name || name.length > 120) throw new Error("INVALID_CATALOG_NAME");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canTrade");
+          if (await tx.sport.findFirst({ where: { tenantId, key: key2 }, select: { id: true } })) throw new Error("CATALOG_KEY_EXISTS");
+          const row = await tx.sport.create({ data: { tenantId, key: key2, name, active: true } });
+          await appendAudit(tx, tenantId, context.session.itemId, "catalog.sport_created", "Sport", row.id, "OPERATOR_ENTRY", { key: key2 });
+          return row.id;
+        });
+      },
+      createCatalogCompetition: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade");
+        const key2 = String(a.key ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim(), timezone = String(a.timezone ?? "").trim();
+        if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key2)) throw new Error("INVALID_CATALOG_KEY");
+        if (!name || name.length > 120) throw new Error("INVALID_CATALOG_NAME");
+        try {
+          new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+        } catch {
+          throw new Error("INVALID_TIMEZONE");
+        }
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canTrade");
+          const sport = await tx.sport.findFirst({ where: { id: a.sportId, tenantId, active: true }, select: { id: true } });
+          if (!sport) throw new Error("SPORT_NOT_FOUND");
+          if (await tx.competition.findFirst({ where: { tenantId, sportId: sport.id, key: key2 }, select: { id: true } })) throw new Error("CATALOG_KEY_EXISTS");
+          const row = await tx.competition.create({ data: { tenantId, sportId: sport.id, key: key2, name, timezone, status: "ACTIVE" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "catalog.competition_created", "Competition", row.id, "OPERATOR_ENTRY", { key: key2, sportId: sport.id });
+          return row.id;
+        });
+      },
+      createCatalogCompetitor: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canTrade");
+          if (await tx.competitor.findFirst({ where: { tenantId, key: a.key }, select: { id: true } })) throw new Error("CATALOG_KEY_EXISTS");
+          const row = await tx.competitor.create({ data: { tenantId, key: a.key, name: a.name, status: "ACTIVE" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "catalog.competitor_created", "Competitor", row.id, "OPERATOR_ENTRY", { key: a.key });
+          return row.id;
+        });
+      },
+      createCatalogStage: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade");
+        const key2 = String(a.key ?? "").trim().toLowerCase(), name = String(a.name ?? "").trim();
+        if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key2)) throw new Error("INVALID_CATALOG_KEY");
+        if (!name || name.length > 120) throw new Error("INVALID_CATALOG_NAME");
+        if (!Number.isSafeInteger(a.sortOrder) || a.sortOrder < 0 || a.sortOrder > 1e4) throw new Error("INVALID_SORT_ORDER");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canTrade");
+          const season = await tx.season.findFirst({ where: { id: a.seasonId, tenantId, status: { not: "CANCELLED" } }, select: { id: true } });
+          if (!season) throw new Error("SEASON_NOT_FOUND");
+          if (await tx.competitionStage.findFirst({ where: { tenantId, seasonId: season.id, key: key2 }, select: { id: true } })) throw new Error("CATALOG_KEY_EXISTS");
+          const row = await tx.competitionStage.create({ data: { tenantId, seasonId: season.id, key: key2, name, sortOrder: a.sortOrder, status: "SCHEDULED" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "catalog.stage_created", "CompetitionStage", row.id, "OPERATOR_ENTRY", { seasonId: season.id, key: key2, sortOrder: a.sortOrder });
+          return row.id;
+        });
+      },
+      /** Activate/deactivate catalog reference data. Seasons cancel only when no event references them; stages toggle ACTIVE/COMPLETE. */
+      setCatalogReferenceStatus: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade");
+        const type = String(a.type ?? "").trim().toUpperCase(), reason = String(a.reason ?? "").trim(), active = a.active === true;
+        const models2 = { SPORT: { model: "sport", target: "Sport" }, COMPETITION: { model: "competition", target: "Competition" }, VENUE: { model: "venue", target: "Venue" }, COMPETITOR: { model: "competitor", target: "Competitor" }, SEASON: { model: "season", target: "Season" }, STAGE: { model: "competitionStage", target: "CompetitionStage" } };
+        const spec = models2[type];
+        if (!spec) throw new Error("INVALID_REFERENCE_TYPE");
+        if (reason.length < 3 || reason.length > 500) throw new Error("REASON_REQUIRED");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canTrade");
+          const row = await tx[spec.model].findFirst({ where: { id: a.id, tenantId } });
+          if (!row) throw new Error("Not found");
+          let from, to, data;
+          if (type === "SPORT") {
+            from = row.active ? "ACTIVE" : "INACTIVE";
+            to = active ? "ACTIVE" : "INACTIVE";
+            data = { active };
+          } else if (type === "SEASON") {
+            from = String(row.status ?? "SCHEDULED");
+            to = active ? "ACTIVE" : "CANCELLED";
+            if (!active && from !== "CANCELLED" && await tx.event.count({ where: { tenantId, seasonId: row.id } })) throw new Error("SEASON_IN_USE");
+            data = { status: to };
+          } else if (type === "STAGE") {
+            from = String(row.status ?? "SCHEDULED");
+            to = active ? "ACTIVE" : "COMPLETE";
+            data = { status: to };
+          } else {
+            from = String(row.status ?? "ACTIVE");
+            to = active ? "ACTIVE" : "INACTIVE";
+            data = { status: to };
+          }
+          if (from === to) return true;
+          await tx[spec.model].update({ where: { id: row.id }, data });
+          await appendAudit(tx, tenantId, context.session.itemId, active ? "catalog.reference_activated" : "catalog.reference_deactivated", spec.target, row.id, reason, { type, from, to });
+          return true;
+        });
+      },
+      attachEventParticipant: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canTrade");
+          const [event, competitor] = await Promise.all([tx.event.findFirst({ where: { id: a.eventId, tenantId } }), tx.competitor.findFirst({ where: { id: a.competitorId, tenantId } })]);
+          if (!event || !competitor) throw new Error("Not found");
+          const row = await tx.eventParticipant.create({ data: { tenantId, eventId: event.id, competitorId: competitor.id, role: a.role, sortOrder: a.sortOrder } });
+          await appendAudit(tx, tenantId, context.session.itemId, "catalog.participant_attached", "Event", event.id, "OPERATOR_ENTRY", { participantId: row.id, competitorId: competitor.id, role: a.role });
+          return row.id;
+        });
+      },
+      rescheduleEvent: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade"), startAt = await operatorInstant(context, tenantId, a.startAt, "START_AT");
+        if (Number.isNaN(startAt.getTime())) throw new Error("INVALID_START");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canTrade");
+          const event = await tx.event.findFirst({ where: { id: a.eventId, tenantId } });
+          if (!event) throw new Error("Not found");
+          await tx.eventScheduleChange.create({ data: { tenantId, eventId: event.id, fromStartAt: event.startAt, toStartAt: startAt, reasonCode: a.reason, source: "OPERATOR", actorId: context.session.itemId, evidenceHash: evidenceHash({ eventId: event.id, from: event.startAt, to: startAt, reason: a.reason }) } });
+          await tx.event.update({ where: { id: event.id }, data: { startAt, version: { increment: 1 } } });
+          await tx.market.updateMany({ where: { tenantId, eventId: event.id, status: "OPEN" }, data: { status: "SUSPENDED", version: { increment: 1 } } });
+          await appendAudit(tx, tenantId, context.session.itemId, "catalog.event_rescheduled", "Event", event.id, a.reason, { from: event.startAt, to: startAt });
+          return true;
+        });
+      },
+      createEventMarket: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade"), parameters = object(a.parameters, "INVALID_PARAMETERS"), selections = object(a.selections, "INVALID_SELECTIONS");
+        if (!Array.isArray(selections.items) || selections.items.length < 2) throw new Error("INVALID_SELECTIONS");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canTrade");
+          await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${a.eventId} AND tenant = ${tenantId} FOR UPDATE`;
+          const [event, definition] = await Promise.all([tx.event.findFirst({ where: { id: a.eventId, tenantId } }), tx.marketDefinition.findFirst({ where: { tenantId, key: a.definitionKey, status: "ACTIVE" }, orderBy: { version: "desc" } })]);
+          if (!event || !definition) throw new Error("Not found");
+          assertEventAllowsNewMarket(event.status);
+          const market = await tx.market.create({ data: { tenantId, eventId: event.id, definitionId: definition.id, definitionKey: definition.key, parameters, tradingMode: a.tradingMode, line: String(parameters.line ?? ""), cashOutEnabled: a.cashOutEnabled, status: "OPEN", version: 1 } });
+          await tx.selection.createMany({ data: selections.items.map((item) => ({ tenantId, marketId: market.id, key: String(item.key), label: String(item.label), status: "OPEN" })) });
+          await appendAudit(tx, tenantId, context.session.itemId, "catalog.market_created", "Market", market.id, "OPERATOR_ENTRY", { eventId: event.id, definitionId: definition.id, parameters, tradingMode: a.tradingMode, cashOutEnabled: a.cashOutEnabled, selections: selections.items });
+          return market.id;
+        });
+      },
+      mapProviderEntity: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canTrade");
+          const connection = await tx.providerConnection.findFirst({ where: { id: a.connectionId, tenantId } });
+          if (!connection) throw new Error("Not found");
+          const row = await tx.providerEntityMapping.create({ data: { tenantId, providerConnectionId: connection.id, entityType: a.entityType, externalId: a.externalId, canonicalType: a.canonicalType, canonicalId: a.canonicalId, confidence: a.confidence, status: "APPROVED" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "catalog.provider_mapped", "ProviderEntityMapping", row.id, "OPERATOR_REVIEW", { connectionId: connection.id, externalId: a.externalId, canonicalType: a.canonicalType, canonicalId: a.canonicalId, confidence: a.confidence });
+          return row.id;
+        });
+      },
+      requestTraderOverride: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade");
+        const expiresAt = await operatorInstant(context, tenantId, a.expiresAt, "EXPIRES_AT");
+        if (Number.isNaN(expiresAt.getTime()) || expiresAt <= /* @__PURE__ */ new Date()) throw new Error("INVALID_EXPIRY");
+        if (a.targetType !== "MARKET" || a.overrideType !== "STATUS") throw new Error("OVERRIDE_TYPE_UNSUPPORTED");
+        const value = object(a.value, "INVALID_OVERRIDE_VALUE");
+        if (!["SUSPENDED", "CLOSED"].includes(value.status)) throw new Error("INVALID_OVERRIDE");
+        const target = await context.prisma.market.findFirst({ where: { id: a.targetId, tenantId }, select: { id: true } });
+        if (!target) throw new Error("Not found");
+        if (a.targetType === "MARKET" && a.overrideType === "STATUS" && value.status === "OPEN") throw new Error("TRADING_REOPENING_REQUIRES_REVIEWED_POLICY");
+        const payloadHash = evidenceHash({ targetType: a.targetType, targetId: a.targetId, overrideType: a.overrideType, value, expiresAt });
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canTrade");
+          const approval = await tx.approvalRequest.create({ data: { tenantId, action: `TRADER_OVERRIDE:${a.targetType}:${a.targetId}:${a.overrideType}`, payloadHash, ...approvalReview({ targetType: a.targetType, targetId: a.targetId, overrideType: a.overrideType, value, expiresAt }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+          const override = await tx.traderOverride.create({ data: { tenantId, targetType: a.targetType, targetId: a.targetId, overrideType: a.overrideType, value, reasonCode: a.reason, startsAt: /* @__PURE__ */ new Date(), expiresAt, status: "PENDING", requesterId: context.session.itemId, approvalRequestId: approval.id } });
+          await appendAudit(tx, tenantId, context.session.itemId, "trading.override_requested", "TraderOverride", override.id, a.reason, { approvalId: approval.id, payloadHash });
+          return override.id;
+        });
+      },
+      applyTraderOverride: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canTrade");
+        return context.prisma.$transaction(async (tx) => {
+          const now = /* @__PURE__ */ new Date(), row = await tx.traderOverride.findFirst({ where: { id: a.overrideId, tenantId, status: "PENDING" } });
+          if (!row?.approvalRequestId) throw new Error("Not found");
+          if (!(row.expiresAt instanceof Date) || row.expiresAt <= now) throw new Error("OVERRIDE_EXPIRED");
+          if (row.targetType !== "MARKET" || row.overrideType !== "STATUS") throw new Error("OVERRIDE_TYPE_UNSUPPORTED");
+          if (row.targetType === "MARKET" && row.overrideType === "STATUS" && row.value?.status === "OPEN") throw new Error("TRADING_REOPENING_REQUIRES_REVIEWED_POLICY");
+          const payloadHash = evidenceHash({ targetType: row.targetType, targetId: row.targetId, overrideType: row.overrideType, value: row.value, expiresAt: row.expiresAt });
+          await approved(tx, context, "canTrade", tenantId, a.approvalId, `TRADER_OVERRIDE:${row.targetType}:${row.targetId}:${row.overrideType}`, payloadHash);
+          const claimed = await tx.traderOverride.updateMany({ where: { id: row.id, tenantId, status: "PENDING", expiresAt: { gt: now } }, data: { status: "ACTIVE", startsAt: now } });
+          if (claimed.count !== 1) throw new Error("OVERRIDE_EXPIRED");
+          {
+            const value = row.value;
+            if (!["SUSPENDED", "CLOSED"].includes(value?.status)) throw new Error("INVALID_OVERRIDE");
+            const market = await tx.market.updateMany({ where: { id: row.targetId, tenantId, status: { in: ["OPEN", "SUSPENDED"] } }, data: { status: value.status, version: { increment: 1 } } });
+            if (market.count !== 1) throw new Error("Not found");
+          }
+          await appendAudit(tx, tenantId, context.session.itemId, "trading.override_applied", "TraderOverride", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
+          return true;
+        });
+      },
+      requestCorrelationRule: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageRisk");
+        if (!["ALLOW", "DENY", "PROVIDER_PRICE_REQUIRED"].includes(a.decision) || a.leftMarketId === a.rightMarketId) throw new Error("INVALID_CORRELATION_RULE");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageRisk");
+          const markets = await tx.market.count({ where: { tenantId, id: { in: [a.leftMarketId, a.rightMarketId] } } });
+          if (markets !== 2) throw new Error("Not found");
+          const payloadHash = evidenceHash({ action: "CORRELATION_RULE", groupKey: a.groupKey, sportKey: a.sportKey, leftMarketId: a.leftMarketId, rightMarketId: a.rightMarketId, decision: a.decision });
+          const approval = await tx.approvalRequest.create({ data: { tenantId, action: `CORRELATION_RULE:${a.groupKey}:${a.leftMarketId}:${a.rightMarketId}:${a.decision}`, payloadHash, ...approvalReview({ action: "CORRELATION_RULE", groupKey: a.groupKey, sportKey: a.sportKey, leftMarketId: a.leftMarketId, rightMarketId: a.rightMarketId, decision: a.decision }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+          await appendAudit(tx, tenantId, context.session.itemId, "correlation.rule_requested", "ApprovalRequest", approval.id, a.reason, { payloadHash });
+          return approval.id;
+        });
+      },
+      applyCorrelationRule: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageRisk");
+        return context.prisma.$transaction(async (tx) => {
+          const payloadHash = evidenceHash({ action: "CORRELATION_RULE", groupKey: a.groupKey, sportKey: a.sportKey, leftMarketId: a.leftMarketId, rightMarketId: a.rightMarketId, decision: a.decision });
+          await approved(tx, context, "canManageRisk", tenantId, a.approvalId, `CORRELATION_RULE:${a.groupKey}:${a.leftMarketId}:${a.rightMarketId}:${a.decision}`, payloadHash);
+          let group = await tx.correlationGroup.findFirst({ where: { tenantId, key: a.groupKey, status: "ACTIVE" }, orderBy: { version: "desc" } });
+          if (!group) group = await tx.correlationGroup.create({ data: { tenantId, key: a.groupKey, name: a.groupKey.replaceAll("-", " "), sportKey: a.sportKey, status: "ACTIVE", version: 1 } });
+          const existing = await tx.correlationRule.findFirst({ where: { tenantId, groupId: group.id, leftPattern: { equals: { marketId: a.leftMarketId } }, rightPattern: { equals: { marketId: a.rightMarketId } } } });
+          if (existing) throw new Error("CORRELATION_RULE_EXISTS");
+          const rule = await tx.correlationRule.create({ data: { tenantId, groupId: group.id, leftPattern: { marketId: a.leftMarketId }, rightPattern: { marketId: a.rightMarketId }, decision: a.decision, reasonCode: "DUAL_APPROVED", priority: 100 } });
+          await appendAudit(tx, tenantId, context.session.itemId, "correlation.rule_applied", "CorrelationRule", rule.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
+          return rule.id;
+        });
+      },
+      runTradingReplay: async (_r, _a, context) => {
+        await requireTenant(context, "canManageIntegrations");
+        throw new Error("DETERMINISTIC_REPLAY_COMPARISON_NOT_IMPLEMENTED");
+      },
+      requestLegalEntity: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook");
+        if (!/^[A-Z]{2}$|^UNCONFIGURED$/.test(a.countryCode) || !a.registrationReference) throw new Error("INVALID_LEGAL_ENTITY");
+        const payloadHash = evidenceHash({ action: "LEGAL_ENTITY", name: a.name, countryCode: a.countryCode, registrationReference: a.registrationReference });
+        return (await context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
+          return tx.approvalRequest.create({ data: { tenantId, action: `LEGAL_ENTITY:${a.countryCode}:${a.registrationReference}`, payloadHash, ...approvalReview({ action: "LEGAL_ENTITY", name: a.name, countryCode: a.countryCode, registrationReference: a.registrationReference }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+        })).id;
+      },
+      applyLegalEntity: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook"), payloadHash = evidenceHash({ action: "LEGAL_ENTITY", name: a.name, countryCode: a.countryCode, registrationReference: a.registrationReference });
+        return context.prisma.$transaction(async (tx) => {
+          await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `LEGAL_ENTITY:${a.countryCode}:${a.registrationReference}`, payloadHash);
+          const row = await tx.legalEntity.create({ data: { tenantId, name: a.name, countryCode: a.countryCode, registrationReference: a.registrationReference, status: "PENDING" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "legal_entity.configured", "LegalEntity", row.id, "DUAL_APPROVED_EXTERNAL_VALIDATION_PENDING", { approvalId: a.approvalId, payloadHash });
+          return row.id;
+        });
+      },
+      createJurisdictionPolicyDraft: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook"), document = object(a.policyDocument, "INVALID_POLICY_DOCUMENT"), effectiveFrom = await operatorInstant(context, tenantId, a.effectiveFrom, "EFFECTIVE_FROM");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
+          const jurisdiction = await tx.jurisdiction.findUnique({ where: { id: a.jurisdictionId } });
+          if (!jurisdiction) throw new Error("Not found");
+          const version = await tx.jurisdictionPolicyVersion.count({ where: { tenantId, jurisdictionId: jurisdiction.id } }) + 1, evidence = evidenceHash({ jurisdictionId: jurisdiction.id, authorityCitation: a.authorityCitation, document, effectiveFrom, version }), row = await tx.jurisdictionPolicyVersion.create({ data: { tenantId, jurisdictionId: jurisdiction.id, version, authorityCitation: a.authorityCitation, policyDocument: document, effectiveFrom, status: "DRAFT", evidenceHash: evidence } });
+          await appendAudit(tx, tenantId, context.session.itemId, "jurisdiction_policy.drafted", "JurisdictionPolicyVersion", row.id, "OPERATOR_DRAFT", { evidenceHash: evidence });
+          return row.id;
+        });
+      },
+      requestJurisdictionActivation: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook");
+        if (!/^[a-f0-9]{64}$/i.test(a.externalEvidenceHash)) throw new Error("EXTERNAL_EVIDENCE_HASH_REQUIRED");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
+          const [policy, scope] = await Promise.all([tx.jurisdictionPolicyVersion.findFirst({ where: { id: a.policyId, tenantId, status: "DRAFT" } }), tx.operatorJurisdiction.findFirst({ where: { id: a.operatorJurisdictionId, tenantId, status: "PENDING" } })]);
+          if (!policy || !scope || policy.jurisdictionId !== scope.jurisdictionId) throw new Error("Not found");
+          const payloadHash = evidenceHash({ action: "JURISDICTION_ACTIVATION", policyId: policy.id, operatorJurisdictionId: scope.id, policyEvidenceHash: policy.evidenceHash, externalEvidenceHash: a.externalEvidenceHash });
+          const approval = await tx.approvalRequest.create({ data: { tenantId, action: `JURISDICTION_ACTIVATION:${policy.id}:${scope.id}`, payloadHash, ...approvalReview({ action: "JURISDICTION_ACTIVATION", policyId: policy.id, operatorJurisdictionId: scope.id, policyVersion: policy.version, authorityCitation: policy.authorityCitation, policyEvidenceHash: policy.evidenceHash, externalEvidenceHash: a.externalEvidenceHash }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+          return approval.id;
+        });
+      },
+      applyJurisdictionActivation: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook");
+        return context.prisma.$transaction(async (tx) => {
+          const [policy, scope] = await Promise.all([tx.jurisdictionPolicyVersion.findFirst({ where: { id: a.policyId, tenantId, status: "DRAFT" } }), tx.operatorJurisdiction.findFirst({ where: { id: a.operatorJurisdictionId, tenantId, status: "PENDING" } })]);
+          if (!policy || !scope) throw new Error("Not found");
+          const payloadHash = evidenceHash({ action: "JURISDICTION_ACTIVATION", policyId: policy.id, operatorJurisdictionId: scope.id, policyEvidenceHash: policy.evidenceHash, externalEvidenceHash: a.externalEvidenceHash });
+          await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `JURISDICTION_ACTIVATION:${policy.id}:${scope.id}`, payloadHash);
+          await tx.jurisdictionPolicyVersion.updateMany({ where: { tenantId, jurisdictionId: policy.jurisdictionId, status: "ACTIVE" }, data: { status: "RETIRED", effectiveTo: /* @__PURE__ */ new Date() } });
+          await tx.jurisdictionPolicyVersion.update({ where: { id: policy.id }, data: { status: "ACTIVE", approvedBy: context.session.itemId, approvedAt: /* @__PURE__ */ new Date() } });
+          await tx.operatorJurisdiction.update({ where: { id: scope.id }, data: { status: "ACTIVE", policyVersion: `${policy.id}:${a.externalEvidenceHash}` } });
+          await appendAudit(tx, tenantId, context.session.itemId, "jurisdiction.activated", "OperatorJurisdiction", scope.id, "DUAL_APPROVED_EXTERNAL_EVIDENCE", { approvalId: a.approvalId, payloadHash, externalEvidenceHash: a.externalEvidenceHash });
+          return true;
+        });
+      },
+      requestOperatorBrand: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook"), domain = String(a.domain).trim().toLowerCase();
+        if (!/^[a-z0-9.-]+(?::\d+)?$/.test(domain)) throw new Error("INVALID_BRAND_DOMAIN");
+        const payloadHash = evidenceHash({ action: "OPERATOR_BRAND", name: a.name, domain, defaultLocale: a.defaultLocale, defaultTimezone: a.defaultTimezone });
+        return (await context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
+          return tx.approvalRequest.create({ data: { tenantId, action: `OPERATOR_BRAND:${domain}`, payloadHash, ...approvalReview({ action: "OPERATOR_BRAND", name: a.name, domain, defaultLocale: a.defaultLocale, defaultTimezone: a.defaultTimezone }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+        })).id;
+      },
+      applyOperatorBrand: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook"), domain = String(a.domain).trim().toLowerCase(), payloadHash = evidenceHash({ action: "OPERATOR_BRAND", name: a.name, domain, defaultLocale: a.defaultLocale, defaultTimezone: a.defaultTimezone });
+        return context.prisma.$transaction(async (tx) => {
+          await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `OPERATOR_BRAND:${domain}`, payloadHash);
+          const row = await tx.brand.create({ data: { tenantId, name: a.name, domain, defaultLocale: a.defaultLocale, defaultTimezone: a.defaultTimezone, supportedLocales: [a.defaultLocale], designTokens: { mode: "operator-configured" }, termsReference: "PENDING_LOCALIZED_TERMS", status: "ACTIVE" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "brand.created", "Brand", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
+          return row.id;
+        });
+      },
+      requestTenantCurrency: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook");
+        if (!/^[A-Z]{3}$/.test(a.code) || a.exponent < 0 || a.exponent > 6) throw new Error("INVALID_CURRENCY");
+        const payloadHash = evidenceHash({ action: "TENANT_CURRENCY", code: a.code, exponent: a.exponent, name: a.name, depositsEnabled: a.depositsEnabled, withdrawalsEnabled: a.withdrawalsEnabled, wageringEnabled: a.wageringEnabled, defaultForBrand: a.defaultForBrand });
+        return (await context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
+          return tx.approvalRequest.create({ data: { tenantId, action: `TENANT_CURRENCY:${a.code}`, payloadHash, ...approvalReview({ action: "TENANT_CURRENCY", code: a.code, exponent: a.exponent, name: a.name, depositsEnabled: a.depositsEnabled, withdrawalsEnabled: a.withdrawalsEnabled, wageringEnabled: a.wageringEnabled, defaultForBrand: a.defaultForBrand }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+        })).id;
+      },
+      applyTenantCurrency: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook"), payloadHash = evidenceHash({ action: "TENANT_CURRENCY", code: a.code, exponent: a.exponent, name: a.name, depositsEnabled: a.depositsEnabled, withdrawalsEnabled: a.withdrawalsEnabled, wageringEnabled: a.wageringEnabled, defaultForBrand: a.defaultForBrand });
+        return context.prisma.$transaction(async (tx) => {
+          await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `TENANT_CURRENCY:${a.code}`, payloadHash);
+          const currency = await tx.currencyDefinition.findUnique({ where: { code: a.code } }) ?? await tx.currencyDefinition.create({ data: { code: a.code, exponent: a.exponent, name: a.name, status: "ACTIVE" } });
+          if (Number(currency.exponent) !== Number(a.exponent)) throw new Error("CURRENCY_EXPONENT_CONFLICT");
+          if (currency.status !== "ACTIVE") throw new Error("CURRENCY_NOT_ACTIVE");
+          if (a.defaultForBrand) await tx.tenantCurrency.updateMany({ where: { tenantId, defaultForBrand: true }, data: { defaultForBrand: false } });
+          const existing = await tx.tenantCurrency.findFirst({ where: { tenantId, currencyId: currency.id } }), row = existing ? await tx.tenantCurrency.update({ where: { id: existing.id }, data: { depositsEnabled: a.depositsEnabled, withdrawalsEnabled: a.withdrawalsEnabled, wageringEnabled: a.wageringEnabled, defaultForBrand: a.defaultForBrand, status: "ACTIVE" } }) : await tx.tenantCurrency.create({ data: { tenantId, currencyId: currency.id, depositsEnabled: a.depositsEnabled, withdrawalsEnabled: a.withdrawalsEnabled, wageringEnabled: a.wageringEnabled, defaultForBrand: a.defaultForBrand, status: "ACTIVE" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "tenant.currency_enabled", "TenantCurrency", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
+          return row.id;
+        });
+      },
+      requestBrandLocale: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook"), brand = await context.prisma.brand.findFirst({ where: { id: a.brandId, tenantId } });
+        if (!brand || !/^[a-z]{2}(?:-[A-Z]{2})?$/.test(a.locale) || a.termsContentHash.length < 32) throw new Error("INVALID_BRAND_LOCALE");
+        const payloadHash = evidenceHash({ action: "BRAND_LOCALE", brandId: a.brandId, locale: a.locale, language: a.language, timezone: a.timezone, termsVersion: a.termsVersion, termsContentHash: a.termsContentHash });
+        return (await context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
+          return tx.approvalRequest.create({ data: { tenantId, action: `BRAND_LOCALE:${a.brandId}:${a.locale}:${a.termsVersion}`, payloadHash, ...approvalReview({ action: "BRAND_LOCALE", brandId: a.brandId, locale: a.locale, language: a.language, timezone: a.timezone, termsVersion: a.termsVersion, termsContentHash: a.termsContentHash }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+        })).id;
+      },
+      applyBrandLocale: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook"), payloadHash = evidenceHash({ action: "BRAND_LOCALE", brandId: a.brandId, locale: a.locale, language: a.language, timezone: a.timezone, termsVersion: a.termsVersion, termsContentHash: a.termsContentHash });
+        return context.prisma.$transaction(async (tx) => {
+          await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `BRAND_LOCALE:${a.brandId}:${a.locale}:${a.termsVersion}`, payloadHash);
+          const brand = await tx.brand.findFirst({ where: { id: a.brandId, tenantId } });
+          if (!brand) throw new Error("Not found");
+          const row = await tx.brandLocale.create({ data: { tenantId, brandId: brand.id, locale: a.locale, language: a.language, timezone: a.timezone, termsVersion: a.termsVersion, termsContentHash: a.termsContentHash, default: false, status: "ACTIVE" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "brand.locale_activated", "BrandLocale", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
+          return row.id;
+        });
+      },
+      requestHouseRule: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook"), rules2 = object(a.rules, "INVALID_RULES"), effectiveFrom = await operatorInstant(context, tenantId, a.effectiveFrom, "EFFECTIVE_FROM"), payloadHash = evidenceHash({ action: "HOUSE_RULE", name: a.name, sportKey: a.sportKey, marketDefinitionKey: a.marketDefinitionKey, rules: rules2, effectiveFrom });
+        return (await context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
+          return tx.approvalRequest.create({ data: { tenantId, action: `HOUSE_RULE:${a.name}`, payloadHash, ...approvalReview({ action: "HOUSE_RULE", name: a.name, sportKey: a.sportKey, marketDefinitionKey: a.marketDefinitionKey, rules: rules2, effectiveFrom }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+        })).id;
+      },
+      applyHouseRule: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook"), rules2 = object(a.rules, "INVALID_RULES"), effectiveFrom = await operatorInstant(context, tenantId, a.effectiveFrom, "EFFECTIVE_FROM"), payloadHash = evidenceHash({ action: "HOUSE_RULE", name: a.name, sportKey: a.sportKey, marketDefinitionKey: a.marketDefinitionKey, rules: rules2, effectiveFrom });
+        return context.prisma.$transaction(async (tx) => {
+          await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `HOUSE_RULE:${a.name}`, payloadHash);
+          const version = await tx.houseRuleVersion.count({ where: { tenantId, name: a.name } }) + 1;
+          await tx.houseRuleVersion.updateMany({ where: { tenantId, name: a.name, status: "ACTIVE" }, data: { status: "RETIRED", effectiveTo: effectiveFrom } });
+          const row = await tx.houseRuleVersion.create({ data: { tenantId, name: a.name, version, sportKey: a.sportKey, marketDefinitionKey: a.marketDefinitionKey, rules: rules2, semanticHash: payloadHash, effectiveFrom, status: "ACTIVE", approvalRequestId: a.approvalId } });
+          await appendAudit(tx, tenantId, context.session.itemId, "house_rule.activated", "HouseRuleVersion", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
+          return row.id;
+        });
+      },
+      requestFeatureFlag: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook"), expiresAt = await operatorInstant(context, tenantId, a.expiresAt, "EXPIRES_AT"), payloadHash = evidenceHash({ action: "FEATURE_FLAG", key: a.key, description: a.description, enabled: a.enabled, scopeType: a.scopeType, scopeId: a.scopeId, expiresAt });
+        return (await context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
+          return tx.approvalRequest.create({ data: { tenantId, action: `FEATURE_FLAG:${a.key}:${a.scopeType}:${a.scopeId}`, payloadHash, ...approvalReview({ action: "FEATURE_FLAG", key: a.key, description: a.description, enabled: a.enabled, scopeType: a.scopeType, scopeId: a.scopeId, expiresAt }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+        })).id;
+      },
+      applyFeatureFlag: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook"), expiresAt = await operatorInstant(context, tenantId, a.expiresAt, "EXPIRES_AT"), payloadHash = evidenceHash({ action: "FEATURE_FLAG", key: a.key, description: a.description, enabled: a.enabled, scopeType: a.scopeType, scopeId: a.scopeId, expiresAt });
+        return context.prisma.$transaction(async (tx) => {
+          await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `FEATURE_FLAG:${a.key}:${a.scopeType}:${a.scopeId}`, payloadHash);
+          const existing = await tx.featureFlag.findFirst({ where: { tenantId, key: a.key, scopeType: a.scopeType, scopeId: a.scopeId } }), row = existing ? await tx.featureFlag.update({ where: { id: existing.id }, data: { description: a.description, enabled: a.enabled, expiresAt, approvalRequestId: a.approvalId, ownerId: context.session.itemId } }) : await tx.featureFlag.create({ data: { tenantId, key: a.key, description: a.description, enabled: a.enabled, scopeType: a.scopeType, scopeId: a.scopeId, safeDefault: false, ownerId: context.session.itemId, expiresAt, approvalRequestId: a.approvalId } });
+          await appendAudit(tx, tenantId, context.session.itemId, "feature_flag.changed", "FeatureFlag", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
+          return row.id;
+        });
+      },
+      createPromotionCampaign: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook"), startsAt = await operatorInstant(context, tenantId, a.startsAt, "STARTS_AT"), endsAt = await operatorInstant(context, tenantId, a.endsAt, "ENDS_AT");
+        money2(a.budgetMinor);
+        if (startsAt >= endsAt) throw new Error("INVALID_PROMOTION_WINDOW");
+        const economics = object(a.economics, "INVALID_ECONOMICS"), requirements = object(a.requirements, "INVALID_REQUIREMENTS"), termsHash = evidenceHash({ key: a.key, type: a.type, economics, requirements, startsAt, endsAt });
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
+          const promotion = await tx.promotion.create({ data: { tenantId, key: a.key, name: a.name, description: a.description, type: a.type, status: "DRAFT", startsAt, endsAt, budgetMinor: a.budgetMinor, currency: a.currency, termsVersion: "operator-draft-v1", termsHash } });
+          const rule = await tx.promotionRuleVersion.create({ data: { tenantId, promotionId: promotion.id, version: 1, eligibility: { kyc: "APPROVED" }, economics, wageringRequirements: requirements, abuseControls: { duplicateAccount: "DENY" }, contributionRules: { sportsbook: 100 }, status: "DRAFT", effectiveFrom: startsAt, evidenceHash: termsHash } });
+          await tx.campaignBudget.create({ data: { tenantId, promotionId: promotion.id, allocatedMinor: a.budgetMinor, awardedMinor: "0", redeemedMinor: "0", forfeitedMinor: "0", currency: a.currency, version: 1, status: "ACTIVE" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "promotion.created", "Promotion", promotion.id, "DRAFT", { ruleId: rule.id, termsHash });
+          return promotion.id;
+        });
+      },
+      requestPromotionActivation: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageSportsbook");
+          const p2 = await tx.promotion.findFirst({ where: { id: a.promotionId, tenantId, status: "DRAFT" } });
+          if (!p2) throw new Error("Not found");
+          const payloadHash = evidenceHash({ action: "ACTIVATE_PROMOTION", promotionId: p2.id, termsHash: p2.termsHash });
+          const approval = await tx.approvalRequest.create({ data: { tenantId, action: `ACTIVATE_PROMOTION:${p2.id}`, payloadHash, ...approvalReview({ action: "ACTIVATE_PROMOTION", promotionId: p2.id, termsHash: p2.termsHash, key: p2.key, name: p2.name, type: p2.type, budgetMinor: p2.budgetMinor, currency: p2.currency, startsAt: p2.startsAt, endsAt: p2.endsAt }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+          await tx.promotion.update({ where: { id: p2.id }, data: { approvalRequestId: approval.id } });
+          return approval.id;
+        });
+      },
+      applyPromotionActivation: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageSportsbook");
+        return context.prisma.$transaction(async (tx) => {
+          const p2 = await tx.promotion.findFirst({ where: { id: a.promotionId, tenantId, status: "DRAFT" } });
+          if (!p2) throw new Error("Not found");
+          const payloadHash = evidenceHash({ action: "ACTIVATE_PROMOTION", promotionId: p2.id, termsHash: p2.termsHash });
+          await approved(tx, context, "canManageSportsbook", tenantId, a.approvalId, `ACTIVATE_PROMOTION:${p2.id}`, payloadHash);
+          await tx.promotion.update({ where: { id: p2.id }, data: { status: p2.startsAt > /* @__PURE__ */ new Date() ? "SCHEDULED" : "ACTIVE" } });
+          await tx.promotionRuleVersion.updateMany({ where: { tenantId, promotionId: p2.id, status: "DRAFT" }, data: { status: "ACTIVE" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "promotion.activated", "Promotion", p2.id, "DUAL_APPROVED", { approvalId: a.approvalId, termsHash: p2.termsHash });
+          return true;
+        });
+      },
+      requestWebhookEndpoint: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageIntegrations"), url = (await validateWebhookDestination(a.url)).toString(), eventTypes = JSON.parse(a.eventTypes);
+        if (!Array.isArray(eventTypes) || !eventTypes.length || eventTypes.some((item) => typeof item !== "string")) throw new Error("INVALID_WEBHOOK_EVENTS");
+        const payloadHash = evidenceHash({ action: "WEBHOOK_ENDPOINT", name: a.name, url, eventTypes, secretReference: a.secretReference });
+        return (await context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
+          return tx.approvalRequest.create({ data: { tenantId, action: `WEBHOOK_ENDPOINT:${Buffer.from(url).toString("base64url")}`, payloadHash, ...approvalReview({ action: "WEBHOOK_ENDPOINT", name: a.name, url, eventTypes, secretReference: a.secretReference }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+        })).id;
+      },
+      applyWebhookEndpoint: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageIntegrations"), url = (await validateWebhookDestination(a.url)).toString(), eventTypes = JSON.parse(a.eventTypes), payloadHash = evidenceHash({ action: "WEBHOOK_ENDPOINT", name: a.name, url, eventTypes, secretReference: a.secretReference });
+        return context.prisma.$transaction(async (tx) => {
+          await approved(tx, context, "canManageIntegrations", tenantId, a.approvalId, `WEBHOOK_ENDPOINT:${Buffer.from(url).toString("base64url")}`, payloadHash);
+          const row = await tx.webhookEndpoint.create({ data: { tenantId, name: a.name, url, secretReference: a.secretReference, eventTypes, status: "ACTIVE", failureCount: 0, approvalRequestId: a.approvalId } });
+          await appendAudit(tx, tenantId, context.session.itemId, "webhook.endpoint_activated", "WebhookEndpoint", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash, url, eventTypes });
+          return row.id;
+        });
+      },
+      runAdapterCertification: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageIntegrations");
+        const connection = await context.prisma.providerConnection.findFirst({ where: { id: a.connectionId, tenantId } });
+        if (!connection) throw new Error("Not found");
+        const secret = providerWebhookSecret();
+        if (!secret) throw new Error("PROVIDER_WEBHOOK_SECRET_REQUIRED");
+        const adapter = installedHouseAdapter(connection, secret);
+        if (!adapter) throw new Error("CERTIFICATION_ADAPTER_UNAVAILABLE:NOT_A_HOUSE_INSTALLATION");
+        const configCheck = await adapter.validateConfig(connection.configReference);
+        if (!configCheck.valid) throw new Error("CERTIFICATION_CONFIG_INVALID");
+        const startedAt = /* @__PURE__ */ new Date(), suite = "house-conformance-v1", inputHash = evidenceHash({ connectionId: connection.id, adapterId: connection.adapterId, adapterVersion: connection.adapterVersion, manifest: adapter.manifest(), configReference: connection.configReference, connectionRevision: new Date(connection.updatedAt).toISOString(), suite }), scenarios = [];
+        const run = await context.prisma.adapterCertificationRun.create({ data: { tenantId, providerConnectionId: connection.id, adapterId: connection.adapterId, adapterVersion: connection.adapterVersion, suiteVersion: suite, scenarios: [], passed: 0, failed: 0, status: "RUNNING", inputHash, startedAt } });
+        const check = async (name, fn) => {
+          try {
+            scenarios.push({ name, passed: await fn() });
+          } catch (error) {
+            scenarios.push({ name, passed: false, error: error instanceof Error ? error.message : "UNKNOWN" });
+          }
+        };
+        await check("idempotent-replay", async () => {
+          const command = { type: "record", payload: { run: run.id } }, first = await adapter.execute({}, command, `cert:${run.id}:replay`), second = await adapter.execute({}, command, `cert:${run.id}:replay`);
+          return first.status === "SUCCEEDED" && first.externalRef === second.externalRef;
+        });
+        await check("idempotency-conflict", async () => {
+          await adapter.execute({}, { type: "record", payload: { n: 1 } }, `cert:${run.id}:conflict`);
+          try {
+            await adapter.execute({}, { type: "record", payload: { n: 2 } }, `cert:${run.id}:conflict`);
+            return false;
+          } catch (error) {
+            return error instanceof Error && error.message === "ADAPTER_IDEMPOTENCY_CONFLICT";
+          }
+        });
+        await check("query-known-reference", async () => {
+          const recorded = await adapter.execute({}, { type: "record" }, `cert:${run.id}:query`);
+          return (await adapter.query({}, recorded.externalRef)).status === "SUCCEEDED";
+        });
+        await check("signed-webhook-accepted", async () => {
+          const raw = Buffer.from(JSON.stringify({ id: `cert-${run.id}`, type: "conformance", occurredAt: startedAt.toISOString(), payload: {} })), timestamp7 = String(Date.now()), binding = `${tenantId}:${connection.id}`;
+          return adapter.verifyWebhook(raw, new Headers({ "x-openfront-timestamp": timestamp7, "x-openfront-signature": adapter.sign(raw, timestamp7, binding) }), binding).valid;
+        });
+        await check("forged-webhook-rejected", async () => {
+          const raw = Buffer.from("{}"), timestamp7 = String(Date.now());
+          return !adapter.verifyWebhook(raw, new Headers({ "x-openfront-timestamp": timestamp7, "x-openfront-signature": "0".repeat(64) }), `${tenantId}:${connection.id}`).valid;
+        });
+        const health = await adapter.health();
+        scenarios.push({ name: "health", passed: health.ok, health });
+        const passed = scenarios.filter((item) => item.passed).length, failed = scenarios.length - passed;
+        await context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
+          await tx.adapterCertificationRun.update({ where: { id: run.id }, data: { scenarios, passed, failed, status: failed ? "FAILED" : "PASSED", completedAt: /* @__PURE__ */ new Date(), artifactReference: `house:${inputHash}` } });
+          await appendAudit(tx, tenantId, context.session.itemId, "adapter.certification_completed", "AdapterCertificationRun", run.id, failed ? "FAILED" : "PASSED", { inputHash, passed, failed, scenarios });
+        });
+        return run.id;
+      },
+      setProviderOperationalState: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageIntegrations");
+        if (!allowedProviderStates.has(a.status)) throw new Error("INVALID_PROVIDER_STATUS");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageIntegrations");
+          const connection = await tx.providerConnection.findFirst({ where: { id: a.connectionId, tenantId } });
+          if (!connection) throw new Error("Not found");
+          await tx.providerConnection.update({ where: { id: connection.id }, data: { status: a.status } });
+          const kind = String(connection.capabilities?.kind ?? "");
+          let suspended = 0, failoverId = null;
+          if (a.status !== "ACTIVE" && ["sports", "results"].includes(kind)) {
+            const failover = await tx.providerConnection.findFirst({ where: { tenantId, id: { not: connection.id }, status: "ACTIVE", certificationStatus: { in: ["INTERNAL", "CERTIFIED"] }, capabilities: { path: ["kind"], equals: kind } }, orderBy: { failoverPriority: "asc" } });
+            failoverId = failover?.id ?? null;
+            if (!failover) {
+              const update = await tx.market.updateMany({ where: { tenantId, status: "OPEN" }, data: { status: "SUSPENDED", version: { increment: 1 } } });
+              suspended = update.count;
+            }
+          }
+          await appendAudit(tx, tenantId, context.session.itemId, "provider.status_changed", "ProviderConnection", connection.id, a.reason, { from: connection.status, to: a.status, kind, failoverId, suspended, source: "OPERATOR_ATTESTATION" });
+          return true;
+        });
+      },
+      settleCombinationWager: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageRisk");
+        return serializable2(context.prisma, async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageRisk");
+          await requireTenant({ ...context, prisma: tx }, "canManageRisk");
+          const wager = await tx.wager.findFirst({ where: { id: a.wagerId, tenantId } });
+          if (wager?.structure === "STRAIGHT") return settleFullStraight(tx, tenantId, context.session.itemId, a, context.session);
+          return combinationSettlement(tx, tenantId, context.session.itemId, a.wagerId, a.idempotencyKey);
+        });
+      },
+      requestCombinationResettlement: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageRisk");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageRisk");
+          const settlement = await tx.settlement.findFirst({ where: { id: a.settlementId, tenantId } });
+          if (!settlement?.wagerId) throw new Error("Not found");
+          const reviewedLines = await tx.settlementLine.findMany({ where: { tenantId, settlementId: settlement.id } });
+          if (reviewedLines.some((line) => line.trace?.contract === "openfront.full-straight.initial.v1")) throw new Error("REVIEWED_STRAIGHT_CORRECTION_PLAN_REQUIRED");
+          await lockWagerForSettlement(tx, tenantId, settlement.wagerId);
+          await assertCurrentSettlement(tx, tenantId, settlement.wagerId, settlement.id);
+          const payloadHash = evidenceHash({ action: "FULL_RESETTLEMENT", settlementId: settlement.id, wagerId: settlement.wagerId });
+          const approval = await tx.approvalRequest.create({ data: { tenantId, action: `FULL_RESETTLEMENT:${settlement.id}`, payloadHash, ...approvalReview({ action: "FULL_RESETTLEMENT", settlementId: settlement.id, wagerId: settlement.wagerId, version: settlement.version, outcome: settlement.outcome, payoutMinor: settlement.payoutMinor }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+          return approval.id;
+        });
+      },
+      resettleCombinationWager: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageRisk");
+        return serializable2(context.prisma, async (tx) => {
+          const old = await tx.settlement.findFirst({ where: { id: a.settlementId, tenantId }, include: { journalTransaction: { include: { from_JournalEntry_transaction: true } }, from_SettlementLine_settlement: true } });
+          if (!old) throw new Error("Not found");
+          const payloadHash = evidenceHash({ action: "FULL_RESETTLEMENT", settlementId: old.id, wagerId: old.wagerId });
+          await approved(tx, context, "canManageRisk", tenantId, a.approvalId, `FULL_RESETTLEMENT:${old.id}`, payloadHash, a.idempotencyKey);
+          return combinationSettlement(tx, tenantId, context.session.itemId, old.wagerId, a.idempotencyKey, old);
+        });
+      },
+      requestCashOutCorrection: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageRisk");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageRisk");
+          const candidate = await tx.cashOutAcceptance.findFirst({ where: { id: a.acceptanceId, tenantId, status: "ACCEPTED" }, select: { wagerId: true } });
+          if (!candidate?.wagerId) throw new Error("Not found");
+          await lockWagerForSettlement(tx, tenantId, candidate.wagerId);
+          const acceptance = await tx.cashOutAcceptance.findFirst({ where: { id: a.acceptanceId, tenantId, status: "ACCEPTED" } });
+          if (!acceptance) throw new Error("Not found");
+          if (await tx.settlement.findFirst({ where: { tenantId, wagerId: acceptance.wagerId } })) throw new Error("CASHOUT_CORRECTION_REQUIRES_SETTLEMENT_CORRECTION");
+          const [rows, wager] = await Promise.all([tx.cashOutAcceptance.findMany({ where: { tenantId, wagerId: acceptance.wagerId } }), tx.wager.findFirst({ where: { id: acceptance.wagerId, tenantId }, select: { stakeMinor: true } })]);
+          if (!wager) throw new Error("Not found");
+          const state = projectCashOutState(wager.stakeMinor, rows);
+          if (!state.accepted.some((item) => item.id === acceptance.id)) throw new Error("CASHOUT_ALREADY_CORRECTED");
+          const payloadHash = evidenceHash({ action: "CASHOUT_CORRECTION", acceptanceId: acceptance.id, evidenceHash: acceptance.evidenceHash });
+          const approval = await tx.approvalRequest.create({ data: { tenantId, action: `CASHOUT_CORRECTION:${acceptance.id}`, payloadHash, ...approvalReview({ action: "CASHOUT_CORRECTION", acceptanceId: acceptance.id, evidenceHash: acceptance.evidenceHash, wagerId: acceptance.wagerId, amountMinor: acceptance.amountMinor, currency: acceptance.currency }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+          return approval.id;
+        });
+      },
+      correctCashOut: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageRisk");
+        return serializable2(context.prisma, async (tx) => {
+          const candidate = await tx.cashOutAcceptance.findFirst({ where: { id: a.acceptanceId, tenantId, status: "ACCEPTED" }, select: { wagerId: true } });
+          if (!candidate?.wagerId) throw new Error("Not found");
+          await lockWagerForSettlement(tx, tenantId, candidate.wagerId);
+          const acceptance = await tx.cashOutAcceptance.findFirst({ where: { id: a.acceptanceId, tenantId, status: "ACCEPTED" }, include: { journalTransaction: { include: { from_JournalEntry_transaction: true } }, wager: true } });
+          if (!acceptance?.journalTransaction || !acceptance.wager) throw new Error("Not found");
+          const payloadHash = evidenceHash({ action: "CASHOUT_CORRECTION", acceptanceId: acceptance.id, evidenceHash: acceptance.evidenceHash });
+          await approved(tx, context, "canManageRisk", tenantId, a.approvalId, `CASHOUT_CORRECTION:${acceptance.id}`, payloadHash, a.idempotencyKey);
+          const prior = await tx.cashOutAcceptance.findFirst({ where: { tenantId, idempotencyKey: a.idempotencyKey } });
+          if (prior) {
+            const expectedEvidence = evidenceHash({ reversalOf: acceptance.id, approvalId: a.approvalId, journalId: prior.journalTransactionId });
+            if (prior.status === "REVERSED" && prior.reversalOfId === acceptance.id && prior.evidenceHash === expectedEvidence) return prior.id;
+            throw new Error("CASHOUT_CORRECTION_IDEMPOTENCY_CONFLICT");
+          }
+          if (await tx.settlement.findFirst({ where: { tenantId, wagerId: acceptance.wagerId } })) throw new Error("CASHOUT_CORRECTION_REQUIRES_SETTLEMENT_CORRECTION");
+          const currentRows = await tx.cashOutAcceptance.findMany({ where: { tenantId, wagerId: acceptance.wagerId } }), currentState = projectCashOutState(acceptance.wager.stakeMinor, currentRows);
+          if (!currentState.accepted.some((item) => item.id === acceptance.id)) throw new Error("CASHOUT_ALREADY_CORRECTED");
+          const original = { idempotencyKey: acceptance.journalTransaction.idempotencyKey, type: acceptance.journalTransaction.type, entries: acceptance.journalTransaction.from_JournalEntry_transaction.map((entry) => ({ accountId: entry.accountId, currency: entry.currency, side: entry.side, amount: BigInt(entry.amountMinor) })) };
+          const reversal = await postJournal(tx, tenantId, reverseJournal(original, `cashout-correction:${a.idempotencyKey}`), acceptance.wagerId);
+          const cash = await tx.ledgerAccount.findFirst({ where: { tenantId, playerId: acceptance.playerId, key: "PLAYER_CASH", currency: acceptance.currency } }), balance = cash ? await tx.balanceProjection.findFirst({ where: { tenantId, accountId: cash.id }, orderBy: { version: "desc" } }) : null;
+          if (!cash || !balance || BigInt(balance.postedMinor) < BigInt(acceptance.amountMinor)) throw new Error("CASHOUT_CORRECTION_REQUIRES_RECEIVABLE_REVIEW");
+          const next = BigInt(balance.postedMinor) - BigInt(acceptance.amountMinor);
+          await tx.balanceProjection.create({ data: { tenantId, accountId: cash.id, postedMinor: String(next), pendingMinor: balance.pendingMinor, availableMinor: String(BigInt(balance.availableMinor) + (next - BigInt(balance.postedMinor))), version: Number(balance.version) + 1, asOf: /* @__PURE__ */ new Date() } });
+          const corrected = await tx.cashOutAcceptance.create({ data: { tenantId, offerId: acceptance.offerId, wagerId: acceptance.wagerId, playerId: acceptance.playerId, amountMinor: acceptance.amountMinor, currency: acceptance.currency, portionNumerator: acceptance.portionNumerator, portionDenominator: acceptance.portionDenominator, wagerVersion: Number(acceptance.wager.version ?? 1) + 1, acceptedAt: /* @__PURE__ */ new Date(), journalTransactionId: reversal.id, status: "REVERSED", reversalOfId: acceptance.id, idempotencyKey: a.idempotencyKey, evidenceHash: evidenceHash({ reversalOf: acceptance.id, approvalId: a.approvalId, journalId: reversal.id }) } });
+          const effectiveRows = await tx.cashOutAcceptance.findMany({ where: { tenantId, wagerId: acceptance.wagerId } }), effectivePortion = projectCashOutState(acceptance.wager.stakeMinor, effectiveRows).closedMillionths, wagerStatus = effectivePortion >= 1000000n ? "CASHED_OUT" : effectivePortion > 0n ? "PARTIALLY_CASHED_OUT" : "OPEN";
+          await tx.wager.update({ where: { id: acceptance.wagerId }, data: { status: wagerStatus, version: { increment: 1 } } });
+          if (wagerStatus !== "CASHED_OUT") await tx.wagerPart.updateMany({ where: { tenantId, wagerId: acceptance.wagerId, status: "CASHED_OUT" }, data: { status: "OPEN" } });
+          const allocations = await tx.wagerExposureAllocation.findMany({ where: { tenantId, wagerId: acceptance.wagerId } }), remainingStakes = remainingStakeByPart(allocations, effectivePortion), remainingLiabilities = remainingStakeByPart(allocations.map((item) => ({ stakeMinor: item.liabilityMinor })), effectivePortion);
+          for (const [index, allocation] of allocations.entries()) {
+            const remainingStake = remainingStakes[index], remainingLiability = remainingLiabilities[index];
+            await tx.wagerExposureAllocation.update({ where: { id: allocation.id }, data: { remainingStakeMinor: String(remainingStake), remainingLiabilityMinor: String(remainingLiability), status: remainingStake === 0n ? "CLOSED" : remainingStake === BigInt(allocation.stakeMinor) ? "OPEN" : "PARTIALLY_CLOSED", version: { increment: 1 } } });
+          }
+          for (const marketId of new Set(allocations.map((item) => item.marketId))) {
+            const active = await tx.wagerExposureAllocation.findMany({ where: { tenantId, marketId, status: { not: "CLOSED" } } }), stake = active.reduce((sum, item) => sum + BigInt(item.remainingStakeMinor), 0n), liability = active.reduce((sum, item) => sum + BigInt(item.remainingLiabilityMinor), 0n), projection = await tx.exposurePosition.findFirst({ where: { tenantId, scopeType: "MARKET", scopeId: marketId, currency: acceptance.currency } });
+            if (projection) await tx.exposurePosition.update({ where: { id: projection.id }, data: { stakeMinor: String(stake), liabilityMinor: String(liability), version: { increment: 1 }, asOf: /* @__PURE__ */ new Date() } });
+          }
+          await appendAudit(tx, tenantId, context.session.itemId, "cashout.corrected", "CashOutAcceptance", corrected.id, "DUAL_APPROVED", { approvalId: a.approvalId, reversalOf: acceptance.id });
+          return corrected.id;
+        });
+      },
+      recordComplianceScreening: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageCompliance");
+        if (!["SANCTIONS", "PEP", "ADVERSE_MEDIA", "SOURCE_OF_FUNDS"].includes(a.screeningType) || !["POTENTIAL", "REVIEW", "CONFIRMED", "CLEARED", "FALSE_POSITIVE"].includes(a.status)) throw new Error("INVALID_SCREENING");
+        const provider = await context.prisma.providerConnection.findFirst({ where: { tenantId, adapterId: "house-aml", status: "ACTIVE" } });
+        if (!provider) throw new Error("AML_PROVIDER_UNAVAILABLE");
+        const result = { externalRef: `screening:${a.playerId}:${(0, import_node_crypto12.randomBytes)(12).toString("hex")}` };
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
+          const player = await tx.player.findFirst({ where: { id: a.playerId, tenantId } });
+          if (!player) throw new Error("Not found");
+          let aml = await tx.aMLCase.findFirst({ where: { tenantId, playerId: player.id, status: { not: "CLOSED" } }, orderBy: { createdAt: "desc" } });
+          if (!aml) aml = await tx.aMLCase.create({ data: { tenantId, playerId: player.id, status: "OPEN", riskBand: a.status === "CONFIRMED" ? "HIGH" : "MEDIUM", restrictedEvidence: { provider: provider.id }, ownerId: context.session.itemId } });
+          const resolved = ["CONFIRMED", "CLEARED", "FALSE_POSITIVE"].includes(a.status), hit = await tx.screeningHit.create({ data: { tenantId, amlCaseId: aml.id, providerConnectionId: provider.id, screeningType: a.screeningType, matchToken: evidenceHash({ playerId: player.id, externalReference: result.externalRef, screeningType: a.screeningType }), status: a.status, dispositionReason: a.reason, evidenceReference: a.evidenceReference, screenedAt: /* @__PURE__ */ new Date(), resolvedAt: resolved ? /* @__PURE__ */ new Date() : null, ownerId: context.session.itemId } });
+          if (a.status === "CONFIRMED") {
+            for (const capability of ["WAGER", "DEPOSIT", "MARKETING"]) if (!await tx.accountRestriction.findFirst({ where: { tenantId, playerId: player.id, capability, status: "ACTIVE" } })) await tx.accountRestriction.create({ data: { tenantId, playerId: player.id, capability, reasonCode: `${a.screeningType}_CONFIRMED`, startsAt: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
+          }
+          await appendAudit(tx, tenantId, context.session.itemId, "compliance.screening_recorded", "ScreeningHit", hit.id, a.status, { playerId: player.id, screeningType: a.screeningType, evidenceReference: a.evidenceReference, providerExternalReference: result.externalRef });
+          return hit.id;
+        });
+      },
+      requestDisputeResolution: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageCompliance");
+        if (!/^-?[0-9]+$/.test(a.adjustmentMinor)) throw new Error("INVALID_ADJUSTMENT");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
+          const dispute = await tx.dispute.findFirst({ where: { id: a.disputeId, tenantId, status: { in: ["OPEN", "TRIAGED", "INVESTIGATING", "APPEALED"] } } });
+          if (!dispute) throw new Error("Not found");
+          const currency = await disputeCurrency(tx, tenantId, dispute, a.adjustmentMinor);
+          const payloadHash = evidenceHash({ action: "DISPUTE_RESOLUTION", disputeId: dispute.id, resolution: a.resolution, adjustmentMinor: a.adjustmentMinor, currency, wagerId: dispute.wagerId ?? null });
+          const approval = await tx.approvalRequest.create({ data: { tenantId, action: `DISPUTE_RESOLUTION:${dispute.id}`, payloadHash, ...approvalReview({ action: "DISPUTE_RESOLUTION", disputeId: dispute.id, playerId: dispute.playerId, wagerId: dispute.wagerId, category: dispute.category, resolution: a.resolution, adjustmentMinor: a.adjustmentMinor, currency }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+          await tx.dispute.update({ where: { id: dispute.id }, data: { status: "PROPOSED_RESOLUTION", resolution: a.resolution, approvalRequestId: approval.id } });
+          return approval.id;
+        });
+      },
+      // Privacy request servicing: OPEN -> VERIFYING (identity review) -> IN_PROGRESS -> COMPLETED, or DENIED from any open state.
+      // An active legal hold on the player or tenant blocks completing erasure/correction/restriction. NEEDS OWNER: lawful
+      // grounds, retention exceptions and response deadlines are merchant policy; this only enforces the declared lifecycle.
+      transitionPrivacyRequest: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageCompliance"), next = String(a.status), reason = String(a.reason ?? "").trim(), artifact = String(a.artifactReference ?? "").trim(), allowed = { OPEN: ["VERIFYING", "DENIED"], VERIFYING: ["IN_PROGRESS", "DENIED"], IN_PROGRESS: ["COMPLETED", "DENIED"] };
+        if (!reason) throw new Error("PRIVACY_DECISION_REASON_REQUIRED");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
+          const request = await tx.customerPrivacyRequest.findFirst({ where: { id: a.requestId, tenantId } });
+          if (!request?.playerId) throw new Error("Not found");
+          if (!(allowed[request.status] ?? []).includes(next)) throw new Error("INVALID_PRIVACY_TRANSITION");
+          const now = /* @__PURE__ */ new Date();
+          if (next === "COMPLETED") {
+            if (["DELETE", "CORRECT", "RESTRICT"].includes(request.type) && await tx.legalHold.findFirst({ where: { tenantId, status: "ACTIVE", startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gt: now } }], AND: [{ OR: [{ scopeType: "PLAYER", scopeId: request.playerId }, { scopeType: "TENANT", scopeId: tenantId }] }] } })) throw new Error("LEGAL_HOLD_ACTIVE");
+          }
+          const terminal = next === "COMPLETED" || next === "DENIED";
+          const delivered = next === "COMPLETED" && ["ACCESS", "EXPORT", "PORTABILITY"].includes(request.type) ? artifact || "customer-download:on-demand-v1" : artifact;
+          const updated = await tx.customerPrivacyRequest.updateMany({ where: { id: request.id, tenantId, status: request.status }, data: { status: next, ...terminal ? { completedAt: now, decisionReason: reason } : {}, ...delivered ? { artifactReference: delivered } : {} } });
+          if (updated.count !== 1) throw new Error("STALE_PRIVACY_REQUEST");
+          await appendAudit(tx, tenantId, context.session.itemId, "privacy.request_transitioned", "CustomerPrivacyRequest", request.id, reason, { from: request.status, to: next, type: request.type, playerId: request.playerId, artifactReference: delivered || null });
+          return true;
+        });
+      },
+      // A rejected, expired or still-pending proposal returns the dispute to INVESTIGATING so a revised proposal can be
+      // requested with fresh independent approval. The old request keeps its decision and can never authorize the revision.
+      withdrawDisputeProposal: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageCompliance");
+        return serializable2(context.prisma, async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
+          await tx.$queryRaw`SELECT id FROM "Dispute" WHERE id = ${a.disputeId} AND tenant = ${tenantId} FOR UPDATE`;
+          const dispute = await tx.dispute.findFirst({ where: { id: a.disputeId, tenantId, status: "PROPOSED_RESOLUTION" } });
+          if (!dispute) throw new Error("Not found");
+          const proposal = dispute.approvalRequestId ? await tx.approvalRequest.findFirst({ where: { id: dispute.approvalRequestId, tenantId } }) : null, now = /* @__PURE__ */ new Date();
+          if (proposal?.status === "PENDING") {
+            const expired = await tx.approvalRequest.updateMany({ where: { id: proposal.id, tenantId, status: "PENDING" }, data: { status: "EXPIRED" } });
+            if (expired.count !== 1) throw new Error("APPROVAL_ALREADY_DECIDED");
+          } else if (proposal?.status === "APPROVED" && !proposal.consumedAt && proposal.expiresAt && new Date(proposal.expiresAt) > now) throw new Error("APPROVED_PROPOSAL_STILL_APPLICABLE");
+          const moved = await tx.dispute.updateMany({ where: { id: dispute.id, tenantId, status: "PROPOSED_RESOLUTION", approvalRequestId: dispute.approvalRequestId }, data: { status: "INVESTIGATING" } });
+          if (moved.count !== 1) throw new Error("STALE_DISPUTE_STATE");
+          const event = await tx.disputeEvent.create({ data: { tenantId, disputeId: dispute.id, type: "PROPOSAL_WITHDRAWN", actorId: context.session.itemId, evidenceHash: proposal?.payloadHash ?? evidenceHash({ disputeId: dispute.id, resolution: dispute.resolution }), details: { approvalId: proposal?.id ?? null, approvalStatus: proposal?.status ?? null, previousResolution: dispute.resolution, reason: a.reason } } });
+          await appendAudit(tx, tenantId, context.session.itemId, "dispute.proposal_withdrawn", "Dispute", dispute.id, a.reason, { approvalId: proposal?.id ?? null, approvalStatus: proposal?.status ?? null });
+          return event.id;
+        });
+      },
+      applyDisputeResolution: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageCompliance");
+        return serializable2(context.prisma, async (tx) => {
+          const dispute = await tx.dispute.findFirst({ where: { id: a.disputeId, tenantId, status: "PROPOSED_RESOLUTION" } });
+          if (!dispute?.playerId) throw new Error("Not found");
+          if (!/^-?[0-9]+$/.test(String(a.adjustmentMinor ?? ""))) throw new Error("INVALID_ADJUSTMENT");
+          const currency = await disputeCurrency(tx, tenantId, dispute, a.adjustmentMinor);
+          const payloadHash = evidenceHash({ action: "DISPUTE_RESOLUTION", disputeId: dispute.id, resolution: a.resolution, adjustmentMinor: a.adjustmentMinor, currency, wagerId: dispute.wagerId ?? null });
+          await approved(tx, context, "canManageCompliance", tenantId, a.approvalId, `DISPUTE_RESOLUTION:${dispute.id}`, payloadHash);
+          const adjustment = BigInt(a.adjustmentMinor);
+          if (adjustment !== 0n) {
+            if (!currency) throw new Error("DISPUTE_CURRENCY_REQUIRES_REVIEW");
+            const accounts = await accountMap(tx, tenantId, dispute.playerId, currency), amount = adjustment < 0n ? -adjustment : adjustment, journal = await postJournal(tx, tenantId, { idempotencyKey: `dispute:${dispute.id}:${a.approvalId}`, type: "DISPUTE_ADJUSTMENT", entries: adjustment > 0n ? [{ accountId: accounts.WINNINGS_EXPENSE.id, currency, side: "DEBIT", amount }, { accountId: accounts.PLAYER_CASH.id, currency, side: "CREDIT", amount }] : [{ accountId: accounts.PLAYER_CASH.id, currency, side: "DEBIT", amount }, { accountId: accounts.GAMING_REVENUE.id, currency, side: "CREDIT", amount }] }, dispute.id);
+            if (journal.replayed) throw new Error("JOURNAL_ALREADY_POSTED");
+            const balance = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: accounts.PLAYER_CASH.id }, orderBy: { version: "desc" } }), next = BigInt(balance?.postedMinor ?? "0") + adjustment;
+            if (!balance || next < 0n || BigInt(balance.availableMinor) + adjustment < 0n) throw new Error("ADJUSTMENT_REQUIRES_RECEIVABLE_REVIEW");
+            await tx.balanceProjection.create({ data: { tenantId, accountId: accounts.PLAYER_CASH.id, postedMinor: String(next), pendingMinor: balance.pendingMinor, availableMinor: String(BigInt(balance.availableMinor) + (next - BigInt(balance.postedMinor))), version: Number(balance.version) + 1, asOf: /* @__PURE__ */ new Date() } });
+            await tx.disputeEvent.create({ data: { tenantId, disputeId: dispute.id, type: "MONETARY_ADJUSTMENT", actorId: context.session.itemId, evidenceHash: payloadHash, details: { journalId: journal.id, adjustmentMinor: a.adjustmentMinor, currency } } });
+          }
+          await tx.dispute.update({ where: { id: dispute.id }, data: { status: "RESOLVED", resolution: a.resolution, resolvedAt: /* @__PURE__ */ new Date() } });
+          await tx.disputeEvent.create({ data: { tenantId, disputeId: dispute.id, type: "RESOLVED", actorId: context.session.itemId, evidenceHash: payloadHash, details: { resolution: a.resolution, approvalId: a.approvalId } } });
+          await appendAudit(tx, tenantId, context.session.itemId, "dispute.resolved", "Dispute", dispute.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash, adjustmentMinor: a.adjustmentMinor });
+          return true;
+        });
+      },
+      setSupportCaseStatus: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageCompliance");
+        if (!["TRIAGED", "WAITING_CUSTOMER", "WAITING_OPERATOR", "RESOLVED", "CLOSED"].includes(a.status)) throw new Error("INVALID_CASE_STATUS");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
+          const item = await tx.supportCase.findFirst({ where: { id: a.caseId, tenantId } });
+          if (!item) throw new Error("Not found");
+          assertSupportCaseTransition(item.status, a.status);
+          const caseMoved = await tx.supportCase.updateMany({ where: { id: item.id, tenantId, status: item.status }, data: { status: a.status, ownerId: context.session.itemId, resolvedAt: ["RESOLVED", "CLOSED"].includes(a.status) ? /* @__PURE__ */ new Date() : null } });
+          if (caseMoved.count !== 1) throw new Error("STALE_SUPPORT_CASE");
+          await tx.supportCaseEvent.create({ data: { tenantId, supportCaseId: item.id, type: a.status === "RESOLVED" ? "RESOLVED" : "OPERATOR_MESSAGE", actorType: "STAFF", actorId: context.session.itemId, body: a.customerMessage, evidenceHash: evidenceHash({ caseId: item.id, status: a.status, message: a.customerMessage, reason: a.reason }), visibility: "CUSTOMER" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "support.status_changed", "SupportCase", item.id, a.reason, { from: item.status, to: a.status });
+          return true;
+        });
+      },
+      runSafeguardingReconciliation: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageFinance"), asset = nonnegativeMoney(a.assetMinor, "INVALID_ASSET_AMOUNT"), asOf = strictUtcInstant(a.asOf, "INVALID_AS_OF");
+        if (asOf.getTime() > Date.now()) throw new Error("AS_OF_IN_FUTURE");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageFinance");
+          const account = await tx.safeguardingAccount.findFirst({ where: { id: a.accountId, tenantId, status: "ACTIVE" } });
+          if (!account) throw new Error("Not found");
+          const ledger = await playerLiabilityAsOf(tx, tenantId, account.currency, asOf);
+          const liability = ledger.total, difference = asset - liability, row = await tx.safeguardingReconciliation.create({ data: { tenantId, safeguardingAccountId: account.id, asOf, safeguardedAssetMinor: String(asset), playerLiabilityMinor: String(liability), differenceMinor: String(difference), status: difference === 0n ? "MATCHED" : difference < 0n ? "SHORTFALL" : "SURPLUS", evidenceHash: evidenceHash({ accountId: account.id, accountReference: account.accountReference, currency: account.currency, asOf, asset: String(asset), assetSource: "OPERATOR_ATTESTED", liability: String(liability), liabilityBasis: "PLAYER_LIABILITY_LEDGER_AS_OF", journalEntryCount: ledger.count, difference: String(difference) }) } });
+          await appendAudit(tx, tenantId, context.session.itemId, "safeguarding.reconciled", "SafeguardingReconciliation", row.id, "FINANCE_CONTROL", { differenceMinor: String(difference), assetSource: "OPERATOR_ATTESTED", liabilityBasis: "PLAYER_LIABILITY_LEDGER_AS_OF", journalEntryCount: ledger.count, asOf });
+          return row.id;
+        });
+      },
+      openChargeback: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageFinance"), amount = money2(a.amountMinor);
+        return serializable2(context.prisma, async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageFinance");
+          const prior = await tx.paymentIntent.findFirst({ where: { tenantId, idempotencyKey: a.idempotencyKey } });
+          if (prior) {
+            if (prior.type !== "CHARGEBACK" || prior.riskEvidence?.originalPaymentIntentId !== a.paymentIntentId || prior.amountMinor !== String(amount)) throw new Error("IDEMPOTENCY_KEY_CONFLICT");
+            return prior.id;
+          }
+          await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${String(a.paymentIntentId ?? "")} AND tenant = ${tenantId} FOR UPDATE`;
+          const original = await tx.paymentIntent.findFirst({ where: { id: a.paymentIntentId, tenantId, type: "DEPOSIT", status: "SUCCEEDED" } });
+          if (!original?.playerId) throw new Error("INVALID_CHARGEBACK");
+          const priorChargebacks = await tx.paymentIntent.findMany({ where: { tenantId, type: "CHARGEBACK", providerSessionReference: `chargeback:${original.id}`, status: { notIn: ["FAILED", "CANCELLED"] } }, select: { amountMinor: true } }), alreadyReversed = priorChargebacks.reduce((sum, item) => sum + BigInt(item.amountMinor), 0n);
+          if (alreadyReversed + amount > BigInt(original.amountMinor)) throw new Error("CHARGEBACK_EXCEEDS_REMAINING_AMOUNT");
+          const [cash, clearing, loss] = await Promise.all([tx.ledgerAccount.findFirst({ where: { tenantId, playerId: original.playerId, key: "PLAYER_CASH", currency: original.currency } }), tx.ledgerAccount.findFirst({ where: { tenantId, playerId: null, key: "PAYMENT_CLEARING", currency: original.currency } }), tx.ledgerAccount.findFirst({ where: { tenantId, playerId: null, key: "CHARGEBACK_LOSS", currency: original.currency } })]);
+          const balance = cash ? await tx.balanceProjection.findFirst({ where: { tenantId, accountId: cash.id }, orderBy: { version: "desc" } }) : null;
+          if (!cash || !clearing || !loss || !balance) throw new Error("CHARGEBACK_LEDGER_UNAVAILABLE");
+          const recoverable = BigInt(balance.availableMinor) < amount ? BigInt(balance.availableMinor) : amount, shortage = amount - recoverable;
+          const intent = await tx.paymentIntent.create({ data: { tenantId, playerId: original.playerId, providerConnectionId: original.providerConnectionId, type: "CHARGEBACK", amountMinor: String(amount), feeMinor: "0", currency: original.currency, idempotencyKey: a.idempotencyKey, paymentMethodReference: original.paymentMethodReference, providerSessionReference: `chargeback:${original.id}`, riskEvidence: { originalPaymentIntentId: original.id, reason: a.reason, shortageMinor: String(shortage), priorReversedMinor: String(alreadyReversed), evidenceType: "OPERATOR_ATTESTED", externalConfirmation: null }, status: "REVIEW", completedAt: null } });
+          const entries = [];
+          if (recoverable > 0n) entries.push({ accountId: cash.id, currency: original.currency, side: "DEBIT", amount: recoverable });
+          if (shortage > 0n) entries.push({ accountId: loss.id, currency: original.currency, side: "DEBIT", amount: shortage });
+          entries.push({ accountId: clearing.id, currency: original.currency, side: "CREDIT", amount });
+          const journal = await postJournal(tx, tenantId, { idempotencyKey: `chargeback:${a.idempotencyKey}`, type: "CHARGEBACK", entries }, intent.id), next = BigInt(balance.postedMinor) - recoverable;
+          if (journal.replayed) throw new Error("JOURNAL_ALREADY_POSTED");
+          await tx.balanceProjection.create({ data: { tenantId, accountId: cash.id, postedMinor: String(next), pendingMinor: balance.pendingMinor, availableMinor: String(BigInt(balance.availableMinor) + (next - BigInt(balance.postedMinor))), version: Number(balance.version) + 1, asOf: /* @__PURE__ */ new Date() } });
+          if (shortage > 0n) await tx.accountRestriction.create({ data: { tenantId, playerId: original.playerId, capability: "WAGER", reasonCode: "CHARGEBACK_SHORTFALL", startsAt: /* @__PURE__ */ new Date(), status: "ACTIVE" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "payment.chargeback_opened", "PaymentIntent", intent.id, a.reason, { originalPaymentIntentId: original.id, amountMinor: String(amount), shortageMinor: String(shortage), journalId: journal.id });
+          return intent.id;
+        });
+      },
+      requestTaxRule: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageFinance");
+        if (!/^\d+$/.test(a.rateNumerator) || !/^\d+$/.test(a.rateDenominator) || BigInt(a.rateDenominator) <= 0n) throw new Error("INVALID_TAX_RATE");
+        assertSupportedTaxRule(a.basis, a.roundingRule);
+        const effectiveFrom = await operatorInstant(context, tenantId, a.effectiveFrom, "EFFECTIVE_FROM"), payloadHash = evidenceHash({ action: "TAX_RULE", jurisdictionId: a.jurisdictionId, key: a.key, basis: a.basis, rateNumerator: a.rateNumerator, rateDenominator: a.rateDenominator, roundingRule: a.roundingRule, effectiveFrom });
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageFinance");
+          const jurisdiction = await tx.jurisdiction.findUnique({ where: { id: a.jurisdictionId } });
+          if (!jurisdiction) throw new Error("Not found");
+          const approval = await tx.approvalRequest.create({ data: { tenantId, action: `TAX_RULE:${a.jurisdictionId}:${a.key}`, payloadHash, ...approvalReview({ action: "TAX_RULE", jurisdictionId: a.jurisdictionId, key: a.key, basis: a.basis, rateNumerator: a.rateNumerator, rateDenominator: a.rateDenominator, roundingRule: a.roundingRule, effectiveFrom }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+          return approval.id;
+        });
+      },
+      applyTaxRule: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageFinance"), effectiveFrom = await operatorInstant(context, tenantId, a.effectiveFrom, "EFFECTIVE_FROM"), payloadHash = evidenceHash({ action: "TAX_RULE", jurisdictionId: a.jurisdictionId, key: a.key, basis: a.basis, rateNumerator: a.rateNumerator, rateDenominator: a.rateDenominator, roundingRule: a.roundingRule, effectiveFrom });
+        return context.prisma.$transaction(async (tx) => {
+          await approved(tx, context, "canManageFinance", tenantId, a.approvalId, `TAX_RULE:${a.jurisdictionId}:${a.key}`, payloadHash);
+          const version = await tx.taxRuleVersion.count({ where: { tenantId, jurisdictionId: a.jurisdictionId, key: a.key } }) + 1, row = await tx.taxRuleVersion.create({ data: { tenantId, jurisdictionId: a.jurisdictionId, key: a.key, version, basis: a.basis, rateNumerator: a.rateNumerator, rateDenominator: a.rateDenominator, roundingRule: a.roundingRule, effectiveFrom, status: "ACTIVE", evidenceHash: payloadHash } });
+          await appendAudit(tx, tenantId, context.session.itemId, "tax.rule_activated", "TaxRuleVersion", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
+          return row.id;
+        });
+      },
+      assessSettlementTax: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageFinance");
+        return serializable2(context.prisma, async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageFinance");
+          const settlement = await tx.settlement.findFirst({ where: { id: a.settlementId, tenantId }, include: { wager: true } }), rule = await tx.taxRuleVersion.findFirst({ where: { id: a.taxRuleId, tenantId, status: "ACTIVE" } });
+          if (!settlement?.wager || !rule) throw new Error("Not found");
+          assertSupportedTaxRule(String(rule.basis), rule.roundingRule);
+          if (settlement.reversalOfId || await tx.settlement.findFirst({ where: { tenantId, reversalOfId: settlement.id } })) throw new Error("TAX_SETTLEMENT_NOT_CURRENT");
+          const ruleIdentity = `${rule.key}:v${rule.version}:${rule.id}`;
+          await tx.$queryRaw`SELECT id FROM "Wager" WHERE id = ${settlement.wagerId} FOR UPDATE`;
+          const existing = await tx.taxAssessment.findFirst({ where: { tenantId, wagerId: settlement.wagerId, ruleVersion: ruleIdentity, status: { not: "REVERSED" } } });
+          if (existing) return existing.id;
+          const settledAt = settlement.createdAt;
+          if (rule.effectiveFrom > settledAt || rule.effectiveTo && rule.effectiveTo <= settledAt) throw new Error("TAX_RULE_NOT_EFFECTIVE");
+          const operatorJurisdiction = settlement.wager.operatorJurisdictionId ? await tx.operatorJurisdiction.findFirst({ where: { id: settlement.wager.operatorJurisdictionId, tenantId } }) : null;
+          if (!operatorJurisdiction?.jurisdictionId || operatorJurisdiction.jurisdictionId !== rule.jurisdictionId) throw new Error("TAX_RULE_JURISDICTION_MISMATCH");
+          const stake = BigInt(settlement.wager.stakeMinor), payout = BigInt(settlement.payoutMinor), basis = rule.basis === "STAKE" ? stake : rule.basis === "WINNINGS" ? payout : stake - payout, nonnegative = basis < 0n ? 0n : basis, amount = roundTax(nonnegative * BigInt(rule.rateNumerator), BigInt(rule.rateDenominator), rule.roundingRule);
+          let journalId = null;
+          if (amount > 0n) {
+            const [expense, payable] = await Promise.all([tx.ledgerAccount.findFirst({ where: { tenantId, key: "TAX_EXPENSE", currency: settlement.wager.currency } }), tx.ledgerAccount.findFirst({ where: { tenantId, key: "TAX_PAYABLE", currency: settlement.wager.currency } })]);
+            if (!expense || !payable) throw new Error("TAX_LEDGER_UNAVAILABLE");
+            journalId = (await postJournal(tx, tenantId, { idempotencyKey: `tax:${settlement.id}:${rule.id}`, type: "TAX_ASSESSMENT", entries: [{ accountId: expense.id, currency: settlement.wager.currency, side: "DEBIT", amount }, { accountId: payable.id, currency: settlement.wager.currency, side: "CREDIT", amount }] }, settlement.id)).id;
+          }
+          const assessment = await tx.taxAssessment.create({ data: { tenantId, wagerId: settlement.wagerId, ruleVersion: ruleIdentity, basisMinor: String(nonnegative), amountMinor: String(amount), currency: settlement.wager.currency, status: amount > 0n ? "POSTED" : "CALCULATED" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "tax.assessed", "TaxAssessment", assessment.id, rule.key, { settlementId: settlement.id, taxRuleId: rule.id, ruleIdentity, basis: rule.basis, basisSemantics: rule.basis === "WINNINGS" ? "GROSS_PAYOUT" : rule.basis === "GGR" ? "STAKE_MINUS_PAYOUT" : "STAKE", rateNumerator: rule.rateNumerator, rateDenominator: rule.rateDenominator, roundingRule: rule.roundingRule, jurisdictionId: rule.jurisdictionId, requestKey: a.idempotencyKey, basisMinor: String(nonnegative), amountMinor: String(amount), journalId });
+          return assessment.id;
+        });
+      },
+      requestLedgerAdjustment: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageFinance");
+        money2(a.amountMinor);
+        if (!["DEBIT", "CREDIT"].includes(a.direction)) throw new Error("INVALID_DIRECTION");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageFinance");
+          const account = await tx.ledgerAccount.findFirst({ where: { id: a.accountId, tenantId } });
+          if (!account) throw new Error("Not found");
+          const evidence = object(a.evidence, "INVALID_EVIDENCE");
+          if (evidence.reconciliationItemId !== void 0) {
+            const item = await tx.reconciliationItem.findFirst({ where: { id: String(evidence.reconciliationItemId), tenantId, status: "OPEN" } }), difference = item ? BigInt(item.differenceMinor || "0") : 0n;
+            if (!item) throw new Error("RECONCILIATION_ITEM_NOT_OPEN");
+            if (item.currency !== account.currency || (difference < 0n ? -difference : difference) !== BigInt(a.amountMinor)) throw new Error("RECONCILIATION_ITEM_MISMATCH");
+          }
+          const payloadHash = evidenceHash({ action: "LEDGER_ADJUSTMENT", accountId: account.id, amountMinor: a.amountMinor, direction: a.direction, reasonCode: a.reasonCode, evidence });
+          const approval = await tx.approvalRequest.create({ data: { tenantId, action: `LEDGER_ADJUSTMENT:${account.id}:${a.amountMinor}:${a.direction}`, payloadHash, ...approvalReview({ action: "LEDGER_ADJUSTMENT", accountId: account.id, accountKey: account.key, playerId: account.playerId, currency: account.currency, amountMinor: a.amountMinor, direction: a.direction, reasonCode: a.reasonCode, evidence }), requesterId: context.session.itemId, status: "PENDING", reason: a.reasonCode } });
+          const row = await tx.ledgerAdjustmentRequest.create({ data: { tenantId, playerId: account.playerId, accountId: account.id, amountMinor: a.amountMinor, currency: account.currency, direction: a.direction, reasonCode: a.reasonCode, evidence, status: "PENDING", requesterId: context.session.itemId, approvalRequestId: approval.id } });
+          return row.id;
+        });
+      },
+      applyLedgerAdjustment: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageFinance");
+        return serializable2(context.prisma, async (tx) => {
+          const row = await tx.ledgerAdjustmentRequest.findFirst({ where: { id: a.adjustmentId, tenantId }, include: { account: true } });
+          if (!row?.account || row.approvalRequestId !== a.approvalId) throw new Error("Not found");
+          if (row.status === "POSTED" && row.journalTransactionId) return row.journalTransactionId;
+          if (row.status !== "PENDING") throw new Error("Not found");
+          const payloadHash = evidenceHash({ action: "LEDGER_ADJUSTMENT", accountId: row.account.id, amountMinor: row.amountMinor, direction: row.direction, reasonCode: row.reasonCode, evidence: row.evidence });
+          await approved(tx, context, "canManageFinance", tenantId, a.approvalId, `LEDGER_ADJUSTMENT:${row.account.id}:${row.amountMinor}:${row.direction}`, payloadHash);
+          const offset = await tx.ledgerAccount.findFirst({ where: { tenantId, key: row.direction === "CREDIT" ? "WINNINGS_EXPENSE" : "GAMING_REVENUE", currency: row.currency } });
+          if (!offset) throw new Error("MISSING_OFFSET_ACCOUNT");
+          const amount = BigInt(row.amountMinor), journal = await postJournal(tx, tenantId, { idempotencyKey: `ledger-adjustment:${row.id}`, type: "LEDGER_ADJUSTMENT", entries: row.direction === "CREDIT" ? [{ accountId: offset.id, currency: row.currency, side: "DEBIT", amount }, { accountId: row.account.id, currency: row.currency, side: "CREDIT", amount }] : [{ accountId: row.account.id, currency: row.currency, side: "DEBIT", amount }, { accountId: offset.id, currency: row.currency, side: "CREDIT", amount }] }, row.id);
+          if (journal.replayed) throw new Error("JOURNAL_ALREADY_POSTED");
+          if (row.account.playerId) {
+            const balance = await tx.balanceProjection.findFirst({ where: { tenantId, accountId: row.account.id }, orderBy: { version: "desc" } }), next = BigInt(balance?.postedMinor ?? "0") + (row.direction === "CREDIT" ? amount : -amount);
+            if (!balance || next < 0n || BigInt(balance.availableMinor) + (next - BigInt(balance.postedMinor)) < 0n) throw new Error("ADJUSTMENT_REQUIRES_RECEIVABLE_REVIEW");
+            await tx.balanceProjection.create({ data: { tenantId, accountId: row.account.id, postedMinor: String(next), pendingMinor: balance.pendingMinor, availableMinor: String(BigInt(balance.availableMinor) + (next - BigInt(balance.postedMinor))), version: Number(balance.version) + 1, asOf: /* @__PURE__ */ new Date() } });
+          }
+          await tx.ledgerAdjustmentRequest.update({ where: { id: row.id }, data: { status: "POSTED", journalTransactionId: journal.id } });
+          await appendAudit(tx, tenantId, context.session.itemId, "ledger.adjusted", "LedgerAdjustmentRequest", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, journalId: journal.id, payloadHash, requestKey: a.idempotencyKey });
+          const linkedItemId = row.evidence?.reconciliationItemId;
+          if (linkedItemId !== void 0) {
+            const linked = await tx.reconciliationItem.updateMany({ where: { id: String(linkedItemId), tenantId, status: "OPEN", currency: row.currency }, data: { status: "RESOLVED", resolutionJournalId: journal.id } });
+            if (linked.count !== 1) throw new Error("RECONCILIATION_ITEM_NOT_OPEN");
+          }
+          return journal.id;
+        });
+      },
+      runRetentionDryRun: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageCompliance"), from = await operatorInstant(context, tenantId, a.windowFrom, "WINDOW_FROM"), to = await operatorInstant(context, tenantId, a.windowTo, "WINDOW_TO");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
+          const policy = await tx.retentionPolicyVersion.findFirst({ where: { id: a.policyId, tenantId, status: "ACTIVE" } });
+          if (!policy || Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) throw new Error("INVALID_RETENTION_RUN");
+          const asOf = /* @__PURE__ */ new Date(), manifest = await retentionCandidates(tx, tenantId, policy, from, to, asOf, asOf), dryRunHash = manifest.manifestHash;
+          const run = await tx.retentionExecution.create({ data: { tenantId, policyVersionId: policy.id, windowFrom: from, windowTo: to, candidateCount: manifest.candidateCount, heldCount: manifest.held.length, archivedCount: 0, deletedCount: 0, status: "DRY_RUN", dryRunHash, createdAt: asOf } });
+          await appendAudit(tx, tenantId, context.session.itemId, "retention.dry_run", "RetentionExecution", run.id, "NO_DATA_MUTATION", { dryRunHash, candidateCount: manifest.candidateCount, eligibleCount: manifest.eligible.length, heldCount: manifest.held.length, cutoff: manifest.cutoff.toISOString(), holdIds: manifest.holdIds });
+          return run.id;
+        });
+      },
+      requestRetentionExecution: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageCompliance");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canManageCompliance");
+          const run = await tx.retentionExecution.findFirst({ where: { id: a.executionId, tenantId, status: "DRY_RUN" } });
+          if (!run) throw new Error("Not found");
+          const payloadHash = evidenceHash({ action: "RETENTION_EXECUTION", executionId: run.id, dryRunHash: run.dryRunHash, candidateCount: run.candidateCount, heldCount: run.heldCount });
+          const approval = await tx.approvalRequest.create({ data: { tenantId, action: `RETENTION_EXECUTION:${run.id}`, payloadHash, ...approvalReview({ action: "RETENTION_EXECUTION", executionId: run.id, policyVersionId: run.policyVersionId, windowFrom: run.windowFrom, windowTo: run.windowTo, dryRunHash: run.dryRunHash, candidateCount: run.candidateCount, heldCount: run.heldCount }), requesterId: context.session.itemId, status: "PENDING", reason: a.reason } });
+          await tx.retentionExecution.update({ where: { id: run.id }, data: { status: "PENDING_APPROVAL", approvalRequestId: approval.id } });
+          return approval.id;
+        });
+      },
+      applyRetentionExecution: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canManageCompliance");
+        return context.prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`LOCK TABLE "LegalHold" IN SHARE MODE`;
+          const run = await tx.retentionExecution.findFirst({ where: { id: a.executionId, tenantId, status: "PENDING_APPROVAL" }, include: { policyVersion: true } });
+          if (!run?.policyVersion) throw new Error("Not found");
+          const payloadHash = evidenceHash({ action: "RETENTION_EXECUTION", executionId: run.id, dryRunHash: run.dryRunHash, candidateCount: run.candidateCount, heldCount: run.heldCount });
+          await approved(tx, context, "canManageCompliance", tenantId, a.approvalId, `RETENTION_EXECUTION:${run.id}`, payloadHash);
+          await tx.$queryRaw`SELECT id FROM "RetentionPolicyVersion" WHERE id = ${run.policyVersion.id} AND tenant = ${tenantId} FOR SHARE`;
+          const policy = await tx.retentionPolicyVersion.findFirst({ where: { id: run.policyVersion.id, tenantId, status: "ACTIVE" } });
+          if (!policy) throw new Error("RETENTION_POLICY_NOT_ACTIVE");
+          const now = /* @__PURE__ */ new Date(), manifest = await retentionCandidates(tx, tenantId, policy, run.windowFrom, run.windowTo, new Date(run.createdAt), now);
+          if (manifest.manifestHash !== run.dryRunHash) throw new Error("RETENTION_MANIFEST_CHANGED_REVIEW_REQUIRED");
+          let deletedCount = 0, tokenizedCount = 0;
+          if (manifest.eligible.length && policy.recordClass === "CUSTOMER_SESSION") {
+            deletedCount = (await tx.customerSession.deleteMany({ where: { tenantId, id: { in: manifest.eligible } } })).count;
+          } else if (manifest.eligible.length && policy.recordClass === "GEO") {
+            tokenizedCount = (await tx.geoCheck.updateMany({ where: { tenantId, id: { in: manifest.eligible } }, data: { coarseEvidence: { retained: GEO_TOKENIZED_MARKER, policyVersionId: policy.id } } })).count;
+          }
+          if (deletedCount + tokenizedCount !== manifest.eligible.length) throw new Error("RETENTION_EFFECT_MISMATCH");
+          const audit = await appendAudit(tx, tenantId, context.session.itemId, "retention.executed", "RetentionExecution", run.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash, manifestHash: manifest.manifestHash, disposition: `${policy.recordClass}:${policy.deletionMode}`, deletedCount, tokenizedCount, heldCount: manifest.held.length, eligible: manifest.eligible, held: manifest.held });
+          const done = await tx.retentionExecution.updateMany({ where: { id: run.id, tenantId, status: "PENDING_APPROVAL" }, data: { status: "COMPLETED", archivedCount: tokenizedCount, deletedCount, heldCount: manifest.held.length, artifactReference: `audit:${audit.id}`, completedAt: now } });
+          if (done.count !== 1) throw new Error("RETENTION_EXECUTION_CHANGED");
+          return true;
+        });
+      },
+      requestDataExport: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canReadAudit"), scope = object(a.scope, "INVALID_EXPORT_SCOPE"), expiresAt = await operatorInstant(context, tenantId, a.expiresAt, "EXPIRES_AT");
+        if (expiresAt <= /* @__PURE__ */ new Date()) throw new Error("INVALID_EXPIRY");
+        const requiresApproval = ["RESTRICTED_PII", "RESTRICTED_FINANCIAL", "RESTRICTED_REGULATORY"].includes(a.classification), payloadHash = evidenceHash({ type: a.type, classification: a.classification, scope, expiresAt });
+        assertArtifactDeliveryHasHandler("export.requested.v1");
+        return context.prisma.$transaction(async (tx) => {
+          await assertCurrentActor(tx, context, tenantId, "canReadAudit");
+          let approval = null;
+          if (requiresApproval) approval = await tx.approvalRequest.create({ data: { tenantId, action: `DATA_EXPORT:${a.type}:${a.classification}`, payloadHash, ...approvalReview({ type: a.type, classification: a.classification, scope, expiresAt }), requesterId: context.session.itemId, status: "PENDING", reason: "RESTRICTED_EXPORT" } });
+          const row = await tx.dataExport.create({ data: { tenantId, requestedBy: context.session.itemId, type: a.type, scope, classification: a.classification, status: requiresApproval ? "PENDING" : "GENERATING", rowCount: 0, expiresAt, approvalRequestId: approval?.id } });
+          await appendAudit(tx, tenantId, context.session.itemId, "export.requested", "DataExport", row.id, a.classification, { payloadHash, approvalId: approval?.id ?? null });
+          return row.id;
+        });
+      },
+      applyApprovedDataExport: async (_r, a, context) => {
+        const tenantId = await requireTenant(context, "canReadAudit");
+        assertArtifactDeliveryHasHandler("export.requested.v1");
+        return context.prisma.$transaction(async (tx) => {
+          const row = await tx.dataExport.findFirst({ where: { id: a.exportId, tenantId, status: "PENDING" } });
+          if (!row) throw new Error("Not found");
+          const payloadHash = evidenceHash({ type: row.type, classification: row.classification, scope: row.scope, expiresAt: row.expiresAt });
+          await approved(tx, context, "canReadAudit", tenantId, a.approvalId, `DATA_EXPORT:${row.type}:${row.classification}`, payloadHash);
+          await tx.dataExport.update({ where: { id: row.id }, data: { status: "GENERATING" } });
+          await appendAudit(tx, tenantId, context.session.itemId, "export.approved", "DataExport", row.id, "DUAL_APPROVED", { approvalId: a.approvalId, payloadHash });
+          return true;
+        });
+      }
+    } };
+  }
+});
+
+// features/keystone/mutations/createInitialUser.ts
 async function createInitialUser(root, { data }, context) {
   const itemId = await sportsbookFullResolvers.Mutation.bootstrapOperatorAdmin(root, {
     name: data.name ?? "",
@@ -6036,19 +5767,502 @@ async function createInitialUser(root, { data }, context) {
   const item = await context.sudo().db.User.findOne({ where: { id: itemId } });
   return { sessionToken, item };
 }
+var graphql3, createInitialUserTypeDefs;
+var init_createInitialUser = __esm({
+  "features/keystone/mutations/createInitialUser.ts"() {
+    "use strict";
+    init_sportsbook_full();
+    graphql3 = String.raw;
+    createInitialUserTypeDefs = graphql3`
+  input CreateInitialUserInput {
+    name: String
+    email: String
+    password: String
+  }
 
-// features/keystone/mutations/index.ts
-init_sportsbook();
+  type Mutation {
+    createInitialUser(data: CreateInitialUserInput!): UserAuthenticationWithPasswordSuccess!
+  }
+`;
+  }
+});
+
+// features/sportsbook/domain/balance.ts
+function nextProjection(current, change, now = /* @__PURE__ */ new Date()) {
+  const postedDelta = change.postedDelta ?? 0n;
+  const availableDelta = change.availableDelta ?? postedDelta;
+  const posted = BigInt(current.postedMinor) + postedDelta;
+  const available = BigInt(current.availableMinor) + availableDelta;
+  if (available > posted) throw new Error("BALANCE_PROJECTION_INVARIANT");
+  return {
+    postedMinor: String(posted),
+    pendingMinor: current.pendingMinor,
+    availableMinor: String(available),
+    version: Number(current.version ?? 0) + 1,
+    asOf: now
+  };
+}
+var postedChange, releaseChange, captureChange;
+var init_balance = __esm({
+  "features/sportsbook/domain/balance.ts"() {
+    "use strict";
+    postedChange = (delta) => ({ postedDelta: delta, availableDelta: delta });
+    releaseChange = (amount) => ({ postedDelta: 0n, availableDelta: amount });
+    captureChange = (amount) => ({ postedDelta: -amount, availableDelta: 0n });
+  }
+});
+
+// features/integrations/payment/authorizenet.ts
+var authorizenet_exports = {};
+__export(authorizenet_exports, {
+  cancelPaymentFunction: () => cancelPaymentFunction,
+  capturePaymentFunction: () => capturePaymentFunction,
+  createPaymentFunction: () => createPaymentFunction,
+  generatePaymentLinkFunction: () => generatePaymentLinkFunction,
+  getPaymentStatusFunction: () => getPaymentStatusFunction,
+  handleWebhookFunction: () => handleWebhookFunction,
+  mapTransactionStatus: () => mapTransactionStatus,
+  refundPaymentFunction: () => refundPaymentFunction
+});
+function merchantAuthentication() {
+  const name = process.env.AUTHORIZENET_API_LOGIN_ID;
+  const transactionKey = process.env.AUTHORIZENET_TRANSACTION_KEY;
+  if (!name || !transactionKey) throw new Error("Authorize.net credentials are not configured");
+  return { name, transactionKey };
+}
+async function call(operation, body, refId) {
+  const payload = { [operation]: { merchantAuthentication: merchantAuthentication(), ...refId ? { refId: ref(refId) } : {}, ...body } };
+  const response = await fetch(endpoint(), {
+    method: "POST",
+    redirect: "error",
+    signal: AbortSignal.timeout(3e4),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw new Error(`Authorize.net HTTP ${response.status}`);
+  const result = JSON.parse((await response.text()).replace(/^\uFEFF/, ""));
+  return result;
+}
+function transactionError(result) {
+  const tx = result?.transactionResponse;
+  return tx?.errors?.[0]?.errorText || result?.messages?.message?.[0]?.text || "Authorize.net rejected the transaction";
+}
+function mapTransactionStatus(status3) {
+  return STATUS[status3] || "unknown";
+}
+async function createPaymentFunction({ amount, currency, opaqueData, cart, order, idempotencyKey, captureNow }) {
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error("Invalid payment amount");
+  if (String(currency || "").toUpperCase() !== "USD") throw new Error("Authorize.net adapter supports USD only");
+  if (!opaqueData) {
+    return {
+      status: "requires_payment_method",
+      amount,
+      currency: "USD",
+      acceptJs: {
+        apiLoginId: process.env.AUTHORIZENET_API_LOGIN_ID || "",
+        clientKey: process.env.NEXT_PUBLIC_AUTHORIZENET_CLIENT_KEY || "",
+        env: isProduction() ? "production" : "test"
+      }
+    };
+  }
+  const invoiceNumber = ref(String(order?.displayId || order?.orderNumber || order?.id || cart?.id || "order"));
+  const result = await call(
+    "createTransactionRequest",
+    {
+      transactionRequest: {
+        transactionType: captureNow ? "authCaptureTransaction" : "authOnlyTransaction",
+        amount: dollars(amount),
+        payment: { opaqueData },
+        order: { invoiceNumber }
+      }
+    },
+    idempotencyKey || cart?.id || order?.id
+  );
+  const tx = result.transactionResponse;
+  if (result.messages?.resultCode !== "Ok" || tx?.responseCode !== "1" || !tx?.transId || tx.transId === "0") {
+    return { status: "failed", amount, currency: "USD", error: transactionError(result) };
+  }
+  return {
+    status: captureNow ? "succeeded" : "authorized",
+    paymentIntentId: String(tx.transId),
+    amount,
+    currency: "USD",
+    data: { transId: tx.transId, authCode: tx.authCode, accountNumber: tx.accountNumber, accountType: tx.accountType }
+  };
+}
+async function capturePaymentFunction({ paymentId, amount, idempotencyKey }) {
+  if (!paymentId) throw new Error("Payment reference is required");
+  const result = await call(
+    "createTransactionRequest",
+    { transactionRequest: { transactionType: "priorAuthCaptureTransaction", ...amount ? { amount: dollars(amount) } : {}, refTransId: paymentId } },
+    idempotencyKey || paymentId
+  );
+  const tx = result.transactionResponse;
+  if (result.messages?.resultCode === "Ok" && tx?.responseCode === "1") {
+    return getPaymentStatusFunction({ paymentId });
+  }
+  return { status: "unknown", error: transactionError(result) };
+}
+async function cancelPaymentFunction({ paymentId, idempotencyKey }) {
+  if (!paymentId) throw new Error("Payment reference is required");
+  const result = await call(
+    "createTransactionRequest",
+    { transactionRequest: { transactionType: "voidTransaction", refTransId: paymentId } },
+    idempotencyKey || `void${paymentId}`
+  );
+  const ok = result.messages?.resultCode === "Ok" && result.transactionResponse?.responseCode === "1";
+  return { status: ok ? "canceled" : "unknown", error: ok ? void 0 : transactionError(result) };
+}
+async function refundPaymentFunction({ paymentId, amount, currency, idempotencyKey }) {
+  if (!paymentId) throw new Error("Payment reference is required");
+  const details = await call("getTransactionDetailsRequest", { transId: paymentId });
+  const transaction = details.transaction;
+  if (!transaction) throw new Error(transactionError(details));
+  const settled = transaction.transactionStatus === "settledSuccessfully";
+  if (!settled) {
+    const voided = await cancelPaymentFunction({ paymentId, idempotencyKey });
+    return { ...voided, status: voided.status === "canceled" ? "refunded" : voided.status, amount: cents(transaction.authAmount), currency: "USD", method: "void" };
+  }
+  const refundAmount = amount ?? cents(transaction.settleAmount);
+  const result = await call(
+    "createTransactionRequest",
+    {
+      transactionRequest: {
+        transactionType: "refundTransaction",
+        amount: dollars(refundAmount),
+        payment: { creditCard: { cardNumber: String(transaction.payment?.creditCard?.cardNumber || "").slice(-4), expirationDate: "XXXX" } },
+        refTransId: paymentId
+      }
+    },
+    idempotencyKey || `refund${paymentId}`
+  );
+  const tx = result.transactionResponse;
+  const ok = result.messages?.resultCode === "Ok" && tx?.responseCode === "1";
+  return { status: ok ? "refunded" : "unknown", amount: refundAmount, currency: currency || "USD", data: tx, error: ok ? void 0 : transactionError(result), method: "refund" };
+}
+async function getPaymentStatusFunction({ paymentId }) {
+  if (!paymentId) throw new Error("Payment reference is required");
+  const result = await call("getTransactionDetailsRequest", { transId: paymentId });
+  const transaction = result.transaction;
+  if (!transaction) return { status: "unknown", error: transactionError(result) };
+  const status3 = mapTransactionStatus(transaction.transactionStatus);
+  const amount = status3 === "authorized" ? cents(transaction.authAmount) : cents(transaction.settleAmount || transaction.authAmount);
+  return {
+    status: status3,
+    amount,
+    currency: "USD",
+    data: { transId: transaction.transId, transactionStatus: transaction.transactionStatus, authAmount: transaction.authAmount, settleAmount: transaction.settleAmount }
+  };
+}
+async function generatePaymentLinkFunction({ paymentId }) {
+  if (!isProduction()) return `authorizenet:transaction:${encodeURIComponent(paymentId || "")}`;
+  return `https://account.authorize.net/ui/themes/anet/Transaction/TransactionReceipt.aspx?transid=${encodeURIComponent(paymentId || "")}`;
+}
+async function handleWebhookFunction({ rawBody, headers = {} }) {
+  const signatureKey = process.env.AUTHORIZENET_SIGNATURE_KEY;
+  if (!signatureKey) throw new Error("Authorize.net webhook signature key is not configured");
+  if (!rawBody) throw new Error("Raw webhook body is required");
+  const supplied = String(headers["x-anet-signature"] || "").toLowerCase();
+  const expected = `sha512=${(0, import_node_crypto13.createHmac)("sha512", signatureKey).update(rawBody).digest("hex")}`;
+  const a = Buffer.from(supplied);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !(0, import_node_crypto13.timingSafeEqual)(a, b)) throw new Error("Webhook signature verification failed");
+  const event = JSON.parse(rawBody);
+  return { isValid: true, event: { ...event, id: event.notificationId }, type: String(event.eventType || ""), resource: event.payload || {} };
+}
+var import_node_crypto13, isProduction, endpoint, ref, dollars, cents, STATUS;
+var init_authorizenet = __esm({
+  "features/integrations/payment/authorizenet.ts"() {
+    "use strict";
+    import_node_crypto13 = require("node:crypto");
+    isProduction = () => process.env.AUTHORIZENET_ENV === "production";
+    endpoint = () => isProduction() ? "https://api.authorize.net/xml/v1/request.api" : "https://apitest.authorize.net/xml/v1/request.api";
+    ref = (value) => value.replace(/[^A-Za-z0-9-]/g, "").slice(-20);
+    dollars = (minor2) => (minor2 / 100).toFixed(2);
+    cents = (value) => Math.round(Number(value) * 100);
+    STATUS = {
+      authorizedPendingCapture: "authorized",
+      capturedPendingSettlement: "succeeded",
+      settledSuccessfully: "succeeded",
+      refundPendingSettlement: "refunded",
+      refundSettledSuccessfully: "refunded",
+      voided: "canceled",
+      declined: "failed",
+      expired: "failed",
+      failedReview: "failed",
+      generalError: "failed",
+      settlementError: "failed",
+      communicationError: "unknown",
+      underReview: "unknown",
+      FDSPendingReview: "unknown",
+      FDSAuthorizedPendingReview: "unknown"
+    };
+  }
+});
+
+// features/integrations/payment/stripe.ts
+var stripe_exports = {};
+__export(stripe_exports, {
+  STRIPE_PAYMENT_METHOD_DESCRIPTOR: () => STRIPE_PAYMENT_METHOD_DESCRIPTOR,
+  capturePaymentFunction: () => capturePaymentFunction2,
+  createPaymentFunction: () => createPaymentFunction2,
+  generatePaymentLinkFunction: () => generatePaymentLinkFunction2,
+  getPaymentStatusFunction: () => getPaymentStatusFunction2,
+  handleWebhookFunction: () => handleWebhookFunction2,
+  refundPaymentFunction: () => refundPaymentFunction2,
+  stripePublishableKey: () => stripePublishableKey
+});
+function shape(intent) {
+  return {
+    status: STATUS2[intent.status] ?? "pending",
+    paymentIntentId: intent.id,
+    amount: intent.amount_received || intent.amount,
+    currency: intent.currency.toUpperCase(),
+    data: { id: intent.id, status: intent.status, lastError: intent.last_payment_error?.code ?? null }
+  };
+}
+async function createPaymentFunction2({ amount, currency, idempotencyKey, opaqueData, captureNow = true }) {
+  if (!amount || amount <= 0 || !currency) throw new Error("Stripe payment amount and currency are required");
+  if (!idempotencyKey) throw new Error("Stripe payment requires an idempotency key");
+  if (opaqueData?.dataDescriptor !== STRIPE_PAYMENT_METHOD_DESCRIPTOR || !/^pm_[A-Za-z0-9_]{6,}$/.test(opaqueData.dataValue)) {
+    return { status: "failed", paymentIntentId: "", data: { error: "PAYMENT_METHOD_REQUIRED" } };
+  }
+  const stripe = client();
+  try {
+    const intent = await stripe.paymentIntents.create(
+      {
+        amount,
+        currency: currency.toLowerCase(),
+        payment_method: opaqueData.dataValue,
+        confirm: true,
+        capture_method: captureNow ? "automatic" : "manual",
+        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+        metadata: { idempotency_key: keyMetadata(idempotencyKey) }
+      },
+      { idempotencyKey: `sportsbook:${idempotencyKey}`.slice(0, 255) }
+    );
+    return shape(intent);
+  } catch (error) {
+    if (error instanceof import_stripe.default.errors.StripeCardError) {
+      return { status: "failed", paymentIntentId: error.payment_intent?.id ?? "", data: { error: error.code ?? "card_declined" } };
+    }
+    throw error;
+  }
+}
+async function getPaymentStatusFunction2({ paymentId }) {
+  if (!paymentId) throw new Error("Stripe status lookup requires the attempt key");
+  const stripe = client();
+  if (/^pi_[A-Za-z0-9]+$/.test(paymentId)) return shape(await stripe.paymentIntents.retrieve(paymentId));
+  const found = await stripe.paymentIntents.search({ query: `metadata['idempotency_key']:'${keyMetadata(paymentId).replace(/'/g, "\\'")}'`, limit: 1 });
+  const intent = found.data[0];
+  if (!intent) return { status: "pending", paymentIntentId: "", data: { error: "NOT_FOUND_YET" } };
+  return shape(intent);
+}
+async function capturePaymentFunction2({ paymentId, amount, idempotencyKey }) {
+  if (!paymentId) throw new Error("Stripe capture requires a PaymentIntent id");
+  const intent = await client().paymentIntents.capture(paymentId, amount ? { amount_to_capture: amount } : {}, idempotencyKey ? { idempotencyKey } : void 0);
+  return shape(intent);
+}
+async function refundPaymentFunction2({ paymentId, amount, idempotencyKey }) {
+  if (!paymentId) throw new Error("Stripe refund requires a PaymentIntent id");
+  const refund = await client().refunds.create({ payment_intent: paymentId, ...amount ? { amount } : {} }, idempotencyKey ? { idempotencyKey: `refund:${idempotencyKey}`.slice(0, 255) } : void 0);
+  return {
+    status: refund.status === "succeeded" ? "refunded" : refund.status === "failed" || refund.status === "canceled" ? "failed" : "pending",
+    amount: refund.amount,
+    currency: refund.currency.toUpperCase(),
+    method: "refund",
+    data: { transId: refund.id }
+  };
+}
+async function generatePaymentLinkFunction2({ paymentId }) {
+  const live = (process.env.STRIPE_SECRET_KEY ?? "").startsWith("sk_live_");
+  return `https://dashboard.stripe.com/${live ? "" : "test/"}payments/${paymentId}`;
+}
+async function handleWebhookFunction2({ rawBody, headers }) {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) throw new Error("Stripe webhook secret is not configured");
+  if (!rawBody) throw new Error("Raw webhook body is required");
+  const event = client().webhooks.constructEvent(rawBody, headers?.["stripe-signature"] ?? "", secret);
+  return { isValid: true, event, type: event.type, resource: event.data.object };
+}
+function stripePublishableKey() {
+  const key2 = process.env.NEXT_PUBLIC_STRIPE_KEY || process.env.STRIPE_PUBLISHABLE_KEY || "";
+  return /^pk_(test|live)_/.test(key2) ? key2 : "";
+}
+var import_stripe, STRIPE_PAYMENT_METHOD_DESCRIPTOR, client, keyMetadata, STATUS2;
+var init_stripe = __esm({
+  "features/integrations/payment/stripe.ts"() {
+    "use strict";
+    import_stripe = __toESM(require("stripe"));
+    STRIPE_PAYMENT_METHOD_DESCRIPTOR = "stripe.payment_method";
+    client = () => {
+      const key2 = process.env.STRIPE_SECRET_KEY;
+      if (!key2) throw new Error("Stripe secret key is not configured");
+      return new import_stripe.default(key2, { apiVersion: "2025-08-27.basil", maxNetworkRetries: 2, timeout: 3e4 });
+    };
+    keyMetadata = (idempotencyKey) => idempotencyKey.slice(0, 255);
+    STATUS2 = {
+      succeeded: "succeeded",
+      canceled: "failed",
+      requires_payment_method: "failed",
+      processing: "pending",
+      requires_action: "pending",
+      requires_confirmation: "pending",
+      requires_capture: "authorized"
+    };
+  }
+});
+
+// features/integrations/payment/manual.ts
+var manual_exports = {};
+__export(manual_exports, {
+  capturePaymentFunction: () => capturePaymentFunction3,
+  createPaymentFunction: () => createPaymentFunction3,
+  generatePaymentLinkFunction: () => generatePaymentLinkFunction3,
+  getPaymentStatusFunction: () => getPaymentStatusFunction3,
+  handleWebhookFunction: () => handleWebhookFunction3,
+  refundPaymentFunction: () => refundPaymentFunction3
+});
+async function createPaymentFunction3(input) {
+  if (!Number.isSafeInteger(input.amount) || (input.amount ?? 0) <= 0) throw new Error("Invalid payment amount");
+  return { status: "pending", amount: input.amount, currency: input.currency ?? "USD", paymentIntentId: input.idempotencyKey ?? "" };
+}
+async function capturePaymentFunction3(input) {
+  return { status: "succeeded", paymentIntentId: input.paymentId, amount: input.amount, currency: input.currency ?? "USD" };
+}
+async function refundPaymentFunction3(input) {
+  return { status: "unknown", paymentIntentId: input.paymentId, amount: input.amount, currency: input.currency ?? "USD" };
+}
+async function getPaymentStatusFunction3(input) {
+  return { status: "unknown", paymentIntentId: input.paymentId };
+}
+async function generatePaymentLinkFunction3(input) {
+  return { status: "pending", paymentIntentId: input.paymentId };
+}
+async function handleWebhookFunction3() {
+  return { isValid: false };
+}
+var init_manual = __esm({
+  "features/integrations/payment/manual.ts"() {
+    "use strict";
+  }
+});
+
+// features/integrations/payment/index.ts
+var paymentProviderAdapters;
+var init_payment = __esm({
+  "features/integrations/payment/index.ts"() {
+    "use strict";
+    paymentProviderAdapters = {
+      authorizenet: () => Promise.resolve().then(() => (init_authorizenet(), authorizenet_exports)),
+      stripe: () => Promise.resolve().then(() => (init_stripe(), stripe_exports)),
+      manual: () => Promise.resolve().then(() => (init_manual(), manual_exports))
+    };
+  }
+});
+
+// features/keystone/utils/paymentProviderAdapter.ts
+async function refundPaymentProvider(provider, reference, amountMinor, idempotencyKey) {
+  if (provider.status !== "ACTIVE") throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
+  if (provider.adapterId === "manual") return { status: "SUCCEEDED", externalRef: `cash-return:${reference || idempotencyKey}`, method: "cash" };
+  if (provider.adapterId !== "authorizenet" && provider.adapterId !== "stripe" || !reference) throw new Error("PAYMENT_ADAPTER_UNSUPPORTED");
+  const adapter = await paymentProviderAdapters[provider.adapterId]();
+  const result = await adapter.refundPaymentFunction({ paymentId: reference, amount: Number(amountMinor), currency: "USD", idempotencyKey });
+  if (result.status === "refunded") return { status: "SUCCEEDED", externalRef: String(result.data?.transId && result.data.transId !== "0" ? result.data.transId : reference), method: result.method };
+  return { status: result.status === "failed" ? "FAILED" : "UNKNOWN", externalRef: "" };
+}
+var init_paymentProviderAdapter = __esm({
+  "features/keystone/utils/paymentProviderAdapter.ts"() {
+    "use strict";
+    init_payment();
+  }
+});
+
+// features/sportsbook/customer/funding.ts
+async function lockedProjection(tx, tenantId, accountId) {
+  const current = await tx.balanceProjection.findFirst({ where: { tenantId, accountId }, orderBy: { version: "desc" } });
+  if (!current) return null;
+  await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${current.id} FOR UPDATE`;
+  return tx.balanceProjection.findFirst({ where: { tenantId, accountId }, orderBy: { version: "desc" } });
+}
+async function applyPaymentOutcome(tx, current, outcome, now) {
+  const tenantId = current.tenantId;
+  const amountMinor = BigInt(current.amountMinor);
+  const [cash, clearing] = await Promise.all([
+    tx.ledgerAccount.findFirst({ where: { tenantId, playerId: current.playerId, key: "PLAYER_CASH", currency: current.currency } }),
+    tx.ledgerAccount.findFirst({ where: { tenantId, playerId: null, key: "PAYMENT_CLEARING", currency: current.currency } })
+  ]);
+  if (!cash || !clearing) throw new Error("PAYMENT_LEDGER_UNAVAILABLE");
+  let status3 = outcome.status;
+  if (outcome.status === "SUCCEEDED") {
+    const deposit = current.type === "DEPOSIT";
+    const journalKey = !deposit && isCustomerOrigin(current) ? `withdrawal:${current.idempotencyKey}` : `payment:${current.idempotencyKey}`;
+    if (await tx.journalTransaction.findFirst({ where: { tenantId, idempotencyKey: journalKey } })) throw new Error("JOURNAL_ALREADY_POSTED");
+    const journal = await tx.journalTransaction.create({ data: { tenantId, type: deposit ? "DEPOSIT" : "WITHDRAWAL", idempotencyKey: journalKey, correlationId: current.id, status: "POSTED", effectiveAt: now } });
+    await tx.journalEntry.createMany({ data: [
+      { tenantId, transactionId: journal.id, accountId: clearing.id, side: deposit ? "DEBIT" : "CREDIT", amountMinor: current.amountMinor, currency: current.currency },
+      { tenantId, transactionId: journal.id, accountId: cash.id, side: deposit ? "CREDIT" : "DEBIT", amountMinor: current.amountMinor, currency: current.currency }
+    ] });
+    if (!deposit) {
+      const captured = await tx.hold.updateMany({ where: { id: current.holdId ?? "", tenantId, status: "ACTIVE" }, data: { status: "CAPTURED", version: { increment: 1 } } });
+      if (captured.count !== 1) throw new Error("WITHDRAWAL_HOLD_NOT_ACTIVE");
+    }
+    const projection = await lockedProjection(tx, tenantId, cash.id);
+    if (!projection) throw new Error("PAYMENT_LEDGER_UNAVAILABLE");
+    await tx.balanceProjection.create({ data: { tenantId, accountId: cash.id, ...nextProjection(projection, deposit ? postedChange(amountMinor) : captureChange(amountMinor), now) } });
+  } else if (outcome.status === "FAILED") {
+    if (current.type === "WITHDRAWAL" && current.holdId) {
+      const released = await tx.hold.updateMany({ where: { id: current.holdId, tenantId, status: "ACTIVE" }, data: { status: "RELEASED", version: { increment: 1 } } });
+      if (released.count === 1) {
+        const projection = await lockedProjection(tx, tenantId, cash.id);
+        if (!projection) throw new Error("PAYMENT_LEDGER_UNAVAILABLE");
+        await tx.balanceProjection.create({ data: { tenantId, accountId: cash.id, ...nextProjection(projection, releaseChange(amountMinor), now) } });
+      }
+    }
+  } else {
+    status3 = outcome.status === "PROCESSING" ? "PROCESSING" : "UNKNOWN";
+  }
+  const definitive = status3 === "SUCCEEDED" || status3 === "FAILED";
+  const intent = await tx.paymentIntent.update({ where: { id: current.id }, data: { status: status3, completedAt: definitive ? now : null, ...outcome.externalRef ? { providerSessionReference: outcome.externalRef } : {} } });
+  const attempt = await tx.paymentAttempt.findFirst({ where: { tenantId, paymentIntentId: current.id }, orderBy: { attempt: "desc" } });
+  if (attempt) await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: status3 === "PROCESSING" ? "PENDING" : status3, reasonCode: outcome.reasonCode, ...outcome.externalRef ? { externalReference: outcome.externalRef } : {} } });
+  return { status: status3, intent };
+}
+var isCustomerOrigin;
+var init_funding = __esm({
+  "features/sportsbook/customer/funding.ts"() {
+    "use strict";
+    init_paymentProviderAdapter();
+    init_auth();
+    init_errors();
+    init_transaction();
+    init_audit();
+    init_currency();
+    init_balance();
+    init_idempotency();
+    isCustomerOrigin = (intent) => /^customer(-withdrawal)?:/.test(String(intent.idempotencyKey ?? ""));
+  }
+});
 
 // features/keystone/mutations/sportsbook-checkout.ts
-init_ledger();
-init_balance();
-init_paymentProviderAdapter();
-init_approval_control();
-init_funding();
-init_sportsbook();
-var graphql4 = String.raw;
-var sportsbookCheckoutTypeDefs = graphql4`
+async function lockedProjection2(tx, tenantId, accountId) {
+  const current = await tx.balanceProjection.findFirst({ where: { tenantId, accountId }, orderBy: { version: "desc" } });
+  if (!current) throw new Error("WALLET_UNAVAILABLE");
+  await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${current.id} FOR UPDATE`;
+  return tx.balanceProjection.findFirst({ where: { tenantId, accountId }, orderBy: { version: "desc" } });
+}
+var graphql4, sportsbookCheckoutTypeDefs, reasonOf2, journalOf, sportsbookCheckoutResolvers;
+var init_sportsbook_checkout = __esm({
+  "features/keystone/mutations/sportsbook-checkout.ts"() {
+    "use strict";
+    init_ledger();
+    init_balance();
+    init_paymentProviderAdapter();
+    init_approval_control();
+    init_funding();
+    init_sportsbook();
+    graphql4 = String.raw;
+    sportsbookCheckoutTypeDefs = graphql4`
   extend type Mutation {
     voidWager(wagerId: ID!, reason: String!): ID!
     refundDeposit(paymentId: ID!, reason: String!): ID!
@@ -6056,171 +6270,166 @@ var sportsbookCheckoutTypeDefs = graphql4`
     rejectCageDeposit(reference: String!, reason: String!): ID!
   }
 `;
-var reasonOf2 = (value) => {
-  const reason = String(value ?? "").trim();
-  if (reason.length < 3 || reason.length > 500) throw new Error("REASON_REQUIRED");
-  return reason;
-};
-async function lockedProjection2(tx, tenantId, accountId) {
-  const current = await tx.balanceProjection.findFirst({ where: { tenantId, accountId }, orderBy: { version: "desc" } });
-  if (!current) throw new Error("WALLET_UNAVAILABLE");
-  await tx.$queryRaw`SELECT id FROM "BalanceProjection" WHERE id = ${current.id} FOR UPDATE`;
-  return tx.balanceProjection.findFirst({ where: { tenantId, accountId }, orderBy: { version: "desc" } });
-}
-var journalOf = (row) => ({
-  idempotencyKey: row.idempotencyKey,
-  type: row.type,
-  entries: row.from_JournalEntry_transaction.map((entry) => ({ accountId: entry.accountId, currency: entry.currency, side: entry.side, amount: BigInt(entry.amountMinor) }))
-});
-var sportsbookCheckoutResolvers = {
-  Mutation: {
-    voidWager: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageRisk");
-      const reason = reasonOf2(a.reason);
-      return serializable2(context.prisma, async (tx) => {
-        const actorId = await assertCurrentActor(tx, context, tenantId, "canManageRisk");
-        await lockWagerForSettlement(tx, tenantId, a.wagerId);
-        const wager = await tx.wager.findFirst({ where: { id: a.wagerId, tenantId } });
-        if (!wager) throw new Error("Not found");
-        if (wager.status === "VOID") return wager.id;
-        if (!["ACCEPTED", "OPEN"].includes(String(wager.status))) throw new Error("WAGER_NOT_VOIDABLE");
-        if (wager.bonusAwardId) throw new Error("BONUS_WAGER_VOID_UNSUPPORTED");
-        if (await tx.settlement.findFirst({ where: { tenantId, wagerId: wager.id } })) throw new Error("WAGER_ALREADY_SETTLED");
-        const stakeJournal = await tx.journalTransaction.findFirst({ where: { tenantId, correlationId: wager.id, type: "WAGER_STAKE" }, include: { from_JournalEntry_transaction: true } });
-        if (!stakeJournal) throw new Error("STAKE_JOURNAL_NOT_FOUND");
-        const original = journalOf(stakeJournal);
-        const cashEntry = original.entries.find((entry) => entry.side === "DEBIT");
-        if (!cashEntry) throw new Error("STAKE_JOURNAL_NOT_FOUND");
-        const stake = BigInt(wager.stakeMinor);
-        const now = /* @__PURE__ */ new Date();
-        await postJournal(tx, tenantId, reverseJournal(original, `void:${wager.id}`), wager.id);
-        const projection = await lockedProjection2(tx, tenantId, cashEntry.accountId);
-        await tx.balanceProjection.create({ data: { tenantId, accountId: cashEntry.accountId, ...nextProjection(projection, postedChange(stake), now) } });
-        await tx.hold.updateMany({ where: { tenantId, purposeType: "WAGER", purposeId: wager.id }, data: { status: "RELEASED", version: { increment: 1 } } });
-        const allocations = await tx.wagerExposureAllocation.findMany({ where: { tenantId, wagerId: wager.id } });
-        for (const allocation of allocations) {
-          const position = await tx.exposurePosition.findFirst({ where: { tenantId, scopeType: "MARKET", scopeId: allocation.marketId, currency: wager.currency } });
-          if (position) {
-            const less = (value, by) => {
-              const next = BigInt(value) - BigInt(by);
-              return String(next < 0n ? 0n : next);
-            };
-            await tx.exposurePosition.update({ where: { id: position.id }, data: { stakeMinor: less(position.stakeMinor, allocation.remainingStakeMinor), liabilityMinor: less(position.liabilityMinor, allocation.remainingLiabilityMinor), version: { increment: 1 }, asOf: now } });
+    reasonOf2 = (value) => {
+      const reason = String(value ?? "").trim();
+      if (reason.length < 3 || reason.length > 500) throw new Error("REASON_REQUIRED");
+      return reason;
+    };
+    journalOf = (row) => ({
+      idempotencyKey: row.idempotencyKey,
+      type: row.type,
+      entries: row.from_JournalEntry_transaction.map((entry) => ({ accountId: entry.accountId, currency: entry.currency, side: entry.side, amount: BigInt(entry.amountMinor) }))
+    });
+    sportsbookCheckoutResolvers = {
+      Mutation: {
+        voidWager: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageRisk");
+          const reason = reasonOf2(a.reason);
+          return serializable2(context.prisma, async (tx) => {
+            const actorId = await assertCurrentActor(tx, context, tenantId, "canManageRisk");
+            await lockWagerForSettlement(tx, tenantId, a.wagerId);
+            const wager = await tx.wager.findFirst({ where: { id: a.wagerId, tenantId } });
+            if (!wager) throw new Error("Not found");
+            if (wager.status === "VOID") return wager.id;
+            if (!["ACCEPTED", "OPEN"].includes(String(wager.status))) throw new Error("WAGER_NOT_VOIDABLE");
+            if (wager.bonusAwardId) throw new Error("BONUS_WAGER_VOID_UNSUPPORTED");
+            if (await tx.settlement.findFirst({ where: { tenantId, wagerId: wager.id } })) throw new Error("WAGER_ALREADY_SETTLED");
+            const stakeJournal = await tx.journalTransaction.findFirst({ where: { tenantId, correlationId: wager.id, type: "WAGER_STAKE" }, include: { from_JournalEntry_transaction: true } });
+            if (!stakeJournal) throw new Error("STAKE_JOURNAL_NOT_FOUND");
+            const original = journalOf(stakeJournal);
+            const cashEntry = original.entries.find((entry) => entry.side === "DEBIT");
+            if (!cashEntry) throw new Error("STAKE_JOURNAL_NOT_FOUND");
+            const stake = BigInt(wager.stakeMinor);
+            const now = /* @__PURE__ */ new Date();
+            await postJournal(tx, tenantId, reverseJournal(original, `void:${wager.id}`), wager.id);
+            const projection = await lockedProjection2(tx, tenantId, cashEntry.accountId);
+            await tx.balanceProjection.create({ data: { tenantId, accountId: cashEntry.accountId, ...nextProjection(projection, postedChange(stake), now) } });
+            await tx.hold.updateMany({ where: { tenantId, purposeType: "WAGER", purposeId: wager.id }, data: { status: "RELEASED", version: { increment: 1 } } });
+            const allocations = await tx.wagerExposureAllocation.findMany({ where: { tenantId, wagerId: wager.id } });
+            for (const allocation of allocations) {
+              const position = await tx.exposurePosition.findFirst({ where: { tenantId, scopeType: "MARKET", scopeId: allocation.marketId, currency: wager.currency } });
+              if (position) {
+                const less = (value, by) => {
+                  const next = BigInt(value) - BigInt(by);
+                  return String(next < 0n ? 0n : next);
+                };
+                await tx.exposurePosition.update({ where: { id: position.id }, data: { stakeMinor: less(position.stakeMinor, allocation.remainingStakeMinor), liabilityMinor: less(position.liabilityMinor, allocation.remainingLiabilityMinor), version: { increment: 1 }, asOf: now } });
+              }
+              await tx.wagerExposureAllocation.update({ where: { id: allocation.id }, data: { remainingStakeMinor: "0", remainingLiabilityMinor: "0", status: "CLOSED", version: { increment: 1 } } });
+            }
+            await tx.wagerPart.updateMany({ where: { tenantId, wagerId: wager.id }, data: { status: "VOID" } });
+            await tx.wager.update({ where: { id: wager.id }, data: { status: "VOID" } });
+            await tx.wagerStatusEvent.create({ data: { tenantId, wagerId: wager.id, fromStatus: String(wager.status), toStatus: "VOID", reasonCode: "OPERATOR_VOID", actorId, effectiveAt: now } });
+            await appendAudit(tx, tenantId, actorId, "wager.voided", "Wager", wager.id, reason, { stakeMinor: wager.stakeMinor, currency: wager.currency, refundedToWallet: true });
+            return wager.id;
+          });
+        },
+        // Cash received at the cage: posts the deposit journal and credits the wallet exactly once.
+        confirmCageDeposit: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageFinance");
+          const reference = String(a.reference ?? "").trim().toUpperCase();
+          if (!/^CG-[A-Z0-9]{6}$/.test(reference)) throw new Error("INVALID_REFERENCE");
+          return serializable2(context.prisma, async (tx) => {
+            const actorId = await assertCurrentActor(tx, context, tenantId, "canManageFinance");
+            const found = await tx.paymentIntent.findFirst({ where: { tenantId, type: "DEPOSIT", providerSessionReference: reference, paymentMethodReference: "cage-cash" } });
+            if (!found) throw new Error("Not found");
+            await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${found.id} AND tenant = ${tenantId} FOR UPDATE`;
+            const intent = await tx.paymentIntent.findFirst({ where: { id: found.id, tenantId } });
+            if (intent.status === "SUCCEEDED") return intent.id;
+            if (intent.status !== "PENDING") throw new Error("DEPOSIT_NOT_PENDING");
+            const result = await applyPaymentOutcome(tx, intent, { status: "SUCCEEDED", externalRef: reference, reasonCode: "CAGE_CASH_RECEIVED" }, /* @__PURE__ */ new Date());
+            await appendAudit(tx, tenantId, actorId, "cage_deposit.confirmed", "PaymentIntent", intent.id, "CASH_RECEIVED", { reference, amountMinor: intent.amountMinor, currency: intent.currency, status: result.status });
+            return intent.id;
+          });
+        },
+        rejectCageDeposit: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageFinance");
+          const reference = String(a.reference ?? "").trim().toUpperCase();
+          const reason = reasonOf2(a.reason);
+          return serializable2(context.prisma, async (tx) => {
+            const actorId = await assertCurrentActor(tx, context, tenantId, "canManageFinance");
+            const found = await tx.paymentIntent.findFirst({ where: { tenantId, type: "DEPOSIT", providerSessionReference: reference, paymentMethodReference: "cage-cash" } });
+            if (!found) throw new Error("Not found");
+            await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${found.id} AND tenant = ${tenantId} FOR UPDATE`;
+            const intent = await tx.paymentIntent.findFirst({ where: { id: found.id, tenantId } });
+            if (intent.status === "FAILED") return intent.id;
+            if (intent.status !== "PENDING") throw new Error("DEPOSIT_NOT_PENDING");
+            await applyPaymentOutcome(tx, intent, { status: "FAILED", externalRef: reference, reasonCode: "CAGE_CASH_NOT_RECEIVED" }, /* @__PURE__ */ new Date());
+            await appendAudit(tx, tenantId, actorId, "cage_deposit.rejected", "PaymentIntent", intent.id, reason, { reference });
+            return intent.id;
+          });
+        },
+        refundDeposit: async (_r, a, context) => {
+          const tenantId = await requireTenant(context, "canManageFinance");
+          const reason = reasonOf2(a.reason);
+          const refundKey = `refund:${a.paymentId}`;
+          const prepared = await serializable2(context.prisma, async (tx) => {
+            const actorId = await assertCurrentActor(tx, context, tenantId, "canManageFinance");
+            await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${a.paymentId} AND tenant = ${tenantId} FOR UPDATE`;
+            const deposit = await tx.paymentIntent.findFirst({ where: { id: a.paymentId, tenantId, type: "DEPOSIT" }, include: { providerConnection: true } });
+            if (!deposit) throw new Error("Not found");
+            const existing = await tx.paymentIntent.findFirst({ where: { tenantId, idempotencyKey: refundKey } });
+            if (existing?.status === "SUCCEEDED") return { done: existing.id };
+            if (deposit.status !== "SUCCEEDED" && !(deposit.status === "CANCELLED" && existing)) throw new Error("DEPOSIT_NOT_REFUNDABLE");
+            if (!deposit.providerConnection || deposit.providerConnection.tenantId !== tenantId) throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
+            const cash = await tx.ledgerAccount.findFirst({ where: { tenantId, playerId: deposit.playerId, key: "PLAYER_CASH", currency: deposit.currency } });
+            if (!cash) throw new Error("WALLET_UNAVAILABLE");
+            const projection = await lockedProjection2(tx, tenantId, cash.id);
+            if (!existing && BigInt(projection.availableMinor) < BigInt(deposit.amountMinor)) throw new Error("INSUFFICIENT_WALLET_FUNDS");
+            const intent = existing ?? await tx.paymentIntent.create({ data: {
+              tenantId,
+              playerId: deposit.playerId,
+              providerConnectionId: deposit.providerConnectionId,
+              type: "REFUND",
+              amountMinor: deposit.amountMinor,
+              feeMinor: "0",
+              currency: deposit.currency,
+              idempotencyKey: refundKey,
+              paymentMethodReference: deposit.paymentMethodReference,
+              providerSessionReference: "",
+              status: "PROCESSING",
+              riskEvidence: { refundOf: deposit.id, reason, actorId }
+            } });
+            return { done: null, depositId: deposit.id, intentId: intent.id, provider: deposit.providerConnection, reference: String(deposit.providerSessionReference ?? ""), amountMinor: String(deposit.amountMinor), currency: String(deposit.currency), actorId };
+          });
+          if (prepared.done) return prepared.done;
+          const p2 = prepared;
+          let outcome = { status: "UNKNOWN", externalRef: "" };
+          try {
+            outcome = await refundPaymentProvider(p2.provider, p2.reference, p2.amountMinor, refundKey);
+          } catch {
           }
-          await tx.wagerExposureAllocation.update({ where: { id: allocation.id }, data: { remainingStakeMinor: "0", remainingLiabilityMinor: "0", status: "CLOSED", version: { increment: 1 } } });
+          if (outcome.status !== "SUCCEEDED") {
+            await context.prisma.paymentIntent.updateMany({ where: { id: p2.intentId, tenantId, status: { in: ["PROCESSING", "PENDING", "UNKNOWN"] } }, data: { status: outcome.status === "FAILED" ? "FAILED" : "UNKNOWN" } });
+            throw new Error("REFUND_NOT_CONFIRMED");
+          }
+          return serializable2(context.prisma, async (tx) => {
+            await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${p2.depositId} AND tenant = ${tenantId} FOR UPDATE`;
+            const refund = await tx.paymentIntent.findFirst({ where: { id: p2.intentId, tenantId } });
+            if (refund?.status === "SUCCEEDED") return refund.id;
+            const depositJournal = await tx.journalTransaction.findFirst({ where: { tenantId, correlationId: p2.depositId, type: "DEPOSIT" }, include: { from_JournalEntry_transaction: true } });
+            if (!depositJournal) throw new Error("DEPOSIT_JOURNAL_NOT_FOUND");
+            const original = journalOf(depositJournal);
+            const cashEntry = original.entries.find((entry) => entry.side === "CREDIT");
+            if (!cashEntry) throw new Error("DEPOSIT_JOURNAL_NOT_FOUND");
+            const now = /* @__PURE__ */ new Date();
+            await postJournal(tx, tenantId, reverseJournal(original, `deposit-refund:${p2.depositId}`), p2.depositId);
+            const projection = await lockedProjection2(tx, tenantId, cashEntry.accountId);
+            if (BigInt(projection.availableMinor) < BigInt(p2.amountMinor)) throw new Error("INSUFFICIENT_WALLET_FUNDS");
+            await tx.balanceProjection.create({ data: { tenantId, accountId: cashEntry.accountId, ...nextProjection(projection, postedChange(-BigInt(p2.amountMinor)), now) } });
+            await tx.paymentIntent.update({ where: { id: p2.intentId }, data: { status: "SUCCEEDED", completedAt: now, providerSessionReference: outcome.externalRef } });
+            await tx.paymentAttempt.create({ data: { tenantId, paymentIntentId: p2.intentId, attempt: 1, externalReference: outcome.externalRef, status: "SUCCEEDED", reasonCode: outcome.method === "void" ? "PROCESSOR_VOID" : "PROCESSOR_REFUND" } });
+            await tx.paymentIntent.update({ where: { id: p2.depositId }, data: { status: "CANCELLED" } });
+            await appendAudit(tx, tenantId, p2.actorId, "deposit.refunded", "PaymentIntent", p2.depositId, reason, { refundIntentId: p2.intentId, amountMinor: p2.amountMinor, currency: p2.currency, externalReference: outcome.externalRef });
+            return p2.intentId;
+          });
         }
-        await tx.wagerPart.updateMany({ where: { tenantId, wagerId: wager.id }, data: { status: "VOID" } });
-        await tx.wager.update({ where: { id: wager.id }, data: { status: "VOID" } });
-        await tx.wagerStatusEvent.create({ data: { tenantId, wagerId: wager.id, fromStatus: String(wager.status), toStatus: "VOID", reasonCode: "OPERATOR_VOID", actorId, effectiveAt: now } });
-        await appendAudit(tx, tenantId, actorId, "wager.voided", "Wager", wager.id, reason, { stakeMinor: wager.stakeMinor, currency: wager.currency, refundedToWallet: true });
-        return wager.id;
-      });
-    },
-    // Cash received at the cage: posts the deposit journal and credits the wallet exactly once.
-    confirmCageDeposit: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageFinance");
-      const reference = String(a.reference ?? "").trim().toUpperCase();
-      if (!/^CG-[A-Z0-9]{6}$/.test(reference)) throw new Error("INVALID_REFERENCE");
-      return serializable2(context.prisma, async (tx) => {
-        const actorId = await assertCurrentActor(tx, context, tenantId, "canManageFinance");
-        const found = await tx.paymentIntent.findFirst({ where: { tenantId, type: "DEPOSIT", providerSessionReference: reference, paymentMethodReference: "cage-cash" } });
-        if (!found) throw new Error("Not found");
-        await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${found.id} AND tenant = ${tenantId} FOR UPDATE`;
-        const intent = await tx.paymentIntent.findFirst({ where: { id: found.id, tenantId } });
-        if (intent.status === "SUCCEEDED") return intent.id;
-        if (intent.status !== "PENDING") throw new Error("DEPOSIT_NOT_PENDING");
-        const result = await applyPaymentOutcome(tx, intent, { status: "SUCCEEDED", externalRef: reference, reasonCode: "CAGE_CASH_RECEIVED" }, /* @__PURE__ */ new Date());
-        await appendAudit(tx, tenantId, actorId, "cage_deposit.confirmed", "PaymentIntent", intent.id, "CASH_RECEIVED", { reference, amountMinor: intent.amountMinor, currency: intent.currency, status: result.status });
-        return intent.id;
-      });
-    },
-    rejectCageDeposit: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageFinance");
-      const reference = String(a.reference ?? "").trim().toUpperCase();
-      const reason = reasonOf2(a.reason);
-      return serializable2(context.prisma, async (tx) => {
-        const actorId = await assertCurrentActor(tx, context, tenantId, "canManageFinance");
-        const found = await tx.paymentIntent.findFirst({ where: { tenantId, type: "DEPOSIT", providerSessionReference: reference, paymentMethodReference: "cage-cash" } });
-        if (!found) throw new Error("Not found");
-        await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${found.id} AND tenant = ${tenantId} FOR UPDATE`;
-        const intent = await tx.paymentIntent.findFirst({ where: { id: found.id, tenantId } });
-        if (intent.status === "FAILED") return intent.id;
-        if (intent.status !== "PENDING") throw new Error("DEPOSIT_NOT_PENDING");
-        await applyPaymentOutcome(tx, intent, { status: "FAILED", externalRef: reference, reasonCode: "CAGE_CASH_NOT_RECEIVED" }, /* @__PURE__ */ new Date());
-        await appendAudit(tx, tenantId, actorId, "cage_deposit.rejected", "PaymentIntent", intent.id, reason, { reference });
-        return intent.id;
-      });
-    },
-    refundDeposit: async (_r, a, context) => {
-      const tenantId = await requireTenant(context, "canManageFinance");
-      const reason = reasonOf2(a.reason);
-      const refundKey = `refund:${a.paymentId}`;
-      const prepared = await serializable2(context.prisma, async (tx) => {
-        const actorId = await assertCurrentActor(tx, context, tenantId, "canManageFinance");
-        await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${a.paymentId} AND tenant = ${tenantId} FOR UPDATE`;
-        const deposit = await tx.paymentIntent.findFirst({ where: { id: a.paymentId, tenantId, type: "DEPOSIT" }, include: { providerConnection: true } });
-        if (!deposit) throw new Error("Not found");
-        const existing = await tx.paymentIntent.findFirst({ where: { tenantId, idempotencyKey: refundKey } });
-        if (existing?.status === "SUCCEEDED") return { done: existing.id };
-        if (deposit.status !== "SUCCEEDED" && !(deposit.status === "CANCELLED" && existing)) throw new Error("DEPOSIT_NOT_REFUNDABLE");
-        if (!deposit.providerConnection || deposit.providerConnection.tenantId !== tenantId) throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
-        const cash = await tx.ledgerAccount.findFirst({ where: { tenantId, playerId: deposit.playerId, key: "PLAYER_CASH", currency: deposit.currency } });
-        if (!cash) throw new Error("WALLET_UNAVAILABLE");
-        const projection = await lockedProjection2(tx, tenantId, cash.id);
-        if (!existing && BigInt(projection.availableMinor) < BigInt(deposit.amountMinor)) throw new Error("INSUFFICIENT_WALLET_FUNDS");
-        const intent = existing ?? await tx.paymentIntent.create({ data: {
-          tenantId,
-          playerId: deposit.playerId,
-          providerConnectionId: deposit.providerConnectionId,
-          type: "REFUND",
-          amountMinor: deposit.amountMinor,
-          feeMinor: "0",
-          currency: deposit.currency,
-          idempotencyKey: refundKey,
-          paymentMethodReference: deposit.paymentMethodReference,
-          providerSessionReference: "",
-          status: "PROCESSING",
-          riskEvidence: { refundOf: deposit.id, reason, actorId }
-        } });
-        return { done: null, depositId: deposit.id, intentId: intent.id, provider: deposit.providerConnection, reference: String(deposit.providerSessionReference ?? ""), amountMinor: String(deposit.amountMinor), currency: String(deposit.currency), actorId };
-      });
-      if (prepared.done) return prepared.done;
-      const p2 = prepared;
-      let outcome = { status: "UNKNOWN", externalRef: "" };
-      try {
-        outcome = await refundPaymentProvider(p2.provider, p2.reference, p2.amountMinor, refundKey);
-      } catch {
       }
-      if (outcome.status !== "SUCCEEDED") {
-        await context.prisma.paymentIntent.updateMany({ where: { id: p2.intentId, tenantId, status: { in: ["PROCESSING", "PENDING", "UNKNOWN"] } }, data: { status: outcome.status === "FAILED" ? "FAILED" : "UNKNOWN" } });
-        throw new Error("REFUND_NOT_CONFIRMED");
-      }
-      return serializable2(context.prisma, async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${p2.depositId} AND tenant = ${tenantId} FOR UPDATE`;
-        const refund = await tx.paymentIntent.findFirst({ where: { id: p2.intentId, tenantId } });
-        if (refund?.status === "SUCCEEDED") return refund.id;
-        const depositJournal = await tx.journalTransaction.findFirst({ where: { tenantId, correlationId: p2.depositId, type: "DEPOSIT" }, include: { from_JournalEntry_transaction: true } });
-        if (!depositJournal) throw new Error("DEPOSIT_JOURNAL_NOT_FOUND");
-        const original = journalOf(depositJournal);
-        const cashEntry = original.entries.find((entry) => entry.side === "CREDIT");
-        if (!cashEntry) throw new Error("DEPOSIT_JOURNAL_NOT_FOUND");
-        const now = /* @__PURE__ */ new Date();
-        await postJournal(tx, tenantId, reverseJournal(original, `deposit-refund:${p2.depositId}`), p2.depositId);
-        const projection = await lockedProjection2(tx, tenantId, cashEntry.accountId);
-        if (BigInt(projection.availableMinor) < BigInt(p2.amountMinor)) throw new Error("INSUFFICIENT_WALLET_FUNDS");
-        await tx.balanceProjection.create({ data: { tenantId, accountId: cashEntry.accountId, ...nextProjection(projection, postedChange(-BigInt(p2.amountMinor)), now) } });
-        await tx.paymentIntent.update({ where: { id: p2.intentId }, data: { status: "SUCCEEDED", completedAt: now, providerSessionReference: outcome.externalRef } });
-        await tx.paymentAttempt.create({ data: { tenantId, paymentIntentId: p2.intentId, attempt: 1, externalReference: outcome.externalRef, status: "SUCCEEDED", reasonCode: outcome.method === "void" ? "PROCESSOR_VOID" : "PROCESSOR_REFUND" } });
-        await tx.paymentIntent.update({ where: { id: p2.depositId }, data: { status: "CANCELLED" } });
-        await appendAudit(tx, tenantId, p2.actorId, "deposit.refunded", "PaymentIntent", p2.depositId, reason, { refundIntentId: p2.intentId, amountMinor: p2.amountMinor, currency: p2.currency, externalReference: outcome.externalRef });
-        return p2.intentId;
-      });
-    }
+    };
   }
-};
+});
 
 // features/keystone/mutations/index.ts
-var graphql5 = String.raw;
 function extendGraphqlSchema(baseSchema) {
   return (0, import_schema.mergeSchemas)({
     schemas: [baseSchema],
@@ -6239,232 +6448,287 @@ function extendGraphqlSchema(baseSchema) {
     }, sportsbookResolvers, sportsbookFullResolvers, sportsbookCheckoutResolvers]
   });
 }
+var import_schema, graphql5;
+var init_mutations = __esm({
+  "features/keystone/mutations/index.ts"() {
+    "use strict";
+    import_schema = require("@graphql-tools/schema");
+    init_redirectToInit();
+    init_createInitialUser();
+    init_sportsbook();
+    init_sportsbook_full();
+    init_sportsbook_checkout();
+    graphql5 = String.raw;
+  }
+});
 
 // features/keystone/prisma-contract.ts
-var modelAttributes = {
-  Brand: [
-    '@@unique([domain], map: "Brand_domain_uq")'
-  ],
-  BalanceProjection: [
-    '@@unique([tenantId, accountId, version], map: "BalanceProjection_account_version_uq")'
-  ],
-  Hold: [
-    '@@unique([tenantId, purposeType, purposeId], map: "Hold_tenant_purpose_key")'
-  ],
-  InboxMessage: [
-    '@@unique([tenantId, messageKey], map: "InboxMessage_tenant_message_key")'
-  ],
-  JournalTransaction: [
-    '@@unique([tenantId, idempotencyKey], map: "JournalTransaction_tenant_idempotency_key")',
-    '@@unique([tenantId, reversalOfId], map: "JournalTransaction_tenant_reversal_uq")'
-  ],
-  PaymentIntent: [
-    '@@unique([tenantId, idempotencyKey], map: "PaymentIntent_tenant_idempotency_key")'
-  ],
-  PriceSnapshot: [
-    '@@index([selectionId, receivedAt(sort: Desc)], map: "PriceSnapshot_current_idx")',
-    '@@unique([tenantId, selectionId, sequence], map: "PriceSnapshot_selection_sequence_uq")'
-  ],
-  ProviderEntityMapping: [
-    '@@unique([tenantId, providerConnectionId, entityType, externalId], map: "ProviderEntityMapping_external_uq")'
-  ],
-  ResultVersion: [
-    '@@unique([tenantId, eventId, version], map: "ResultVersion_event_version_uq")'
-  ],
-  Settlement: [
-    '@@unique([tenantId, inputHash], map: "Settlement_tenant_input_uq")',
-    '@@unique([tenantId, wagerId, version], map: "Settlement_wager_version_uq")',
-    '@@unique([tenantId, reversalOfId], map: "Settlement_tenant_reversal_uq")'
-  ],
-  Wager: [
-    '@@unique([tenantId, idempotencyKey], map: "Wager_tenant_idempotency_key")'
-  ],
-  WebhookReplay: [
-    '@@unique([providerConnectionId, messageHash], map: "WebhookReplay_connection_hash_uq")'
-  ],
-  LegalEntity: [
-    '@@unique([tenantId, countryCode, registrationReference], map: "LegalEntity_registration_uq")'
-  ],
-  TenantCurrency: [
-    '@@unique([tenantId, currencyId], map: "TenantCurrency_currency_uq")'
-  ],
-  JurisdictionPolicyVersion: [
-    '@@unique([tenantId, jurisdictionId, version], map: "JurisdictionPolicyVersion_scope_version_uq")'
-  ],
-  HouseRuleVersion: [
-    '@@unique([tenantId, name, version], map: "HouseRuleVersion_name_version_uq")'
-  ],
-  FeatureFlag: [
-    '@@unique([tenantId, key, scopeType, scopeId], map: "FeatureFlag_scope_uq")'
-  ],
-  ConfigDefinition: [
-    '@@unique([tenantId, key], map: "ConfigDefinition_key_uq")'
-  ],
-  BrandLocale: [
-    '@@unique([tenantId, brandId, locale, termsVersion], map: "BrandLocale_terms_uq")'
-  ],
-  OperatorChannel: [
-    '@@unique([tenantId, key], map: "OperatorChannel_key_uq")'
-  ],
-  Region: [
-    '@@unique([tenantId, key], map: "Region_key_uq")'
-  ],
-  Season: [
-    '@@unique([tenantId, competitionId, key], map: "Season_competition_key_uq")'
-  ],
-  CompetitionStage: [
-    '@@unique([tenantId, seasonId, key], map: "CompetitionStage_season_key_uq")'
-  ],
-  Venue: [
-    '@@unique([tenantId, key], map: "Venue_key_uq")'
-  ],
-  MarketDefinition: [
-    '@@unique([tenantId, key, version], map: "MarketDefinition_key_version_uq")'
-  ],
-  CorrelationGroup: [
-    '@@unique([tenantId, key, version], map: "CorrelationGroup_key_version_uq")'
-  ],
-  WagerPart: [
-    '@@unique([tenantId, wagerId, partIndex], map: "WagerPart_wager_index_uq")'
-  ],
-  WagerExposureAllocation: [
-    '@@unique([tenantId, wagerId, marketId], map: "WagerExposureAllocation_wager_market_uq")'
-  ],
-  SettlementRun: [
-    '@@unique([tenantId, inputHash], map: "SettlementRun_input_uq")'
-  ],
-  CashOutAcceptance: [
-    '@@unique([tenantId, idempotencyKey], map: "CashOutAcceptance_idempotency_uq")'
-  ],
-  Promotion: [
-    '@@unique([tenantId, key], map: "Promotion_key_uq")'
-  ],
-  PromotionRuleVersion: [
-    '@@unique([tenantId, promotionId, version], map: "PromotionRuleVersion_promotion_version_uq")'
-  ],
-  BonusAward: [
-    '@@unique([tenantId, idempotencyKey], map: "BonusAward_idempotency_uq")'
-  ],
-  BonusTransaction: [
-    '@@unique([tenantId, idempotencyKey], map: "BonusTransaction_idempotency_uq")'
-  ],
-  PromotionRedemption: [
-    '@@unique([tenantId, playerId, promotionId, idempotencyKey], map: "PromotionRedemption_player_key_uq")'
-  ],
-  CustomerFavorite: [
-    '@@unique([tenantId, playerId, targetType, targetId], map: "CustomerFavorite_target_uq")'
-  ],
-  CustomerQuoteLegTerms: [
-    '@@unique([quoteKey, legIndex], map: "CustomerQuoteLegTerms_quote_index_uq")'
-  ],
-  ScreeningHit: [
-    '@@unique([tenantId, providerConnectionId, screeningType, matchToken], map: "ScreeningHit_provider_match_uq")'
-  ],
-  AffiliateAttribution: [
-    '@@unique([tenantId, playerId, campaignReference], map: "AffiliateAttribution_campaign_uq")'
-  ],
-  PamSubjectMapping: [
-    '@@unique([tenantId, providerConnectionId, externalSubjectDigest], map: "PamSubjectMapping_subject_uq")'
-  ],
-  WebhookEndpoint: [
-    '@@unique([tenantId, url], map: "WebhookEndpoint_url_uq")'
-  ],
-  WebhookDelivery: [
-    '@@unique([tenantId, deliveryId], map: "WebhookDelivery_delivery_uq")',
-    '@@index([status, availableAt], map: "WebhookDelivery_claim_idx")'
-  ],
-  IntegrationDeliveryAttempt: [
-    '@@unique([tenantId, deliveryId, attempt], map: "IntegrationDeliveryAttempt_number_uq")'
-  ]
-};
-var fullTenantModels = [
-  "AccessReview",
-  "AccountClosure",
-  "AdapterCertificationRun",
-  "AffiliateAttribution",
-  "AffordabilityAssessment",
-  "BonusAward",
-  "BonusTransaction",
-  "BrandLocale",
-  "CampaignBudget",
-  "CashOutAcceptance",
-  "CompetitionStage",
-  "ConfigDefinition",
-  "CorrelationGroup",
-  "CorrelationRule",
-  "CustomerCredential",
-  "CustomerDevice",
-  "CustomerFavorite",
-  "CustomerPrivacyRequest",
-  "CustomerQuoteLegTerms",
-  "CustomerRecoveryToken",
-  "DataExport",
-  "EventScheduleChange",
-  "FeatureFlag",
-  "FeedHealthSnapshot",
-  "HouseRuleVersion",
-  "IntegrityCase",
-  "JurisdictionPolicyVersion",
-  "LegalEntity",
-  "LedgerAdjustmentRequest",
-  "MarketDefinition",
-  "Notification",
-  "OperatorChannel",
-  "PamSubjectMapping",
-  "PlayerStatement",
-  "Promotion",
-  "PromotionRedemption",
-  "PromotionRuleVersion",
-  "ProviderHealthSample",
-  "Region",
-  "ReportArtifact",
-  "RetentionExecution",
-  "RetentionPolicyVersion",
-  "SafeguardingAccount",
-  "SafeguardingReconciliation",
-  "Season",
-  "SettlementLine",
-  "SettlementRun",
-  "SupportCase",
-  "SupportCaseEvent",
-  "TaxRuleVersion",
-  "TenantCurrency",
-  "TraderOverride",
-  "TradingReplayRun",
-  "Venue",
-  "WagerPart",
-  "WagerExposureAllocation",
-  "ScreeningHit",
-  "WebhookEndpoint",
-  "WebhookDelivery",
-  "IntegrationDeliveryAttempt"
-];
-var requiredRelations = Object.fromEntries(fullTenantModels.map((model) => [model, ["tenant"]]));
-Object.assign(requiredRelations, {
-  CustomerCredential: ["tenant", "player"],
-  CustomerDevice: ["tenant", "player"],
-  CustomerFavorite: ["tenant", "player"],
-  CustomerQuoteLegTerms: ["tenant", "player", "quote"],
-  CustomerRecoveryToken: ["tenant", "player"],
-  WagerPart: ["tenant", "wager"],
-  WagerExposureAllocation: ["tenant", "wager", "market"],
-  SettlementRun: ["tenant", "resultVersion"],
-  SettlementLine: ["tenant", "settlement"],
-  CashOutAcceptance: ["tenant", "offer", "wager", "player", "journalTransaction"],
-  PromotionRuleVersion: ["tenant", "promotion"],
-  CampaignBudget: ["tenant", "promotion"],
-  BonusAward: ["tenant", "promotion", "ruleVersion", "player"],
-  BonusTransaction: ["tenant", "award"],
-  PromotionRedemption: ["tenant", "promotion", "ruleVersion", "player"],
-  SafeguardingReconciliation: ["tenant", "safeguardingAccount"],
-  LedgerAdjustmentRequest: ["tenant", "account", "approvalRequest"],
-  SupportCase: ["tenant", "player"],
-  SupportCaseEvent: ["tenant", "supportCase"],
-  ScreeningHit: ["tenant", "amlCase", "providerConnection"],
-  WebhookDelivery: ["tenant", "endpoint"],
-  IntegrationDeliveryAttempt: ["tenant", "delivery"]
-});
-var retainedStarterModels = String.raw`
+function requireModelRelations(schema, model, fields) {
+  const start = schema.indexOf(`model ${model} {`);
+  if (start < 0) throw new Error(`Prisma contract model is missing: ${model}`);
+  const end = schema.indexOf("\n}", start);
+  if (end < 0) throw new Error(`Prisma contract model is malformed: ${model}`);
+  const block = schema.slice(start, end).split("\n").map((line) => {
+    const trimmed = line.trimStart();
+    for (const field of fields) {
+      if (trimmed.startsWith(`${field} `) && line.includes("?") && line.includes("@relation")) return line.replace("?", "");
+      if (trimmed.startsWith(`${field}Id `) && line.includes("String?")) return line.replace("String?", "String");
+    }
+    return line;
+  }).join("\n");
+  return `${schema.slice(0, start)}${block}${schema.slice(end)}`;
+}
+function addToModel(schema, model, additions) {
+  const start = schema.indexOf(`model ${model} {`);
+  if (start < 0) throw new Error(`Prisma contract model is missing: ${model}`);
+  const end = schema.indexOf("\n}", start);
+  if (end < 0) throw new Error(`Prisma contract model is malformed: ${model}`);
+  const missing = additions.filter((addition) => !schema.slice(start, end).includes(addition));
+  if (!missing.length) return schema;
+  return `${schema.slice(0, end)}
+
+  ${missing.join("\n  ")}${schema.slice(end)}`;
+}
+function extendSportsbookPrismaSchema(input) {
+  let schema = input;
+  for (const [model, fields] of Object.entries(requiredRelations)) schema = requireModelRelations(schema, model, fields);
+  for (const [model, attributes] of Object.entries(modelAttributes)) {
+    schema = addToModel(schema, model, attributes);
+  }
+  schema = addToModel(schema, "User", [
+    'retainedStarterTodos RetainedStarterTodo[] @relation("RetainedStarterTodo_assignedTo")'
+  ]);
+  if (!schema.includes("model RetainedStarterTodo {")) schema += retainedStarterModels;
+  return schema;
+}
+var modelAttributes, fullTenantModels, requiredRelations, retainedStarterModels;
+var init_prisma_contract = __esm({
+  "features/keystone/prisma-contract.ts"() {
+    "use strict";
+    modelAttributes = {
+      Brand: [
+        '@@unique([domain], map: "Brand_domain_uq")'
+      ],
+      BalanceProjection: [
+        '@@unique([tenantId, accountId, version], map: "BalanceProjection_account_version_uq")'
+      ],
+      Hold: [
+        '@@unique([tenantId, purposeType, purposeId], map: "Hold_tenant_purpose_key")'
+      ],
+      InboxMessage: [
+        '@@unique([tenantId, messageKey], map: "InboxMessage_tenant_message_key")'
+      ],
+      JournalTransaction: [
+        '@@unique([tenantId, idempotencyKey], map: "JournalTransaction_tenant_idempotency_key")',
+        '@@unique([tenantId, reversalOfId], map: "JournalTransaction_tenant_reversal_uq")'
+      ],
+      PaymentIntent: [
+        '@@unique([tenantId, idempotencyKey], map: "PaymentIntent_tenant_idempotency_key")'
+      ],
+      PriceSnapshot: [
+        '@@index([selectionId, receivedAt(sort: Desc)], map: "PriceSnapshot_current_idx")',
+        '@@unique([tenantId, selectionId, sequence], map: "PriceSnapshot_selection_sequence_uq")'
+      ],
+      ProviderEntityMapping: [
+        '@@unique([tenantId, providerConnectionId, entityType, externalId], map: "ProviderEntityMapping_external_uq")'
+      ],
+      ResultVersion: [
+        '@@unique([tenantId, eventId, version], map: "ResultVersion_event_version_uq")'
+      ],
+      Settlement: [
+        '@@unique([tenantId, inputHash], map: "Settlement_tenant_input_uq")',
+        '@@unique([tenantId, wagerId, version], map: "Settlement_wager_version_uq")',
+        '@@unique([tenantId, reversalOfId], map: "Settlement_tenant_reversal_uq")'
+      ],
+      Wager: [
+        '@@unique([tenantId, idempotencyKey], map: "Wager_tenant_idempotency_key")'
+      ],
+      WebhookReplay: [
+        '@@unique([providerConnectionId, messageHash], map: "WebhookReplay_connection_hash_uq")'
+      ],
+      LegalEntity: [
+        '@@unique([tenantId, countryCode, registrationReference], map: "LegalEntity_registration_uq")'
+      ],
+      TenantCurrency: [
+        '@@unique([tenantId, currencyId], map: "TenantCurrency_currency_uq")'
+      ],
+      JurisdictionPolicyVersion: [
+        '@@unique([tenantId, jurisdictionId, version], map: "JurisdictionPolicyVersion_scope_version_uq")'
+      ],
+      HouseRuleVersion: [
+        '@@unique([tenantId, name, version], map: "HouseRuleVersion_name_version_uq")'
+      ],
+      FeatureFlag: [
+        '@@unique([tenantId, key, scopeType, scopeId], map: "FeatureFlag_scope_uq")'
+      ],
+      ConfigDefinition: [
+        '@@unique([tenantId, key], map: "ConfigDefinition_key_uq")'
+      ],
+      BrandLocale: [
+        '@@unique([tenantId, brandId, locale, termsVersion], map: "BrandLocale_terms_uq")'
+      ],
+      OperatorChannel: [
+        '@@unique([tenantId, key], map: "OperatorChannel_key_uq")'
+      ],
+      Region: [
+        '@@unique([tenantId, key], map: "Region_key_uq")'
+      ],
+      Season: [
+        '@@unique([tenantId, competitionId, key], map: "Season_competition_key_uq")'
+      ],
+      CompetitionStage: [
+        '@@unique([tenantId, seasonId, key], map: "CompetitionStage_season_key_uq")'
+      ],
+      Venue: [
+        '@@unique([tenantId, key], map: "Venue_key_uq")'
+      ],
+      MarketDefinition: [
+        '@@unique([tenantId, key, version], map: "MarketDefinition_key_version_uq")'
+      ],
+      CorrelationGroup: [
+        '@@unique([tenantId, key, version], map: "CorrelationGroup_key_version_uq")'
+      ],
+      WagerPart: [
+        '@@unique([tenantId, wagerId, partIndex], map: "WagerPart_wager_index_uq")'
+      ],
+      WagerExposureAllocation: [
+        '@@unique([tenantId, wagerId, marketId], map: "WagerExposureAllocation_wager_market_uq")'
+      ],
+      SettlementRun: [
+        '@@unique([tenantId, inputHash], map: "SettlementRun_input_uq")'
+      ],
+      CashOutAcceptance: [
+        '@@unique([tenantId, idempotencyKey], map: "CashOutAcceptance_idempotency_uq")'
+      ],
+      Promotion: [
+        '@@unique([tenantId, key], map: "Promotion_key_uq")'
+      ],
+      PromotionRuleVersion: [
+        '@@unique([tenantId, promotionId, version], map: "PromotionRuleVersion_promotion_version_uq")'
+      ],
+      BonusAward: [
+        '@@unique([tenantId, idempotencyKey], map: "BonusAward_idempotency_uq")'
+      ],
+      BonusTransaction: [
+        '@@unique([tenantId, idempotencyKey], map: "BonusTransaction_idempotency_uq")'
+      ],
+      PromotionRedemption: [
+        '@@unique([tenantId, playerId, promotionId, idempotencyKey], map: "PromotionRedemption_player_key_uq")'
+      ],
+      CustomerFavorite: [
+        '@@unique([tenantId, playerId, targetType, targetId], map: "CustomerFavorite_target_uq")'
+      ],
+      CustomerQuoteLegTerms: [
+        '@@unique([quoteKey, legIndex], map: "CustomerQuoteLegTerms_quote_index_uq")'
+      ],
+      ScreeningHit: [
+        '@@unique([tenantId, providerConnectionId, screeningType, matchToken], map: "ScreeningHit_provider_match_uq")'
+      ],
+      AffiliateAttribution: [
+        '@@unique([tenantId, playerId, campaignReference], map: "AffiliateAttribution_campaign_uq")'
+      ],
+      PamSubjectMapping: [
+        '@@unique([tenantId, providerConnectionId, externalSubjectDigest], map: "PamSubjectMapping_subject_uq")'
+      ],
+      WebhookEndpoint: [
+        '@@unique([tenantId, url], map: "WebhookEndpoint_url_uq")'
+      ],
+      WebhookDelivery: [
+        '@@unique([tenantId, deliveryId], map: "WebhookDelivery_delivery_uq")',
+        '@@index([status, availableAt], map: "WebhookDelivery_claim_idx")'
+      ],
+      IntegrationDeliveryAttempt: [
+        '@@unique([tenantId, deliveryId, attempt], map: "IntegrationDeliveryAttempt_number_uq")'
+      ]
+    };
+    fullTenantModels = [
+      "AccessReview",
+      "AccountClosure",
+      "AdapterCertificationRun",
+      "AffiliateAttribution",
+      "AffordabilityAssessment",
+      "BonusAward",
+      "BonusTransaction",
+      "BrandLocale",
+      "CampaignBudget",
+      "CashOutAcceptance",
+      "CompetitionStage",
+      "ConfigDefinition",
+      "CorrelationGroup",
+      "CorrelationRule",
+      "CustomerCredential",
+      "CustomerDevice",
+      "CustomerFavorite",
+      "CustomerPrivacyRequest",
+      "CustomerQuoteLegTerms",
+      "CustomerRecoveryToken",
+      "DataExport",
+      "EventScheduleChange",
+      "FeatureFlag",
+      "FeedHealthSnapshot",
+      "HouseRuleVersion",
+      "IntegrityCase",
+      "JurisdictionPolicyVersion",
+      "LegalEntity",
+      "LedgerAdjustmentRequest",
+      "MarketDefinition",
+      "Notification",
+      "OperatorChannel",
+      "PamSubjectMapping",
+      "PlayerStatement",
+      "Promotion",
+      "PromotionRedemption",
+      "PromotionRuleVersion",
+      "ProviderHealthSample",
+      "Region",
+      "ReportArtifact",
+      "RetentionExecution",
+      "RetentionPolicyVersion",
+      "SafeguardingAccount",
+      "SafeguardingReconciliation",
+      "Season",
+      "SettlementLine",
+      "SettlementRun",
+      "SupportCase",
+      "SupportCaseEvent",
+      "TaxRuleVersion",
+      "TenantCurrency",
+      "TraderOverride",
+      "TradingReplayRun",
+      "Venue",
+      "WagerPart",
+      "WagerExposureAllocation",
+      "ScreeningHit",
+      "WebhookEndpoint",
+      "WebhookDelivery",
+      "IntegrationDeliveryAttempt"
+    ];
+    requiredRelations = Object.fromEntries(fullTenantModels.map((model) => [model, ["tenant"]]));
+    Object.assign(requiredRelations, {
+      CustomerCredential: ["tenant", "player"],
+      CustomerDevice: ["tenant", "player"],
+      CustomerFavorite: ["tenant", "player"],
+      CustomerQuoteLegTerms: ["tenant", "player", "quote"],
+      CustomerRecoveryToken: ["tenant", "player"],
+      WagerPart: ["tenant", "wager"],
+      WagerExposureAllocation: ["tenant", "wager", "market"],
+      SettlementRun: ["tenant", "resultVersion"],
+      SettlementLine: ["tenant", "settlement"],
+      CashOutAcceptance: ["tenant", "offer", "wager", "player", "journalTransaction"],
+      PromotionRuleVersion: ["tenant", "promotion"],
+      CampaignBudget: ["tenant", "promotion"],
+      BonusAward: ["tenant", "promotion", "ruleVersion", "player"],
+      BonusTransaction: ["tenant", "award"],
+      PromotionRedemption: ["tenant", "promotion", "ruleVersion", "player"],
+      SafeguardingReconciliation: ["tenant", "safeguardingAccount"],
+      LedgerAdjustmentRequest: ["tenant", "account", "approvalRequest"],
+      SupportCase: ["tenant", "player"],
+      SupportCaseEvent: ["tenant", "supportCase"],
+      ScreeningHit: ["tenant", "amlCase", "providerConnection"],
+      WebhookDelivery: ["tenant", "endpoint"],
+      IntegrationDeliveryAttempt: ["tenant", "delivery"]
+    });
+    retainedStarterModels = String.raw`
 // RETAINED UPGRADE DATA ONLY. These tables are not Keystone lists and are not
 // exposed through GraphQL/Admin UI. They remain modeled so Prisma migration
 // generation cannot mistake historical starter data for removable drift.
@@ -6522,90 +6786,54 @@ model RetainedStarterTodoImageLink {
   @@map("_Todo_todoImages")
 }
 `;
-function requireModelRelations(schema, model, fields) {
-  const start = schema.indexOf(`model ${model} {`);
-  if (start < 0) throw new Error(`Prisma contract model is missing: ${model}`);
-  const end = schema.indexOf("\n}", start);
-  if (end < 0) throw new Error(`Prisma contract model is malformed: ${model}`);
-  const block = schema.slice(start, end).split("\n").map((line) => {
-    const trimmed = line.trimStart();
-    for (const field of fields) {
-      if (trimmed.startsWith(`${field} `) && line.includes("?") && line.includes("@relation")) return line.replace("?", "");
-      if (trimmed.startsWith(`${field}Id `) && line.includes("String?")) return line.replace("String?", "String");
-    }
-    return line;
-  }).join("\n");
-  return `${schema.slice(0, start)}${block}${schema.slice(end)}`;
-}
-function addToModel(schema, model, additions) {
-  const start = schema.indexOf(`model ${model} {`);
-  if (start < 0) throw new Error(`Prisma contract model is missing: ${model}`);
-  const end = schema.indexOf("\n}", start);
-  if (end < 0) throw new Error(`Prisma contract model is malformed: ${model}`);
-  const missing = additions.filter((addition) => !schema.slice(start, end).includes(addition));
-  if (!missing.length) return schema;
-  return `${schema.slice(0, end)}
-
-  ${missing.join("\n  ")}${schema.slice(end)}`;
-}
-function extendSportsbookPrismaSchema(input) {
-  let schema = input;
-  for (const [model, fields] of Object.entries(requiredRelations)) schema = requireModelRelations(schema, model, fields);
-  for (const [model, attributes] of Object.entries(modelAttributes)) {
-    schema = addToModel(schema, model, attributes);
   }
-  schema = addToModel(schema, "User", [
-    'retainedStarterTodos RetainedStarterTodo[] @relation("RetainedStarterTodo_assignedTo")'
-  ]);
-  if (!schema.includes("model RetainedStarterTodo {")) schema += retainedStarterModels;
-  return schema;
-}
+});
 
 // features/keystone/index.ts
-init_tenant_scope();
-init_identity_bootstrap();
-
-// features/keystone/database-url.ts
-var POOL_SIZES = { web: 20, worker: 8, feed: 3 };
-function pooledDatabaseUrl(url, role) {
-  if (!url || !/^postgres(ql)?:\/\//.test(url)) return url;
-  const parsed = new URL(url);
-  if (parsed.searchParams.has("connection_limit")) return url;
-  const override = Number(process.env[`DATABASE_POOL_${role.toUpperCase()}`]);
-  parsed.searchParams.set("connection_limit", String(Number.isInteger(override) && override > 0 ? override : POOL_SIZES[role]));
-  return parsed.toString();
-}
-
-// features/keystone/index.ts
-var databaseURL = process.env.DATABASE_URL;
-if (!databaseURL) throw new Error("DATABASE_URL is required");
-var sessionSecret = process.env.SESSION_SECRET;
-if (!sessionSecret || sessionSecret.length < 32) throw new Error("SESSION_SECRET must be at least 32 characters");
-var sessionConfig = {
-  maxAge: 60 * 60 * 24 * 30,
-  secret: sessionSecret
-};
-var baseSession = (0, import_session.statelessSessions)(sessionConfig);
-var sessionStrategy = {
-  ...baseSession,
-  async start(args) {
-    return baseSession.start({ ...args, data: { ...args.data, issuedAt: Date.now() } });
-  },
-  async get(args) {
-    const session = await baseSession.get(args);
-    if (!session?.itemId) return session;
-    const user = await bootstrapOperatorIdentity(args.context.prisma, String(session.itemId));
-    if (!user) return void 0;
-    const resetAt = user.passwordResetRedeemedAt ? new Date(user.passwordResetRedeemedAt).getTime() : 0;
-    if (resetAt && !(Number(session.issuedAt) > resetAt)) return void 0;
-    return session;
-  }
-};
-var { withAuth } = (0, import_auth4.createAuth)({
-  listKey: "User",
-  identityField: "email",
-  secretField: "password",
-  sessionData: `
+var import_auth4, import_core7, import_config, import_session, databaseURL, sessionSecret, sessionConfig, baseSession, sessionStrategy, withAuth, keystone_default;
+var init_keystone = __esm({
+  "features/keystone/index.ts"() {
+    "use strict";
+    import_auth4 = require("@keystone-6/auth");
+    import_core7 = require("@keystone-6/core");
+    import_config = require("dotenv/config");
+    init_models();
+    init_ui_create_access();
+    import_session = require("@keystone-6/core/session");
+    init_mutations();
+    init_prisma_contract();
+    init_tenant_scope();
+    init_identity_bootstrap();
+    init_database_url();
+    databaseURL = process.env.DATABASE_URL;
+    if (!databaseURL) throw new Error("DATABASE_URL is required");
+    sessionSecret = process.env.SESSION_SECRET;
+    if (!sessionSecret || sessionSecret.length < 32) throw new Error("SESSION_SECRET must be at least 32 characters");
+    sessionConfig = {
+      maxAge: 60 * 60 * 24 * 30,
+      secret: sessionSecret
+    };
+    baseSession = (0, import_session.statelessSessions)(sessionConfig);
+    sessionStrategy = {
+      ...baseSession,
+      async start(args) {
+        return baseSession.start({ ...args, data: { ...args.data, issuedAt: Date.now() } });
+      },
+      async get(args) {
+        const session = await baseSession.get(args);
+        if (!session?.itemId) return session;
+        const user = await bootstrapOperatorIdentity(args.context.prisma, String(session.itemId));
+        if (!user) return void 0;
+        const resetAt = user.passwordResetRedeemedAt ? new Date(user.passwordResetRedeemedAt).getTime() : 0;
+        if (resetAt && !(Number(session.issuedAt) > resetAt)) return void 0;
+        return session;
+      }
+    };
+    ({ withAuth } = (0, import_auth4.createAuth)({
+      listKey: "User",
+      identityField: "email",
+      secretField: "password",
+      sessionData: `
     name
     email
     tenant { id }
@@ -6627,26 +6855,34 @@ var { withAuth } = (0, import_auth4.createAuth)({
       canReadAudit
     }
   `
+    }));
+    keystone_default = withAuth(
+      (0, import_core7.config)({
+        db: {
+          provider: "postgresql",
+          url: pooledDatabaseUrl(databaseURL, "web"),
+          extendPrismaSchema: extendSportsbookPrismaSchema,
+          extendPrismaClient: (client2) => tenantScopedPrisma(client2)
+        },
+        lists: withItemViewAwareUi(withDeleteAwareUi(withCreateAwareUi(models))),
+        ui: {
+          isAccessAllowed: ({ session }) => session?.data.role?.canAccessDashboard ?? false
+        },
+        session: sessionStrategy,
+        graphql: {
+          extendGraphqlSchema
+        }
+      })
+    );
+  }
 });
-var keystone_default = withAuth(
-  (0, import_core7.config)({
-    db: {
-      provider: "postgresql",
-      url: pooledDatabaseUrl(databaseURL, "web"),
-      extendPrismaSchema: extendSportsbookPrismaSchema,
-      extendPrismaClient: (client) => tenantScopedPrisma(client)
-    },
-    lists: withItemViewAwareUi(withDeleteAwareUi(withCreateAwareUi(models))),
-    ui: {
-      isAccessAllowed: ({ session }) => session?.data.role?.canAccessDashboard ?? false
-    },
-    session: sessionStrategy,
-    graphql: {
-      extendGraphqlSchema
-    }
-  })
-);
 
 // keystone.ts
+var keystone_exports = {};
+__export(keystone_exports, {
+  default: () => keystone_default2
+});
+module.exports = __toCommonJS(keystone_exports);
+init_keystone();
 var keystone_default2 = keystone_default;
 //# sourceMappingURL=config.js.map

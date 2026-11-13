@@ -1,21 +1,21 @@
 import { cache } from 'react'
 import { headers } from 'next/headers'
 import { keystoneContext } from '@/features/keystone/context'
-import { resolveSandboxBrand, resolveSandboxTenant } from '@/features/sportsbook/api/sandbox-tenant'
+import { resolvePublicBrand, resolvePublicTenant } from '@/features/sportsbook/api/public-tenant'
 import type { StorefrontBrand } from '@/features/storefront/customer/components/StorefrontBrand'
 
 type DisplayBrand = { tenantId: string; name: string; logoIcon: string; logoColor: string }
 
 /**
  * The operator brand this storefront displays. Display only (header, logo, titles, which records a page may
- * show); customer actions keep the customer API's own tenant resolution. Order: the configured sandbox origin,
+ * show); customer actions keep the customer API's own tenant resolution. Order: the public storefront domain,
  * then a brand whose domain is the host being served, then the install's single operator-owned brand.
  */
 export const getStorefrontDisplayBrand = cache(async function (): Promise<DisplayBrand | null> {
   const prisma: any = keystoneContext.prisma
   try {
-    const tenant = await resolveSandboxTenant(prisma)
-    const brand = await resolveSandboxBrand(prisma, tenant.id)
+    const tenant = await resolvePublicTenant(prisma)
+    const brand = await resolvePublicBrand(prisma, tenant.id)
     return { tenantId: tenant.id, name: brand.name, logoIcon: brand.logoIcon, logoColor: brand.logoColor }
   } catch {}
   try {

@@ -33,7 +33,7 @@ export function verifiedInternalIdentity(
 
 /**
  * Identity order: (1) verified internal identity (loopback + valid HMAC), (2) x-real-ip on Railway,
- * (3) the socket. The sportsbook limiter (sandboxRateLimit) keys by player or cookie+user-agent and does
+ * (3) the socket. The sportsbook limiter (customerRateLimit) keys by player or cookie+user-agent and does
  * not call this today; it is here so a future per-IP limiter counts the end user, not loopback.
  */
 export function requestIdentity(

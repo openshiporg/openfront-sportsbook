@@ -1,7 +1,7 @@
 import type { PrismaClient } from '../../keystone/prisma'
 import { assertCurrentCustomerActor, type CustomerActor } from './auth'
 import { appendCustomerAudit } from './audit'
-import { CustomerError, assertSandboxEnabled } from './errors'
+import { CustomerError } from './errors'
 import { claimCustomerCommand, commandResult, finishCustomerCommand, validateIdempotencyKey } from './idempotency'
 import { evidenceHash } from '../domain/engine'
 import { cashOutPortionMillionths, cashOutStakeForPortion, projectCashOutState, remainingStakeByPart } from '../domain/cashout-economics'
@@ -28,7 +28,6 @@ async function eligibleWager(prisma: PrismaClient, actor: CustomerActor, wagerId
 }
 
 export async function requestCustomerCashOut(prisma: PrismaClient, actor: CustomerActor, input: { wagerId: unknown; portionBps?: unknown }) {
-  assertSandboxEnabled()
   const wagerId = String(input.wagerId ?? '')
   const portionBps = parsePortionBps(input.portionBps)
   await assertCurrentCustomerActor(prisma, actor)
@@ -43,7 +42,7 @@ export async function requestCustomerCashOut(prisma: PrismaClient, actor: Custom
   const currentBySelection = new Map<string, (typeof currentSnapshots)[number]>()
   for (const snapshot of currentSnapshots) if (snapshot.selectionId && !currentBySelection.has(snapshot.selectionId)) currentBySelection.set(snapshot.selectionId, snapshot)
   if (legs.some(leg => !currentBySelection.get(leg.selectionKey) || currentBySelection.get(leg.selectionKey)?.status !== 'OPEN')) throw new CustomerError('CASH_OUT_SUSPENDED', 409)
-  // Deterministic sandbox valuation: 85% of the open stake portion, capped by
+  // House valuation rule: 85% of the open stake portion, capped by
   // that portion's contractual maximum return. Production values come from a
   // certified cash-out pricing capability and use the same evidence boundary.
   const grossValue = closedStakeMinor * 85n / 100n
@@ -51,20 +50,19 @@ export async function requestCustomerCashOut(prisma: PrismaClient, actor: Custom
   const amountMinor = grossValue < maxForPortion ? grossValue : maxForPortion
   const feeMinor = closedStakeMinor > amountMinor ? closedStakeMinor - amountMinor : 0n
   const offeredAt = new Date(), expiresAt = new Date(offeredAt.getTime() + OFFER_MS)
-  const valuationInputs = { mode: 'DETERMINISTIC_SANDBOX', wagerId, wagerVersion: wager.version, portionBps, closedStakeMinor: String(closedStakeMinor), contractualReturnMinor: wager.potentialReturnMinor, currentSnapshots: legs.map(leg => ({ selectionId: leg.selectionKey, acceptedSnapshotId: leg.snapshotId, currentSnapshotId: currentBySelection.get(leg.selectionKey)?.id, currentOdds: currentBySelection.get(leg.selectionKey)?.decimalOdds })), marginBasisPoints: 1500, offeredAt }
+  const valuationInputs = { mode: 'HOUSE_RULE_85PCT', wagerId, wagerVersion: wager.version, portionBps, closedStakeMinor: String(closedStakeMinor), contractualReturnMinor: wager.potentialReturnMinor, currentSnapshots: legs.map(leg => ({ selectionId: leg.selectionKey, acceptedSnapshotId: leg.snapshotId, currentSnapshotId: currentBySelection.get(leg.selectionKey)?.id, currentOdds: currentBySelection.get(leg.selectionKey)?.decimalOdds })), marginBasisPoints: 1500, offeredAt }
   const valuationHash = evidenceHash(valuationInputs)
   const offer = await prisma.$transaction(async tx => {
     await assertCurrentCustomerActor(tx, actor, true)
     await tx.cashOutOffer.updateMany({ where: { tenantId: actor.tenantId, wagerId, status: 'OPEN', expiresAt: { lte: offeredAt } }, data: { status: 'EXPIRED' } })
     const row = await tx.cashOutOffer.create({ data: { tenantId: actor.tenantId, wagerId, amountMinor: String(amountMinor), currency: wager.currency, portionNumerator: String(requestedMillionths), portionDenominator: '1000000', feeMinor: String(feeMinor), marginBasisPoints: 1500, valuationInputs, valuationHash, wagerVersion: wager.version, offeredAt, expiresAt, status: 'OPEN' } })
-    await appendCustomerAudit(tx, { tenantId: actor.tenantId, playerId: actor.playerId, action: 'cashout.offered', targetType: 'CashOutOffer', targetId: row.id, reason: 'DETERMINISTIC_SANDBOX_VALUATION', payload: { wagerId, amountMinor: String(amountMinor), portionBps, valuationHash, expiresAt } })
+    await appendCustomerAudit(tx, { tenantId: actor.tenantId, playerId: actor.playerId, action: 'cashout.offered', targetType: 'CashOutOffer', targetId: row.id, reason: 'HOUSE_RULE_VALUATION', payload: { wagerId, amountMinor: String(amountMinor), portionBps, valuationHash, expiresAt } })
     return row
   })
   return { state: 'OFFERED', offerId: offer.id, wagerId, amountMinor: offer.amountMinor, currency: offer.currency, portionNumerator: offer.portionNumerator, portionDenominator: offer.portionDenominator, feeMinor: offer.feeMinor, valuationHash: offer.valuationHash, offeredAt: offer.offeredAt?.toISOString(), expiresAt: offer.expiresAt?.toISOString(), wagerVersion: offer.wagerVersion }
 }
 
 export async function acceptCustomerCashOut(prisma: PrismaClient, actor: CustomerActor, input: { offerId: unknown; idempotencyKey: unknown }) {
-  assertSandboxEnabled()
   const offerId = String(input.offerId ?? '')
   const idempotencyKey = validateIdempotencyKey(input.idempotencyKey)
   const claimed = await claimCustomerCommand(prisma, { tenantId: actor.tenantId, playerId: actor.playerId, type: 'CASH_OUT', idempotencyKey, request: { offerId } })

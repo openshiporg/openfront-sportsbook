@@ -36,12 +36,12 @@ export function OnboardingForm({ resumeInput }: { resumeInput?: SportsbookOnboar
   return <form onSubmit={submit} className="min-w-0 overflow-hidden rounded-xl border bg-card text-card-foreground">
     <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
       <h2 className="text-sm font-semibold"><StatusDot tone={state.hash ? "ok" : state.error ? "alert" : resuming ? "wait" : "info"} />{resuming ? "Resume setup" : "New operator"}</h2>
-      <span className="font-mono text-xs tabular-nums text-muted-foreground">{resuming ? "saved manifest · read-only" : "sandbox"}</span>
+      <span className="font-mono text-xs tabular-nums text-muted-foreground">{resuming ? "saved manifest · read-only" : "new tenant"}</span>
     </header>
     <div className="grid gap-4 p-4 sm:grid-cols-2">{fields.map(([key, label]) => <label key={key} className="min-w-0 text-sm font-medium">{label}<input required readOnly={resuming} value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className={`${inputClass}${key === "slug" || key === "domain" || key === "currency" || key === "jurisdictionCode" || key === "timezone" ? " font-mono" : ""}`} /></label>)}<label className="min-w-0 text-sm font-medium">Currency exponent<input required readOnly={resuming} type="number" min={0} max={6} value={form.currencyExponent} onChange={(event) => setForm({ ...form, currencyExponent: Number.parseInt(event.target.value, 10) })} className={`${inputClass} font-mono tabular-nums`} /><span className="mt-1 block text-xs font-normal text-muted-foreground">0–6 · USD is 2</span></label></div>
     <div className="flex flex-wrap items-center gap-3 border-t px-4 py-3">
       <Track>
-        <Pill type="submit" variant="primary" disabled={state.busy || Boolean(state.hash)}>{state.busy ? "Applying…" : state.hash ? "Configured" : resuming ? "Resume setup" : "Configure sandbox operator"}</Pill>
+        <Pill type="submit" variant="primary" disabled={state.busy || Boolean(state.hash)}>{state.busy ? "Applying…" : state.hash ? "Configured" : resuming ? "Resume setup" : "Configure operator"}</Pill>
         {dirty && !state.busy ? <Pill variant="flat" onClick={() => setForm({ ...baseline })}>Discard changes</Pill> : null}
       </Track>
       {dirty && !state.busy ? <span className="text-xs text-muted-foreground"><StatusDot tone="wait" />Unsaved changes</span> : null}

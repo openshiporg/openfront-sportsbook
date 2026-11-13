@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
 import type { PrismaClient } from '../../keystone/prisma'
-import { resolveSandboxBrand, resolveSandboxTenant } from '../api/sandbox-tenant'
-import { provisionSandboxInTransaction } from '../api/sandbox-domain'
+import { resolvePublicBrand, resolvePublicTenant } from '../api/public-tenant'
+import { provisionCustomerInTransaction } from '../api/customer-provisioning'
 import { evidenceHash } from '../domain/engine'
 import { isRetryableTransactionError, transactionBackoff } from '../domain/transaction'
 import { sendCustomerRecoveryEmail } from '../../keystone/lib/mail'
@@ -13,7 +13,7 @@ import {
   newCustomerToken,
   type CustomerActor,
 } from './auth'
-import { CustomerError, assertSandboxEnabled } from './errors'
+import { CustomerError } from './errors'
 import { resolveTenantCurrency } from './currency'
 
 const derivePassword = (password: string, salt: Buffer, length: number) => new Promise<Buffer>((resolve, reject) => {
@@ -30,8 +30,7 @@ function identitySecret() {
   // (Keystone will not boot without one of at least 32 characters), so a fresh deploy can register customers.
   const session = process.env.SESSION_SECRET
   if (session && session.length >= 32) return createHmac('sha256', session).update('customer-identity:v1').digest('hex')
-  if (process.env.NODE_ENV === 'production') throw new Error('CUSTOMER_IDENTITY_SECRET_REQUIRED')
-  return 'local-sandbox-customer-identity-secret-only'
+  throw new Error('CUSTOMER_IDENTITY_SECRET_REQUIRED')
 }
 
 export function normalizeEmail(value: unknown) {
@@ -58,7 +57,7 @@ async function findTenantCredential(db: any, tenantId: string, email: string) {
 
 /** The operator-published terms revision (BrandLocale) a registering customer must affirmatively accept. */
 export async function resolveCustomerTerms(db: any, tenantId: string) {
-  const brand = await resolveSandboxBrand(db, tenantId)
+  const brand = await resolvePublicBrand(db, tenantId)
   const terms = await db.brandLocale.findFirst({
     where: { tenantId, brandId: brand.id, status: 'ACTIVE', termsVersion: { not: '' }, termsContentHash: { not: '' } },
     orderBy: [{ default: 'desc' }, { createdAt: 'asc' }],
@@ -140,10 +139,9 @@ export async function registerCredentialCustomer(
   request: Request,
   input: { email: unknown; password: unknown; locale?: unknown; timezone?: unknown; marketingConsent?: unknown; acceptedTermsVersion?: unknown; acceptedTermsContentHash?: unknown },
 ) {
-  assertSandboxEnabled()
   const email = normalizeEmail(input.email)
   const password = validateCustomerPassword(input.password, email)
-  const tenant = await resolveSandboxTenant(prisma)
+  const tenant = await resolvePublicTenant(prisma)
   const acceptedTermsVersion = String(input.acceptedTermsVersion ?? '')
   const acceptedTermsContentHash = String(input.acceptedTermsContentHash ?? '')
   if (!acceptedTermsVersion || !acceptedTermsContentHash) throw new CustomerError('TERMS_ACCEPTANCE_REQUIRED', 400)
@@ -160,7 +158,7 @@ export async function registerCredentialCustomer(
   for (let attempt = 0; ; attempt++) {
     try {
       const created = await prisma.$transaction(async tx => {
-        const provisioned = await provisionSandboxInTransaction(tx, subject)
+        const provisioned = await provisionCustomerInTransaction(tx, subject)
         if (provisioned.tenant.id !== tenant.id) throw new CustomerError('ACCOUNT_UNAVAILABLE', 409)
         if (await findTenantCredential(tx, tenant.id, email)) throw new CustomerError('ACCOUNT_EXISTS', 409)
         const terms = await resolveCustomerTerms(tx, tenant.id)
@@ -194,13 +192,12 @@ export async function registerCredentialCustomer(
 }
 
 export async function loginCredentialCustomer(prisma: PrismaClient, request: Request, input: { email: unknown; password: unknown }) {
-  assertSandboxEnabled()
   const email = normalizeEmail(input.email)
   const rawPassword = String(input.password ?? '')
   // Bound input before the memory-hard KDF; registration never accepts more than 128 characters.
   const oversized = rawPassword.length > 128
   const password = oversized ? '' : rawPassword
-  const tenant = await resolveSandboxTenant(prisma)
+  const tenant = await resolvePublicTenant(prisma)
   const credential = await findTenantCredential(prisma, tenant.id, email)
   const now = new Date()
   const scopedCredential = credential && credential.status !== 'CLOSED' ? credential : null
@@ -230,9 +227,8 @@ export async function loginCredentialCustomer(prisma: PrismaClient, request: Req
 }
 
 export async function requestCustomerRecovery(prisma: PrismaClient, input: { email: unknown }) {
-  assertSandboxEnabled()
   const email = normalizeEmail(input.email)
-  const tenant = await resolveSandboxTenant(prisma)
+  const tenant = await resolvePublicTenant(prisma)
   const credential = await findTenantCredential(prisma, tenant.id, email)
   // The response is identical whether or not the account exists, and never carries the
   // recovery credential: only the account's mailbox receives it. Issuance and delivery run
@@ -256,12 +252,11 @@ async function issueCustomerRecovery(prisma: PrismaClient, tenantId: string, cre
 }
 
 export async function completeCustomerRecovery(prisma: PrismaClient, input: { token: unknown; password: unknown }) {
-  assertSandboxEnabled()
   const token = String(input.token ?? '')
   if (!/^[A-Za-z0-9_-]{40,128}$/.test(token)) throw new CustomerError('INVALID_RECOVERY_TOKEN', 400)
   const record = await prisma.customerRecoveryToken.findUnique({ where: { tokenDigest: digestCustomerToken(token) }, include: { player: true } })
   if (!record?.player || record.purpose !== 'RESET_PASSWORD' || record.consumedAt || record.expiresAt <= new Date()) throw new CustomerError('INVALID_RECOVERY_TOKEN', 400)
-  const tenant = await resolveSandboxTenant(prisma)
+  const tenant = await resolvePublicTenant(prisma)
   if (record.tenantId !== tenant.id || record.player.tenantId !== tenant.id) throw new CustomerError('INVALID_RECOVERY_TOKEN', 400)
   const password = validateCustomerPassword(input.password)
   const passwordHash = await hashCustomerPassword(password)

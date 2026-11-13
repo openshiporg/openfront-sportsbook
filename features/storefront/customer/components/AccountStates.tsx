@@ -1,8 +1,8 @@
 'use client'
 
 import { LoaderCircle, RefreshCw } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
-import { customerApi, CustomerApiError, customerMessage } from '../lib/customer-api'
+import type { ReactNode } from 'react'
+import type { CustomerApiError } from '../lib/customer-api'
 import { Dot, Pill, PillLink, PageTitle, Track, type Tone } from './kit'
 
 export function AccountPageHeader({ title, tone, meta, aside }: { title: string; tone?: Tone; meta?: ReactNode; aside?: ReactNode }) {
@@ -15,7 +15,7 @@ export function LoadingPanel({ label = 'Loading' }: { label?: string }) {
   </div>
 }
 
-/** Operator readiness failures are surfaced as normal service errors, not a sandbox-only closed state. */
+/** Operator readiness failures are surfaced as normal service errors. */
 export const isClosedError = (error: CustomerApiError | null | undefined) => Boolean(error && ['OPERATOR_NOT_LICENSED', 'PAYMENTS_NOT_CONFIGURED', 'GEO_BLOCKED'].includes(error.code))
 
 /** Closed state. On the coupon it keeps the coupon's own frame (ruled 1 / X / 2 heads) with one row saying so;
@@ -53,19 +53,6 @@ export function ErrorPanel({ error, retry }: { error: CustomerApiError; retry: (
 }
 
 export function AuthenticationRequired() {
-  const [creating, setCreating] = useState(false)
-  const [error, setError] = useState('')
-  async function createAccount() {
-    setCreating(true)
-    setError('')
-    try {
-      await customerApi('/api/sportsbook/register', { method: 'POST', body: '{}' })
-      window.location.reload()
-    } catch (reason) {
-      setError(customerMessage(reason, 'The account couldn’t be created. Try again.'))
-      setCreating(false)
-    }
-  }
   return <div className="mt-6 overflow-hidden rounded-[2px] bg-sb-card ring-1 ring-sb-line">
     <div className="bg-sb-night px-5 py-5 text-white sm:px-6">
       <p className="font-sb-display text-3xl font-bold uppercase leading-none tracking-wide"><Dot tone="off" className="bg-white/40" />Signed out</p>
@@ -76,11 +63,10 @@ export function AuthenticationRequired() {
         <div className="mt-3"><Track><PillLink href="/account/auth" variant="primary">Sign in or recover</PillLink></Track></div>
       </div>
       <div className="border-t border-sb-line pt-5 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
-        <p className="text-sm font-semibold">Guest account</p>
-        <p className="mt-1 text-xs text-sb-mute">New and separate. Not linked to earlier accounts.</p>
-        <div className="mt-3"><Track><Pill onClick={createAccount} disabled={creating}>{creating ? 'Creating…' : 'Start guest account'}</Pill></Track></div>
+        <p className="text-sm font-semibold">New customer</p>
+        <p className="mt-1 text-xs text-sb-mute">Create an account with your email, then verify your age to bet.</p>
+        <div className="mt-3"><Track><PillLink href="/account/auth">Create account</PillLink></Track></div>
       </div>
     </div>
-    {error && <p role="alert" className="border-t border-sb-line px-5 py-3 text-sm font-medium text-red-800 sm:px-6"><Dot tone="alert" />{error}</p>}
   </div>
 }

@@ -88,7 +88,7 @@ export async function createPaymentFunction({ amount, currency, opaqueData, cart
       acceptJs: {
         apiLoginId: process.env.AUTHORIZENET_API_LOGIN_ID || "",
         clientKey: process.env.NEXT_PUBLIC_AUTHORIZENET_CLIENT_KEY || "",
-        env: isProduction() ? "production" : "sandbox",
+        env: isProduction() ? "production" : "test",
       },
     };
   }
@@ -189,8 +189,9 @@ export async function getPaymentStatusFunction({ paymentId }: Input) {
 }
 
 export async function generatePaymentLinkFunction({ paymentId }: Input) {
-  const host = isProduction() ? "https://account.authorize.net" : "https://sandbox.authorize.net";
-  return `${host}/ui/themes/sandbox/Transaction/TransactionReceipt.aspx?transid=${encodeURIComponent(paymentId || "")}`;
+  // Merchant-interface receipt for the live account; the test account has no public receipt page, so return the reference.
+  if (!isProduction()) return `authorizenet:transaction:${encodeURIComponent(paymentId || "")}`;
+  return `https://account.authorize.net/ui/themes/anet/Transaction/TransactionReceipt.aspx?transid=${encodeURIComponent(paymentId || "")}`;
 }
 
 export async function handleWebhookFunction({ rawBody, headers = {} }: Input) {

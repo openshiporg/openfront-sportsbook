@@ -4,7 +4,7 @@ import { CustomerError } from './errors'
 import { resolveTenantCurrency } from './currency'
 import { bootstrapCustomerSessionTenant } from '../../keystone/identity-bootstrap'
 import { enterTenantScope, runWithTenantScope } from '../../keystone/tenant-scope'
-import { assertOperatorReady } from '../api/sandbox-policy'
+import { assertOperatorReady } from '../api/operator-policy'
 
 export const CUSTOMER_COOKIE = 'openfront_customer'
 export const CUSTOMER_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7

@@ -9,7 +9,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 const root = path.resolve(__dirname, '..');
 
-function sandbox({ env = {}, mocks = {}, stubUnknown = false } = {}) {
+function isolatedModules({ env = {}, stubs = {}, stubUnknown = false } = {}) {
   const cache = new Map();
   function load(relative) {
     const filename = path.resolve(root, relative);
@@ -22,12 +22,12 @@ function sandbox({ env = {}, mocks = {}, stubUnknown = false } = {}) {
     const module = { exports: {} };
     cache.set(filename, module);
     function localRequire(specifier) {
-      if (Object.hasOwn(mocks, specifier)) return mocks[specifier];
+      if (Object.hasOwn(stubs, specifier)) return stubs[specifier];
       const resolved = specifier.startsWith('@/') ? path.join(root, specifier.slice(2))
         : specifier.startsWith('.') ? path.resolve(path.dirname(filename), specifier) : null;
       if (resolved && fs.existsSync(`${resolved}.ts`)) return load(`${resolved}.ts`);
       if (stubUnknown) return new Proxy({}, { get: () => () => null });
-      throw new Error(`Unmocked dependency: ${specifier}`);
+      throw new Error(`Unstubbed dependency: ${specifier}`);
     }
     vm.runInNewContext(output, {
       module, exports: module.exports, require: localRequire,
@@ -41,7 +41,7 @@ function sandbox({ env = {}, mocks = {}, stubUnknown = false } = {}) {
 const plain = value => JSON.parse(JSON.stringify(value));
 
 test('getGraphQLNames never throws when the UI plural label collapses to the list key', () => {
-  const { getGraphQLNames } = sandbox({ mocks: { pluralize: { __esModule: true, default: require('pluralize') } } })
+  const { getGraphQLNames } = isolatedModules({ stubs: { pluralize: { __esModule: true, default: require('pluralize') } } })
     .load('features/dashboard/lib/getGqlNames.ts');
   const shop = getGraphQLNames('ShopSettings', { plural: 'Shop Settings', listQueryName: 'shopSettingsItems' });
   assert.equal(shop.listQueryName, 'shopSettingsItems');
@@ -59,7 +59,7 @@ test('getGraphQLNames never throws when the UI plural label collapses to the lis
 });
 
 test('auth routes match exactly, so look-alike list paths are not treated as public pages', () => {
-  const { isDashboardRoute } = sandbox().load('features/dashboard/lib/authFlow.ts');
+  const { isDashboardRoute } = isolatedModules().load('features/dashboard/lib/authFlow.ts');
   assert.equal(isDashboardRoute('/dashboard/reset', 'reset'), true);
   assert.equal(isDashboardRoute('/dashboard/reset/', 'reset'), true);
   assert.equal(isDashboardRoute('/dashboard/resets', 'reset'), false);
@@ -69,7 +69,7 @@ test('auth routes match exactly, so look-alike list paths are not treated as pub
 });
 
 function middlewareRun({ pathname, user = null, env = {} }) {
-  const { handleDashboardRoutes } = sandbox({ env, mocks: {
+  const { handleDashboardRoutes } = isolatedModules({ env, stubs: {
     'next/server': {
       NextResponse: { redirect: url => ({ redirect: new URL(url).pathname }), next: () => ({ next: true }) },
     },
@@ -90,13 +90,13 @@ test('sign-up is reachable only when public sign-up is open; reset matches only 
   const customer = { id: '2', role: { canAccessDashboard: false } };
   assert.deepEqual(await middlewareRun({ pathname: '/dashboard/no-access', user: customer }), { next: true });
 
-  const flow = sandbox({ env: { PUBLIC_SIGNUPS_ALLOWED: 'false' } }).load('features/dashboard/lib/authFlow.ts');
+  const flow = isolatedModules({ env: { PUBLIC_SIGNUPS_ALLOWED: 'false' } }).load('features/dashboard/lib/authFlow.ts');
   assert.equal(flow.publicSignUpsAllowed(), false);
   assert.equal(flow.publicSignUpsAllowed({ PUBLIC_SIGNUPS_ALLOWED: 'true' }), true);
 });
 
 test('form errors show Keystone validation text, never Prisma, stack or GraphQL internals', () => {
-  const { publicGraphQLErrorMessage, PUBLIC_REQUEST_ERROR } = sandbox().load('features/dashboard/lib/security.ts');
+  const { publicGraphQLErrorMessage, PUBLIC_REQUEST_ERROR } = isolatedModules().load('features/dashboard/lib/security.ts');
   const of = (...errors) => publicGraphQLErrorMessage({ response: { errors } });
   assert.equal(of({ message: 'You provided invalid data for this operation.\n  - User.password: Password must be at least 10 characters long',
     extensions: { code: 'KS_VALIDATION_FAILURE' } }),
@@ -116,7 +116,7 @@ test('form errors show Keystone validation text, never Prisma, stack or GraphQL 
 
 function authActions({ env = {}, response }) {
   const calls = [];
-  const auth = sandbox({ env, mocks: {
+  const auth = isolatedModules({ env, stubs: {
     'next/headers': { cookies: async () => ({ set() {} }) },
     'next/navigation': { redirect() {} },
     'next/cache': { revalidatePath() {} },
@@ -140,7 +140,7 @@ test('first-run setup states the real reason, including the password rule', asyn
 });
 
 test('reset says plainly when no mail transport is configured, without calling Keystone', async () => {
-  const { RESET_EMAIL_UNAVAILABLE } = sandbox().load('features/dashboard/lib/authFlow.ts');
+  const { RESET_EMAIL_UNAVAILABLE } = isolatedModules().load('features/dashboard/lib/authFlow.ts');
   const off = authActions({ response: { success: true, data: { sendUserPasswordResetLink: true } } });
   assert.equal((await off.auth.resetPassword({}, form(), 'request')).message, RESET_EMAIL_UNAVAILABLE);
   assert.equal(off.calls.length, 0);
@@ -153,7 +153,7 @@ test('reset says plainly when no mail transport is configured, without calling K
 });
 
 test('sidebar shows only lists and platform pages the session can see', () => {
-  const access = sandbox().load('features/dashboard/lib/sidebarAccess.ts');
+  const access = isolatedModules().load('features/dashboard/lib/sidebarAccess.ts');
   const lists = [{ path: 'orders', isHidden: false }, { path: 'roles', isHidden: true }, { path: 'users', isHidden: true }];
   const staff = { role: { canAccessDashboard: true } };
   assert.deepEqual(plain(access.visibleSidebarLists(lists, staff)).map(list => list.path), ['orders']);
@@ -168,7 +168,7 @@ test('sidebar shows only lists and platform pages the session can see', () => {
 });
 
 test('formatInZone: viewer zone by default, explicit zone when given, labelled', () => {
-  const t = sandbox().load('features/dashboard/lib/storeTime.ts');
+  const t = isolatedModules().load('features/dashboard/lib/storeTime.ts');
   const d = new Date('2026-11-02T18:00:00Z');
   assert.equal(t.formatInZone(d, 'America/Los_Angeles'), 'Nov 2, 2026, 10:00 AM PST');
   assert.equal(t.formatInZone(d, 'America/New_York'), 'Nov 2, 2026, 1:00 PM EST');
@@ -185,7 +185,7 @@ test('formatInZone: viewer zone by default, explicit zone when given, labelled',
 });
 
 test('timestamp view renders nothing until mounted, then viewer-zone text', () => {
-  const { formatTimestamp } = sandbox({ stubUnknown: true, mocks: { react: require('react') } })
+  const { formatTimestamp } = isolatedModules({ stubUnknown: true, stubs: { react: require('react') } })
     .load('features/dashboard/views/timestamp/index.tsx');
   const d = new Date('2026-11-02T18:00:00Z');
   assert.equal(formatTimestamp(d, undefined, false), '');
@@ -193,7 +193,7 @@ test('timestamp view renders nothing until mounted, then viewer-zone text', () =
 });
 
 test('timestamp picker round-trips in the viewer zone and keeps the same instant', () => {
-  const t = sandbox().load('features/dashboard/lib/storeTime.ts');
+  const t = isolatedModules().load('features/dashboard/lib/storeTime.ts');
   for (const zone of [undefined, 'America/New_York', 'America/Los_Angeles', 'Asia/Kolkata']) {
     for (const iso of ['2026-11-02T15:00:00.000Z', '2026-07-01T14:30:15.000Z', '2026-03-08T07:30:00.000Z', '2026-11-01T05:59:59.000Z']) {
       const d = new Date(iso);

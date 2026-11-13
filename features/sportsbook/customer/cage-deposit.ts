@@ -8,7 +8,7 @@ import { assertCurrentCustomerActor, type CustomerActor } from './auth'
 import { currentGeoApproved, currentKycApproved } from './acceptance-gates'
 import { appendCustomerAudit } from './audit'
 import { resolveTenantCurrency } from './currency'
-import { CustomerError, assertSandboxEnabled } from './errors'
+import { CustomerError } from './errors'
 import { assertDepositLimits, validateFundingAmount } from './funding'
 import { validateIdempotencyKey } from './idempotency'
 
@@ -23,7 +23,6 @@ export async function cageDepositsEnabled(db: any, tenantId: string) {
 }
 
 export async function requestCageDeposit(prisma: PrismaClient, actor: CustomerActor, input: { amountMinor: unknown; idempotencyKey: unknown }): Promise<CageDepositResult> {
-  assertSandboxEnabled()
   const key = validateIdempotencyKey(input.idempotencyKey)
   const currency = await resolveTenantCurrency(prisma, actor.tenantId, 'DEPOSIT')
   const amount = validateFundingAmount(input.amountMinor, currency.exponent)

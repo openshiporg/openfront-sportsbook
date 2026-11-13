@@ -4,11 +4,11 @@
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/openfront-sportsbook)
 
-Openfront Sportsbook is a self-hostable sportsbook development and operator application. Customer screens cover sports, events, markets, betslips, accounts, wallets, and wager history. Operators manage trading, risk, grading, settlement, finance, responsible gaming, compliance, and provider workflows. Sandbox use is not authorization to accept real-money wagers.
+Openfront Sportsbook is a self-hostable sportsbook development and operator application. Customer screens cover sports, events, markets, betslips, accounts, wallets, and wager history. Operators manage trading, risk, grading, settlement, finance, responsible gaming, compliance, and provider workflows. Customers register, verify age and location, deposit by card (Stripe or Authorize.net) or at the retail cage, place single and combination wagers, and are paid out when staff settle. Running a licensed book still requires the operator's own gaming licence and payment processing agreement.
 
 **Documentation:** [docs.openship.org/docs/openfront/sportsbook](https://docs.openship.org/docs/openfront/sportsbook)
 
-## Demo
+## Live site
 
 | | |
 |---|---|
@@ -21,9 +21,9 @@ Openfront Sportsbook is a self-hostable sportsbook development and operator appl
 
 ## The Openfront Ecosystem
 
-Every Openfront is open source and self-hostable. Try any of them on its live demo.
+Every Openfront is open source and self-hostable. Try any of them on its live site.
 
-| Product | For | Repository | Demo | Docs |
+| Product | For | Repository | Live site | Docs |
 |---|---|---|---|---|
 | Openfront E-commerce | Online store: catalog, checkout, orders, fulfillment | [openfront](https://github.com/openshiporg/openfront) | [e-commerce.openship.org](https://e-commerce.openship.org) | [Docs](https://docs.openship.org/docs/openfront/ecommerce) |
 | Openfront Restaurant | Online ordering, POS and kitchen display | [openfront-restaurant](https://github.com/openshiporg/openfront-restaurant) | [restaurant.openship.org](https://restaurant.openship.org) | [Docs](https://docs.openship.org/docs/openfront/restaurant) |
@@ -164,7 +164,7 @@ The [model registry](features/keystone/models/index.ts) and [Prisma schema](sche
 Use a disposable development database for migration generation. Review the script before running it against any existing data.
 
 ### Provider Integration
-The [sportsbook implementation](features/sportsbook) owns provider adapters, durable delivery, recovery, and operational controls. Review [production validation](features/sportsbook/operations/validate-env.ts) before deployment; sandbox settings do not authorize live wagering.
+The [sportsbook implementation](features/sportsbook) owns provider adapters, durable delivery, recovery, and operational controls. Review [production validation](features/sportsbook/operations/validate-env.ts) before deployment.
 
 ## Documentation
 

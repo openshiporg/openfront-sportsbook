@@ -9,6 +9,7 @@ import { Card, Dot, Empty, Notice, Pill, Section, Track, fieldClass, label, tone
 import { amountInputToMinor, customerApi, CustomerApiError, formatDate, formatMinor, minorToAmountInput, shortId, useCustomerResource, useFrozenSubmission, customerMessage } from '../../lib/customer-api'
 import { clearPersistedFundingIntent, fundingRequestInit, loadPersistedFundingIntent, persistFundingIntent, resolveFundingIntent, type FundingIntent } from '../funding-intent'
 import AuthorizeNetCardForm from '../components/authorizenet-card-form'
+import StripeCardForm from '../components/stripe-card-form'
 
 type Statements={statements:Array<{id:string;periodStart:string;periodEnd:string;openingMinor:string;closingMinor:string;currency:string;journalHash:string;artifactReference:string;status:string}>;nextCursor:string|null}
 export function WalletScreen() {
@@ -84,7 +85,7 @@ export function WalletScreen() {
       }
 
       if (intent.action === 'DEPOSIT' && !opaqueData) {
-        setError('Enter your card details and securely tokenize them before adding funds.')
+        setError('Enter your card details and press “Use this card” before adding funds.')
         return
       }
       requestStarted = true
@@ -110,6 +111,7 @@ export function WalletScreen() {
       pendingIntentRef.current = null
       setPendingIntent(null)
       clearPersistedFundingIntent(owner)
+      setOpaqueData(null)
     } catch (reason) {
       if (reason instanceof CustomerApiError && reason.payload.state === 'REJECTED') {
         // A definitive server receipt for this key: nothing was moved, so a new draft is allowed.
@@ -117,6 +119,7 @@ export function WalletScreen() {
         pendingIntentRef.current = null
         setPendingIntent(null)
         clearPersistedFundingIntent(owner)
+        setOpaqueData(null)
         wallet.reload()
         return
       }
@@ -155,10 +158,10 @@ export function WalletScreen() {
           <h2 id="fund-wallet" className="font-sb-display text-2xl font-bold uppercase tracking-wide">{pendingIntent ? <Dot tone="wait" /> : null}Move funds</h2>
           <Track label="Wallet action"><Pill variant="flat" size="sm" onClick={()=>{setAction('DEPOSIT');setStatus('');setError('')}} disabled={funding || Boolean(pendingIntent)} aria-pressed={action==='DEPOSIT'}>Deposit</Pill><Pill variant="flat" size="sm" onClick={()=>{setAction('WITHDRAWAL');setStatus('');setError('')}} disabled={funding || Boolean(pendingIntent)} aria-pressed={action==='WITHDRAWAL'}>Withdraw</Pill></Track>
         </div>
-        {action === 'DEPOSIT' && (wallet.data.card ? <AuthorizeNetCardForm apiLoginId={wallet.data.card.apiLoginId} clientKey={wallet.data.card.clientKey} env={wallet.data.card.env} onToken={setOpaqueData} /> : <p role="status" className="mt-4 text-sm text-sb-mute">Card deposits open soon</p>)}
+        {action === 'DEPOSIT' && wallet.data.card && (wallet.data.card.processor === 'stripe' ? <StripeCardForm publishableKey={wallet.data.card.publishableKey} onToken={setOpaqueData} tokenized={Boolean(opaqueData)} /> : <AuthorizeNetCardForm apiLoginId={wallet.data.card.apiLoginId} clientKey={wallet.data.card.clientKey} env={wallet.data.card.env} onToken={setOpaqueData} />)}
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="min-w-0 flex-1"><label htmlFor="funding-amount" className="mb-1.5 block text-xs font-semibold  text-sb-mute">{(pendingIntent?.action ?? action)==='DEPOSIT'?'Deposit':'Withdrawal'} · {wallet.data.currency}</label><input id="funding-amount" value={pendingIntent?.amountInput ?? amount} onChange={event => { if (new RegExp(exponent > 0 ? `^\\d{0,12}(\\.\\d{0,${exponent}})?$` : '^\\d{0,12}$').test(event.target.value)) setAmount(event.target.value) }} disabled={funding || Boolean(pendingIntent)} placeholder={minorToAmountInput(wallet.data.fundingMinMinor, exponent)} inputMode="decimal" autoComplete="off" aria-describedby="funding-help" className={`${fieldClass} min-h-12 text-right tabular-nums text-xl font-semibold `} /><p id="funding-help" className="mt-1.5 tabular-nums text-xs text-sb-mute">{formatMinor(wallet.data.fundingMinMinor, wallet.data.currency, exponent)} – {formatMinor(wallet.data.fundingMaxMinor, wallet.data.currency, exponent)}</p></div>
-          <Track className="self-start sm:mb-6 sm:self-auto"><Pill variant="primary" size="lg" onClick={fund} disabled={funding || Boolean(pendingIntent) || !enabled}>{funding ? <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <ArrowDownToLine aria-hidden="true" />}{funding ? 'Submitting…' : pendingIntent ? 'Awaiting confirmation' : !enabled ? (action==='DEPOSIT'&&wallet.data.depositsEnabled?'Card deposits open soon':`${action==='DEPOSIT'?'Deposits':'Withdrawals'} off for ${wallet.data.currency}`) : action==='DEPOSIT'?'Add funds':'Withdraw funds'}</Pill></Track>
+          <Track className="self-start sm:mb-6 sm:self-auto"><Pill variant="primary" size="lg" onClick={fund} disabled={funding || Boolean(pendingIntent) || !enabled}>{funding ? <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <ArrowDownToLine aria-hidden="true" />}{funding ? 'Submitting…' : pendingIntent ? 'Awaiting confirmation' : !enabled ? (action==='DEPOSIT'&&wallet.data.depositsEnabled?'Pay at the cage below':`${action==='DEPOSIT'?'Deposits':'Withdrawals'} off for ${wallet.data.currency}`) : action==='DEPOSIT'?'Add funds':'Withdraw funds'}</Pill></Track>
         </div>
         {action === 'DEPOSIT' && wallet.data.cage && <div className="mt-6 border-t border-sb-line pt-5">
           <h3 className="font-sb-display text-xl font-bold uppercase tracking-wide">Deposit at the cage</h3>

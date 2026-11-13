@@ -11,7 +11,7 @@ import { hrefWith, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } fro
 const EVENT_PICKER_SIZE = 24;
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
 
-const enterMutation = `mutation EnterResult($eventId:ID!,$payload:String!){ingestSandboxResult(eventId:$eventId,payload:$payload)}`;
+const enterMutation = `mutation EnterResult($eventId:ID!,$payload:String!){enterEventResult(eventId:$eventId,payload:$payload)}`;
 const requestMutation = `mutation RequestResultApproval($resultVersionId:ID!,$reason:String!){requestResultApproval(resultVersionId:$resultVersionId,reason:$reason)}`;
 const withdrawMutation = `mutation WithdrawResult($resultVersionId:ID!,$reason:String!){withdrawResultVersion(resultVersionId:$resultVersionId,reason:$reason)}`;
 const approveMutation = `mutation ApproveResult($resultVersionId:ID!,$approvalId:ID!,$reason:String!){approveResultVersion(resultVersionId:$resultVersionId,approvalId:$approvalId,reason:$reason)}`;

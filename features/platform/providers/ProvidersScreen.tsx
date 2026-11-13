@@ -62,7 +62,7 @@ export async function ProvidersScreen() {
           item.status === 'DISABLED'
             ? <div key="health"><StatusBadge value="DISABLED" /><p className="mt-1 text-xs text-muted-foreground">Not probed</p></div>
             : latest
-              ? <div key="health"><StatusBadge value={latest.status} /><p className="mt-1 text-xs text-muted-foreground">{(latest.details as any)?.source === 'sandbox-probe' ? 'Simulated probe' : String((latest.details as any)?.source ?? 'Unlabeled sample')} · <Mono>{dateTime(latest.checkedAt)}{typeof latest.latencyMs === 'number' ? ` · ${latest.latencyMs}ms` : ''}</Mono></p></div>
+              ? <div key="health"><StatusBadge value={latest.status} /><p className="mt-1 text-xs text-muted-foreground">{String((latest.details as any)?.source ?? 'Unlabeled sample')} · <Mono>{dateTime(latest.checkedAt)}{typeof latest.latencyMs === 'number' ? ` · ${latest.latencyMs}ms` : ''}</Mono></p></div>
               : <span key="health" className="text-xs">Unmeasured</span>,
           <div key="cert"><StatusBadge value={item.certificationStatus} /><p className="mt-1 text-xs text-muted-foreground">{run ? <Mono>{`${run.passed}/${run.passed + run.failed} · ${shortId(run.id)}`}</Mono> : 'No run'}</p></div>,
           <span key="cap" className="break-all tabular-nums text-xs">{JSON.stringify(item.capabilities)}</span>,
@@ -74,7 +74,7 @@ export async function ProvidersScreen() {
       <h2 className="text-sm font-semibold">Controls</h2>
       <div className="grid gap-4 xl:grid-cols-3">
         <MutationForm compact title="Change provider state" mutation={`mutation($connectionId:ID!,$status:String!,$reason:String!){setProviderOperationalState(connectionId:$connectionId,status:$status,reason:$reason)}`} fields={[{ name: 'connectionId', label: 'Connection', type: 'select', options: connectionOptions }, { name: 'status', label: 'State', type: 'select', options: ['ACTIVE', 'DEGRADED', 'DISABLED'].map((value) => ({ label: value, value })) }, { name: 'reason', label: 'Reason', placeholder: 'Reason' }]} submitLabel="Apply state" successMessage="Provider state saved." />
-        <MutationForm compact title="Run sandbox conformance suite" description="Sandbox adapters only" mutation={`mutation($connectionId:ID!){runAdapterCertification(connectionId:$connectionId)}`} fields={[{ name: 'connectionId', label: 'Provider connection', type: 'select', options: connectionOptions }]} submitLabel="Run suite" successMessage="Conformance run saved." />
+        <MutationForm compact title="Run conformance suite" description="In-house adapters" mutation={`mutation($connectionId:ID!){runAdapterCertification(connectionId:$connectionId)}`} fields={[{ name: 'connectionId', label: 'Provider connection', type: 'select', options: connectionOptions }]} submitLabel="Run suite" successMessage="Conformance run saved." />
         <MutationForm compact title="Deterministic replay unavailable" mutation={`mutation($connectionId:ID!,$scopeType:String!,$scopeId:ID!,$frontier:String!){runTradingReplay(connectionId:$connectionId,scopeType:$scopeType,scopeId:$scopeId,frontier:$frontier)}`} fields={[{ name: 'connectionId', label: 'Connection', type: 'select', options: connectionOptions }, { name: 'scopeType', label: 'Scope type', defaultValue: 'TENANT' }, { name: 'scopeId', label: 'Scope ID', defaultValue: tenantId }, { name: 'frontier', label: 'Envelope frontier', defaultValue: '0' }]} submitLabel="Unavailable" successMessage="No replay was run." disabledReason="Replay comparator not implemented." />
       </div>
     </section>

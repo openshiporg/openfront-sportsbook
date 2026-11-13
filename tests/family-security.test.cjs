@@ -1,5 +1,5 @@
 // Node's built-in test runner; uses the existing TypeScript devDependency to load
-// actual source with isolated framework/provider mocks. No DB, network or real env.
+// actual source with isolated framework/provider stubs. No DB, network or real env.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -8,7 +8,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 const root = path.resolve(__dirname, '..');
 
-function sandbox({ env = {}, mocks = {}, fetch: fetchImpl, logs = [] } = {}) {
+function isolatedModules({ env = {}, stubs = {}, fetch: fetchImpl, logs = [] } = {}) {
   const cache = new Map();
   function load(relative) {
     const filename = path.resolve(root, relative);
@@ -21,11 +21,11 @@ function sandbox({ env = {}, mocks = {}, fetch: fetchImpl, logs = [] } = {}) {
     const module = { exports: {} };
     cache.set(filename, module);
     function localRequire(specifier) {
-      if (Object.hasOwn(mocks, specifier)) return mocks[specifier];
+      if (Object.hasOwn(stubs, specifier)) return stubs[specifier];
       const resolved = specifier.startsWith('@/') ? path.join(root, specifier.slice(2))
         : specifier.startsWith('.') ? path.resolve(path.dirname(filename), specifier) : null;
       if (resolved) return load(`${resolved}.ts`);
-      throw new Error(`Unmocked dependency: ${specifier}`);
+      throw new Error(`Unstubbed dependency: ${specifier}`);
     }
     vm.runInNewContext(output, {
       module, exports: module.exports, require: localRequire,
@@ -41,9 +41,9 @@ function sandbox({ env = {}, mocks = {}, fetch: fetchImpl, logs = [] } = {}) {
 const plain = value => JSON.parse(JSON.stringify(value));
 const securityPath = 'features/dashboard/lib/security.ts';
 
-function authSandbox(response, throws = false) {
+function authHarness(response, throws = false) {
   const cookies = [];
-  const instance = sandbox({ mocks: {
+  const instance = isolatedModules({ stubs: {
     'next/headers': { cookies: async () => ({ set: (...args) => cookies.push(args) }) },
     'next/navigation': { redirect: target => { throw Object.assign(new Error('redirect'), { target }); } },
     'next/cache': { revalidatePath() {} },
@@ -63,7 +63,7 @@ function form(from = '/dashboard/orders') {
 }
 
 test('redirect sanitizer accepts same-site paths and rejects URL/backslash/encoded/control bypasses', () => {
-  const { sanitizeDashboardRedirect: sanitize } = sandbox().load(securityPath);
+  const { sanitizeDashboardRedirect: sanitize } = isolatedModules().load(securityPath);
   for (const value of ['/dashboard/orders', '/dashboard?tab=orders#recent', '/dashboard?search=hello%20world', '/']) assert.equal(sanitize(value), value);
   for (const value of [undefined, null, 1, {}, '', '//evil.invalid', 'https://evil.invalid',
     'javascript:alert(1)', '\\evil.invalid', '/\\evil.invalid', '/%5cevil.invalid', '/%2fevil.invalid',
@@ -74,7 +74,7 @@ test('redirect sanitizer accepts same-site paths and rejects URL/backslash/encod
 test('shared-key actions return availability/model only, never a key in any configuration', async () => {
   for (const env of [{}, { OPENROUTER_API_KEY: 'synthetic-shared-key' },
     { OPENROUTER_API_KEY: 'synthetic-shared-key', OPENROUTER_MODEL: 'test-model', OPENROUTER_MAX_TOKENS: '42' }]) {
-    const actions = sandbox({ env }).load('features/dashboard/actions/ai-chat.ts');
+    const actions = isolatedModules({ env }).load('features/dashboard/actions/ai-chat.ts');
     const result = await actions.getSharedKeys();
     assert.deepEqual(Object.keys(result).sort(), ['available', 'model']);
     assert.equal(result.available, !!(env.OPENROUTER_API_KEY && env.OPENROUTER_MODEL));
@@ -90,7 +90,7 @@ test('GraphQL errors log only a fixed message and admitted codes; no request/var
       { extensions: { code: 'synthetic-password' } },
     ] },
   });
-  const instance = sandbox({ mocks: {
+  const instance = isolatedModules({ stubs: {
     '@/features/dashboard/lib/cookies': { getAuthHeaders: async () => ({}) },
     '@/features/dashboard/lib/getBaseUrl': { getGraphQLEndpoint: async () => 'https://test.invalid/api/graphql' },
     'graphql-request': { GraphQLClient: class { async request() { throw error; } } },
@@ -103,10 +103,10 @@ test('GraphQL errors log only a fixed message and admitted codes; no request/var
 
 test('multipart GraphQL failures and thrown fetch errors are also sanitized', async () => {
   for (const throwError of [false, true]) {
-    const instance = sandbox({ fetch: async () => {
+    const instance = isolatedModules({ fetch: async () => {
       if (throwError) throw new Error('synthetic-password');
       return Response.json({ errors: [{ message: 'synthetic-password', extensions: { code: 'FORBIDDEN' } }] });
-    }, mocks: {
+    }, stubs: {
       '@/features/dashboard/lib/cookies': { getAuthHeaders: async () => ({}) },
       '@/features/dashboard/lib/getBaseUrl': { getGraphQLEndpoint: async () => 'https://test.invalid/api/graphql' },
       'graphql-request': { GraphQLClient: class {} },
@@ -122,7 +122,7 @@ test('all sign-in/sign-up failure branches return email only and plain messages'
     { success: true, data: { authenticate: { message: 'synthetic internal detail' } } },
     { success: true, data: {} }]) {
     for (const throws of [false, true]) {
-      const { auth, logs } = authSandbox(response, throws);
+      const { auth, logs } = authHarness(response, throws);
       for (const action of ['signIn', 'signUp']) {
         const state = await auth[action]({ message: null, formData: { email: '' } }, form());
         assert.deepEqual(plain(state.formData), { email: 'test@example.invalid' });
@@ -135,7 +135,7 @@ test('all sign-in/sign-up failure branches return email only and plain messages'
 
 test('successful sign-in sets the protected cookie and sanitizes the actual redirect', async () => {
   for (const [from, expected] of [['//evil.invalid', '/dashboard'], ['/dashboard/orders', '/dashboard/orders']]) {
-    const { auth, cookies } = authSandbox({ success: true, data: { authenticate: { sessionToken: 'synthetic-session' } } });
+    const { auth, cookies } = authHarness({ success: true, data: { authenticate: { sessionToken: 'synthetic-session' } } });
     await assert.rejects(auth.signIn({ message: null, formData: { email: '' } }, form(from)), error => error.target === expected);
     assert.equal(cookies[0][0], 'keystonejs-session');
     assert.equal(cookies[0][2].httpOnly, true);
@@ -145,7 +145,7 @@ test('successful sign-in sets the protected cookie and sanitizes the actual redi
 
 test('initial-user and reset-password states never return passwords or reset tokens', async () => {
   // keystoneClient already reduces internal failures to this fixed text (see shared-dashboard tests)
-  const { auth } = authSandbox({ success: false, error: 'Unable to complete the request. Please try again.' });
+  const { auth } = authHarness({ success: false, error: 'Unable to complete the request. Please try again.' });
   const initial = await auth.createInitialUser({}, form());
   assert.deepEqual(Object.keys(initial.formData).sort(), ['email', 'name']);
   for (const mode of ['request', 'reset']) {
@@ -155,12 +155,12 @@ test('initial-user and reset-password states never return passwords or reset tok
   }
 });
 
-function completionSandbox({ session, env = {}, validationStatus = 200, providerError = false, permissionHelper } = {}) {
+function completionHarness({ session, env = {}, validationStatus = 200, providerError = false, permissionHelper } = {}) {
   const captures = { network: [], models: [], streams: [], sessions: [], transports: [] };
-  const instance = sandbox({ env, fetch: async (url, init) => {
+  const instance = isolatedModules({ env, fetch: async (url, init) => {
     captures.network.push({ url: String(url), init });
     return new Response('synthetic provider internal detail', { status: validationStatus });
-  }, mocks: {
+  }, stubs: {
     'ai': { convertToModelMessages: async messages => messages, stepCountIs: n => n,
       streamText: config => {
         captures.streams.push(config);
@@ -200,7 +200,7 @@ const operator = { itemId: 'operator', data: { role: { canAccessDashboard: true 
 test('anonymous and non-dashboard shared requests fail before reading server keys or making requests', async () => {
   for (const [session, status] of [[undefined, 401], [{ itemId: 'customer', data: { role: {} } }, 403]]) {
     const env = new Proxy({}, { get() { throw new Error('Server key resolved before authorization'); } });
-    const { POST, captures } = completionSandbox({ session, env });
+    const { POST, captures } = completionHarness({ session, env });
     assert.equal((await POST(completionRequest({ useLocalKeys: false }))).status, status);
     assert.equal(captures.network.length, 0); assert.equal(captures.models.length, 0);
     assert.deepEqual(Object.keys(captures.sessions[0].headers), ['cookie']);
@@ -209,19 +209,19 @@ test('anonymous and non-dashboard shared requests fail before reading server key
 
 test('async permission denials are awaited, and legacy role-only dashboard policy stays fail-closed', async () => {
   const env = { OPENROUTER_API_KEY: 'synthetic-key', OPENROUTER_MODEL: 'test' };
-  const denied = completionSandbox({ session: operator, env, permissionHelper: async () => false });
+  const denied = completionHarness({ session: operator, env, permissionHelper: async () => false });
   assert.equal((await denied.POST(completionRequest({ useLocalKeys: false }))).status, 403);
   assert.equal(denied.captures.network.length, 0);
   for (const [session, status] of [[operator, 200], [{ itemId: 'customer', data: { role: {} } }, 403]]) {
-    const instance = completionSandbox({ session, env, permissionHelper: null });
+    const instance = completionHarness({ session, env, permissionHelper: null });
     assert.equal((await instance.POST(completionRequest({ useLocalKeys: false }))).status, status);
   }
 });
 
-test('shared and local requests stream end-to-end through mocked provider/MCP without exposing keys', async () => {
+test('shared and local requests stream end-to-end through stubbed provider/MCP without exposing keys', async () => {
   const originalFetch = globalThis.fetch;
   for (const local of [false, true]) {
-    const { POST, captures, logs } = completionSandbox({ session: local ? undefined : operator,
+    const { POST, captures, logs } = completionHarness({ session: local ? undefined : operator,
       env: { OPENROUTER_API_KEY: 'synthetic-shared-key', OPENROUTER_MODEL: 'shared-model', OPENROUTER_MAX_TOKENS: '42' } });
     const response = await POST(completionRequest({ useLocalKeys: local, apiKey: 'synthetic-local-key', model: 'local-model', maxTokens: 99 }));
     assert.equal(response.status, 200);
@@ -245,7 +245,7 @@ test('missing configuration/local key and provider failures return plain errors 
     [{ validationStatus: 401 }, { useLocalKeys: true, apiKey: 'synthetic-key', model: 'test' }, 401],
     [{ providerError: true }, { useLocalKeys: true, apiKey: 'synthetic-key', model: 'test' }, 500],
   ]) {
-    const { POST, logs } = completionSandbox(options);
+    const { POST, logs } = completionHarness(options);
     const response = await POST(completionRequest(body));
     assert.equal(response.status, expected);
     assert.doesNotMatch(JSON.stringify([await response.json(), logs]), /synthetic|stack|details/);
@@ -255,7 +255,7 @@ test('missing configuration/local key and provider failures return plain errors 
 test('scoped MCP fetch forwards cookies only to the exact endpoint and never changes global fetch', async () => {
   const captures = [];
   const originalFetch = globalThis.fetch;
-  const { createScopedMcpFetch } = sandbox().load('app/api/completion/scopedMcpFetch.ts');
+  const { createScopedMcpFetch } = isolatedModules().load('app/api/completion/scopedMcpFetch.ts');
   const endpoint = new URL('https://trusted.invalid/api/mcp-transport/http');
   const scoped = createScopedMcpFetch(endpoint, 'synthetic-cookie', async (url, init) => {
     captures.push({ url, init }); return new Response('{}');
@@ -270,7 +270,7 @@ test('scoped MCP fetch forwards cookies only to the exact endpoint and never cha
 });
 
 test('the submission hook decodes fragmented SDK SSE, legacy streams and safe errors', async () => {
-  const { readCompletionEvents } = sandbox().load('features/dashboard/lib/completionStream.ts');
+  const { readCompletionEvents } = isolatedModules().load('features/dashboard/lib/completionStream.ts');
   const payload = 'data: {"type":"text-delta","delta":"héllo"}\n\n'
     + 'data: {"type":"tool-input-available","toolCallId":"a","toolName":"createData"}\n\n'
     + 'data: {"type":"tool-output-available","toolCallId":"a"}\n\n'

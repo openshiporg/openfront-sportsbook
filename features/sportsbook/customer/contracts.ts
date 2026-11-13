@@ -1,6 +1,5 @@
 export type CustomerSessionSummary = {
   authenticated: boolean
-  mode: 'sandbox'
   accountReference?: string
   assuranceLevel?: 'GUEST' | 'PASSWORD' | 'MFA'
   currency?: string
@@ -60,7 +59,6 @@ export type CatalogFilters = {
 }
 
 export type CatalogResponse = {
-  mode: 'sandbox'
   currency: string
   generatedAt: string
   /** Count of every published event matching the filters (not just this page). */
@@ -126,19 +124,18 @@ export type WalletTransaction = {
 }
 
 export type WalletResponse = {
-  mode: 'sandbox'
   currency: string
   /** CurrencyDefinition.exponent of the wallet currency. */
   currencyExponent: number
-  /** Sandbox funding bounds in minor units of the wallet currency. */
+  /** Funding bounds in minor units of the wallet currency. */
   fundingMinMinor: string
   fundingMaxMinor: string
   depositsEnabled: boolean
   withdrawalsEnabled: boolean
-  /** Accept.js settings when the operator's card processor is installed and configured; null while card deposits are not open. */
   /** True while the operator offers cash deposits at the retail cage. */
   cage: boolean
-  card: { apiLoginId: string; clientKey: string; env: 'sandbox' | 'production' } | null
+  /** Browser tokenization settings for the operator's active card processor; null when no card processor is installed. */
+  card: { processor: 'stripe'; publishableKey: string } | { processor: 'authorizenet'; apiLoginId: string; clientKey: string; env: 'test' | 'production' } | null
   availableMinor: string
   postedMinor: string
   pendingMinor: string

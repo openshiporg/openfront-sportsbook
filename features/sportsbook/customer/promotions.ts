@@ -1,7 +1,7 @@
 import type { PrismaClient } from '../../keystone/prisma'
 import { assertCurrentCustomerActor, type CustomerActor } from './auth'
 import { appendCustomerAudit } from './audit'
-import { CustomerError, assertSandboxEnabled } from './errors'
+import { CustomerError } from './errors'
 import { claimCustomerCommand, commandResult, finishCustomerCommand, validateIdempotencyKey } from './idempotency'
 import { evidenceHash } from '../domain/engine'
 import { isRetryableTransactionError, transactionBackoff } from '../domain/transaction'
@@ -10,9 +10,9 @@ import { resolveTenantCurrency } from './currency'
 const serializable=async<T>(prisma:PrismaClient,work:(tx:any)=>Promise<T>)=>{for(let attempt=0;;attempt++){try{return await prisma.$transaction(work,{isolationLevel:'Serializable'})}catch(error){if(attempt>=7||!isRetryableTransactionError(error))throw error;await transactionBackoff(attempt)}}}
 
 const promotionFixtures = [
-  { key: 'sandbox-free-bet', name: 'First play free bet', description: 'A $5 restricted free bet. Stake is not returned on a win.', type: 'FREE_BET', budgetMinor: '500000', economics: { amountMinor: '500', stakeReturned: false }, requirements: { minimumOdds: '1.50', validStructures: ['STRAIGHT', 'PARLAY'] } },
-  { key: 'sandbox-odds-boost', name: 'Weekend odds boost', description: 'A 10% profit boost capped at $10 for eligible pre-match wagers.', type: 'ODDS_BOOST', budgetMinor: '100000', economics: { boostBasisPoints: 1000, maxBoostMinor: '1000' }, requirements: { minimumOdds: '1.80', validStructures: ['STRAIGHT', 'PARLAY'] } },
-  { key: 'sandbox-deposit-match', name: 'Deposit match sandbox', description: 'A $10 restricted bonus wallet award with 3× wagering evidence.', type: 'DEPOSIT_MATCH', budgetMinor: '500000', economics: { amountMinor: '1000', stakeReturned: true }, requirements: { wageringMultiple: 3, validStructures: ['STRAIGHT', 'PARLAY', 'SYSTEM'] } },
+  { key: 'first-play-free-bet', name: 'First play free bet', description: 'A $5 restricted free bet. Stake is not returned on a win.', type: 'FREE_BET', budgetMinor: '500000', economics: { amountMinor: '500', stakeReturned: false }, requirements: { minimumOdds: '1.50', validStructures: ['STRAIGHT', 'PARLAY'] } },
+  { key: 'weekend-odds-boost', name: 'Weekend odds boost', description: 'A 10% profit boost capped at $10 for eligible pre-match wagers.', type: 'ODDS_BOOST', budgetMinor: '100000', economics: { boostBasisPoints: 1000, maxBoostMinor: '1000' }, requirements: { minimumOdds: '1.80', validStructures: ['STRAIGHT', 'PARLAY'] } },
+  { key: 'deposit-match', name: 'Deposit match', description: 'A $10 restricted bonus wallet award with 3× wagering evidence.', type: 'DEPOSIT_MATCH', budgetMinor: '500000', economics: { amountMinor: '1000', stakeReturned: true }, requirements: { wageringMultiple: 3, validStructures: ['STRAIGHT', 'PARLAY', 'SYSTEM'] } },
 ] as const
 
 /**
@@ -20,15 +20,15 @@ const promotionFixtures = [
  * promotion records; customers still reach them solely through the gated customer API, so it does not depend on
  * whether practice play is open.
  */
-export async function ensureSandboxPromotions(prisma: PrismaClient, tenantId: string) {
+export async function ensureStarterPromotions(prisma: PrismaClient, tenantId: string) {
   const now = new Date()
   const currency = (await resolveTenantCurrency(prisma, tenantId)).code
   await serializable(prisma, async tx => {
     for (const fixture of promotionFixtures) {
       let promotion = await tx.promotion.findFirst({ where: { tenantId, key: fixture.key } })
       if (!promotion) {
-        const termsHash = evidenceHash({ key: fixture.key, economics: fixture.economics, requirements: fixture.requirements, version: 'sandbox-full-v1' })
-        promotion = await tx.promotion.create({ data: { tenantId, key: fixture.key, name: fixture.name, description: fixture.description, type: fixture.type, status: 'ACTIVE', startsAt: new Date(now.getTime() - 86_400_000), endsAt: new Date(now.getTime() + 30 * 86_400_000), budgetMinor: fixture.budgetMinor, currency: currency, termsVersion: 'sandbox-full-v1', termsHash } })
+        const termsHash = evidenceHash({ key: fixture.key, economics: fixture.economics, requirements: fixture.requirements, version: 'promotions-v1' })
+        promotion = await tx.promotion.create({ data: { tenantId, key: fixture.key, name: fixture.name, description: fixture.description, type: fixture.type, status: 'ACTIVE', startsAt: new Date(now.getTime() - 86_400_000), endsAt: new Date(now.getTime() + 30 * 86_400_000), budgetMinor: fixture.budgetMinor, currency: currency, termsVersion: 'promotions-v1', termsHash } })
         await tx.promotionRuleVersion.create({ data: { tenantId, promotionId: promotion.id, version: 1, eligibility: { kyc: 'APPROVED', onePerPlayer: true }, economics: fixture.economics, wageringRequirements: fixture.requirements, abuseControls: { duplicateAccount: 'DENY', linkedPaymentMethod: 'REVIEW', maxAwardsPerPlayer: 1 }, contributionRules: { sportsbook: 100 }, status: 'ACTIVE', effectiveFrom: now, evidenceHash: termsHash } })
         await tx.campaignBudget.create({ data: { tenantId, promotionId: promotion.id, allocatedMinor: fixture.budgetMinor, awardedMinor: '0', redeemedMinor: '0', forfeitedMinor: '0', currency: currency, version: 1, status: 'ACTIVE' } })
       }
@@ -99,7 +99,6 @@ export async function getCustomerPromotions(prisma: PrismaClient, actor: Custome
 }
 
 export async function claimCustomerPromotion(prisma: PrismaClient, actor: CustomerActor, input: { promotionId: unknown; idempotencyKey: unknown }) {
-  assertSandboxEnabled()
   const promotionId = String(input.promotionId ?? '')
   const idempotencyKey = validateIdempotencyKey(input.idempotencyKey)
   const requestedPromotion = await prisma.promotion.findFirst({ where: { id: promotionId, tenantId: actor.tenantId, status: 'ACTIVE' }, select: { type: true } })

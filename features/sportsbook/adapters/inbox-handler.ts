@@ -1,5 +1,7 @@
 import { evidenceHash } from '../domain/engine'
 import { providerInstallationRevision } from '../adapters/installation-revision'
+import { HOUSE_ENVELOPE_SCHEMA } from './internal'
+const ADMITTED_ENVELOPE_SCHEMAS=new Set([HOUSE_ENVELOPE_SCHEMA])
 
 export type InboxJob={id:string;tenantId:string;type:string;rawEnvelopeId:string}
 type InboxAuditAppender=(tx:any,tenantId:string,action:string,targetType:string,targetId:string,payload:unknown)=>Promise<unknown>
@@ -19,7 +21,7 @@ export async function normalizeCanonicalInTx(tx:any,job:InboxJob):Promise<InboxR
  {
   const envelope=await tx.rawEnvelope.findFirst({where:{id:job.rawEnvelopeId,tenantId:job.tenantId},include:{providerConnection:true}});if(!envelope?.providerConnection)throw new Error('MISSING_ENVELOPE')
   // Current admission at effect time: same tenant, not disabled/suspended. FOR SHARE fences a concurrent state change until this effect commits.
-  if(envelope.providerConnection.tenantId!==job.tenantId||envelope.schemaVersion!=='sandbox.v1')throw new Error('PROVIDER_ENVELOPE_NOT_ADMITTED')
+  if(envelope.providerConnection.tenantId!==job.tenantId||!ADMITTED_ENVELOPE_SCHEMAS.has(envelope.schemaVersion))throw new Error('PROVIDER_ENVELOPE_NOT_ADMITTED')
   await tx.$queryRaw`SELECT id FROM "ProviderConnection" WHERE id = ${envelope.providerConnection.id} AND tenant = ${job.tenantId} FOR SHARE`
   const admitted=await tx.providerConnection.findFirst({where:{id:envelope.providerConnection.id,tenantId:job.tenantId}});if(!admitted||admitted.status==='DISABLED'||admitted.certificationStatus==='SUSPENDED')throw new Error('PROVIDER_NOT_ADMITTED')
   // The installation/config that verified the envelope at ingress must still be the installed one; a reconfigured installation never reinterprets an old receipt (it stays retained, the item dead-letters for review). Envelopes recorded before the revision existed carry '' and are judged by current admission only.

@@ -1,4 +1,4 @@
-import { paymentProviderAdapters, sandboxAdapters } from '../../integrations/payment'
+import { paymentProviderAdapters } from '../../integrations/payment'
 
 type PaymentCommand = { type: 'deposit' | 'withdrawal'; payload: { amountMinor: string; currency: string; opaqueData?: { dataDescriptor: string; dataValue: string } } }
 type PaymentProvider = { id?: string; adapterId: string; configReference: string; secretReference?: string | null; certificationStatus?: string | null; status?: string | null }
@@ -6,12 +6,6 @@ type PaymentProvider = { id?: string; adapterId: string; configReference: string
 /** Narrow provider dispatch used by customer and operator payment lifecycles. */
 export async function executePaymentProvider(provider: PaymentProvider, command: PaymentCommand, idempotencyKey: string) {
   if (provider.status !== 'ACTIVE') throw new Error('PAYMENT_PROVIDER_UNAVAILABLE')
-  if (provider.adapterId === 'sandbox-payments') {
-    if (provider.certificationStatus !== 'SANDBOX') throw new Error('PAYMENT_ADAPTER_UNSUPPORTED')
-    const configuration = await sandboxAdapters.payments.validateConfig(provider.configReference)
-    if (!configuration.valid) throw new Error('PAYMENT_ADAPTER_INVALID_CONFIG')
-    return sandboxAdapters.payments.execute({}, command, idempotencyKey)
-  }
   if (!(provider.adapterId in paymentProviderAdapters)) throw new Error('PAYMENT_ADAPTER_UNSUPPORTED')
   if (provider.secretReference && !process.env[provider.secretReference]) throw new Error('PAYMENT_ADAPTER_INVALID_CONFIG')
   const adapter = await paymentProviderAdapters[provider.adapterId as keyof typeof paymentProviderAdapters]()
@@ -32,12 +26,6 @@ export async function executePaymentProvider(provider: PaymentProvider, command:
  */
 export async function getPaymentProviderStatus(provider: PaymentProvider, idempotencyKey: string) {
   if (provider.status !== 'ACTIVE') throw new Error('PAYMENT_PROVIDER_UNAVAILABLE')
-  if (provider.adapterId === 'sandbox-payments') {
-    if (provider.certificationStatus !== 'SANDBOX') throw new Error('PAYMENT_ADAPTER_UNSUPPORTED')
-    const configuration = await sandboxAdapters.payments.validateConfig(provider.configReference)
-    if (!configuration.valid) throw new Error('PAYMENT_ADAPTER_INVALID_CONFIG')
-    return sandboxAdapters.payments.query({}, idempotencyKey)
-  }
   if (!(provider.adapterId in paymentProviderAdapters)) throw new Error('PAYMENT_ADAPTER_UNSUPPORTED')
   const adapter = await paymentProviderAdapters[provider.adapterId as keyof typeof paymentProviderAdapters]()
   const result: any = await adapter.getPaymentStatusFunction({ paymentId: idempotencyKey })
@@ -50,11 +38,10 @@ export async function getPaymentProviderStatus(provider: PaymentProvider, idempo
  */
 export async function refundPaymentProvider(provider: PaymentProvider, reference: string, amountMinor: string, idempotencyKey: string): Promise<{ status: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN'; externalRef: string; method?: string }> {
   if (provider.status !== 'ACTIVE') throw new Error('PAYMENT_PROVIDER_UNAVAILABLE')
-  if (provider.adapterId === 'sandbox-payments') return { status: 'SUCCEEDED', externalRef: `refund:${reference || idempotencyKey}`, method: 'sandbox' }
   // Cage cash goes back over the counter: the operator's confirmation of the reversal is the record.
   if (provider.adapterId === 'manual') return { status: 'SUCCEEDED', externalRef: `cash-return:${reference || idempotencyKey}`, method: 'cash' }
-  if (provider.adapterId !== 'authorizenet' || !reference) throw new Error('PAYMENT_ADAPTER_UNSUPPORTED')
-  const adapter: any = await paymentProviderAdapters.authorizenet()
+  if ((provider.adapterId !== 'authorizenet' && provider.adapterId !== 'stripe') || !reference) throw new Error('PAYMENT_ADAPTER_UNSUPPORTED')
+  const adapter: any = await paymentProviderAdapters[provider.adapterId]()
   const result = await adapter.refundPaymentFunction({ paymentId: reference, amount: Number(amountMinor), currency: 'USD', idempotencyKey })
   if (result.status === 'refunded') return { status: 'SUCCEEDED', externalRef: String(result.data?.transId && result.data.transId !== '0' ? result.data.transId : reference), method: result.method }
   return { status: result.status === 'failed' ? 'FAILED' : 'UNKNOWN', externalRef: '' }
