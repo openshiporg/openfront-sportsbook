@@ -59,7 +59,7 @@ export function AuthenticationRequired() {
     setCreating(true)
     setError('')
     try {
-      await customerApi('/api/sandbox/sportsbook/register', { method: 'POST', body: '{}' })
+      await customerApi('/api/sportsbook/register', { method: 'POST', body: '{}' })
       window.location.reload()
     } catch (reason) {
       setError(customerMessage(reason, 'The account couldn’t be created. Try again.'))

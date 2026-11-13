@@ -49,7 +49,7 @@ export async function IntegrationDetailScreen({ connectionId }: { connectionId: 
       { label: "Certification", value: <StatusBadge value={connection.certificationStatus} /> },
       { label: "Raw envelopes", value: <Mono>{envelopes.length}</Mono> },
       { label: "Mappings", value: <Mono>{mappings.length}</Mono> },
-      { label: "Sandbox webhook", value: <code className="break-all tabular-nums text-xs">/api/sandbox/webhooks/[kind]</code> },
+      { label: "Sandbox webhook", value: <code className="break-all tabular-nums text-xs">/api/webhooks/providers/[kind]</code> },
       { label: "Headers", value: <code className="break-all tabular-nums text-xs">x-openfront-tenant-id · x-openfront-connection-id</code> },
       { label: "Signature covers", value: "Timestamp, tenant, connection, raw body" },
     ]} />

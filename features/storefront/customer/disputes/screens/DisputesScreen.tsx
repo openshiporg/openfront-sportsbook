@@ -25,11 +25,11 @@ export function DisputesScreen() {
   const frozen = useFrozenSubmission()
   const [casesCursors, setCasesCursors] = useState<string[]>([])
   const casesCursor = casesCursors[casesCursors.length - 1]
-  const session = useCustomerResource<CustomerSessionSummary>('/api/sandbox/sportsbook/session')
+  const session = useCustomerResource<CustomerSessionSummary>('/api/sportsbook/session')
   const signedIn = Boolean(session.data?.authenticated)
-  const cases = useCustomerResource<Cases>(signedIn ? `/api/sandbox/sportsbook/disputes${casesCursor ? `?cursor=${encodeURIComponent(casesCursor)}` : ''}` : null)
-  const bets = useCustomerResource<BetsResponse>(signedIn ? '/api/sandbox/sportsbook/bets' : null)
-  const wallet = useCustomerResource<WalletResponse>(signedIn ? '/api/sandbox/sportsbook/wallet' : null)
+  const cases = useCustomerResource<Cases>(signedIn ? `/api/sportsbook/disputes${casesCursor ? `?cursor=${encodeURIComponent(casesCursor)}` : ''}` : null)
+  const bets = useCustomerResource<BetsResponse>(signedIn ? '/api/sportsbook/bets' : null)
+  const wallet = useCustomerResource<WalletResponse>(signedIn ? '/api/sportsbook/wallet' : null)
   const [olderBets, setOlderBets] = useState<{ bets: Bet[]; nextCursor: string | null } | null>(null)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [form, setForm] = useState({ category: 'ACCOUNT', topic: 'SETTLEMENT', wagerId: '', paymentIntentId: '', subject: '', details: '' })
@@ -42,7 +42,7 @@ export function DisputesScreen() {
     if (!nextBetsCursor) return
     setLoadingOlder(true)
     try {
-      const page = await customerApi<BetsResponse>(`/api/sandbox/sportsbook/bets?cursor=${encodeURIComponent(nextBetsCursor)}`)
+      const page = await customerApi<BetsResponse>(`/api/sportsbook/bets?cursor=${encodeURIComponent(nextBetsCursor)}`)
       setOlderBets(current => ({ bets: [...(current?.bets ?? []), ...page.bets], nextCursor: page.nextCursor ?? null }))
     } catch {
       setMessage('Older bets couldn’t be loaded. Try again.')
@@ -53,7 +53,7 @@ export function DisputesScreen() {
     e.preventDefault(); setPending('open'); setMessage('')
     const body = { category: form.category, subject: form.subject, details: form.details, ...(form.category === 'WAGER' ? { wagerId: form.wagerId, topic: form.topic } : {}), ...(form.category === 'PAYMENT' && form.paymentIntentId ? { paymentIntentId: form.paymentIntentId } : {}) }
     try {
-      await frozen.submit('support-case', '/api/sandbox/sportsbook/disputes', 'POST', idempotencyKey => ({ ...body, idempotencyKey }), 'case')
+      await frozen.submit('support-case', '/api/sportsbook/disputes', 'POST', idempotencyKey => ({ ...body, idempotencyKey }), 'case')
       setMessage('Request sent.')
       setForm(v => ({ ...v, subject: '', details: '' }))
       setCasesCursors([]); cases.reload()
@@ -67,7 +67,7 @@ export function DisputesScreen() {
     if (text.length < 2) return
     setPending(caseId); setMessage('')
     try {
-      await frozen.submit(`reply:${caseId}`, '/api/sandbox/sportsbook/disputes', 'PUT', idempotencyKey => ({ supportCaseId: caseId, body: text, idempotencyKey }), 'reply')
+      await frozen.submit(`reply:${caseId}`, '/api/sportsbook/disputes', 'PUT', idempotencyKey => ({ supportCaseId: caseId, body: text, idempotencyKey }), 'reply')
       setReplies(current => ({ ...current, [caseId]: '' }))
       cases.reload()
     } catch (error) {

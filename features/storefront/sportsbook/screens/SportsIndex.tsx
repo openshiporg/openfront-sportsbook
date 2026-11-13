@@ -11,7 +11,7 @@ export type SportsIndexEntry = { key: string; name: string; events: number; comp
 
 /** Browse by sport: every published sport with its competitions and how many events each has on the board. */
 export function SportsIndex({ sports }: { sports: SportsIndexEntry[] }) {
-  const session = useCustomerResource<CustomerSessionSummary>('/api/sandbox/sportsbook/session')
+  const session = useCustomerResource<CustomerSessionSummary>('/api/sportsbook/session')
   const total = sports.reduce((sum, sport) => sum + sport.events, 0)
   return <CustomerShell authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference}>
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:py-10">

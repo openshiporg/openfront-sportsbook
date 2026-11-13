@@ -11,8 +11,8 @@ import { amountInputToMinor, currencyExponent, CustomerApiError, formatDate, for
 const SESSION_PERIOD_MINUTES: Record<'DAILY' | 'WEEKLY' | 'MONTHLY', number> = { DAILY: 1_440, WEEKLY: 10_080, MONTHLY: 43_200 }
 
 export function LimitsScreen() {
-  const session = useCustomerResource<CustomerSessionSummary>('/api/sandbox/sportsbook/session')
-  const limits = useCustomerResource<LimitsResponse>(session.data?.authenticated ? '/api/sandbox/sportsbook/limits' : null)
+  const session = useCustomerResource<CustomerSessionSummary>('/api/sportsbook/session')
+  const limits = useCustomerResource<LimitsResponse>(session.data?.authenticated ? '/api/sportsbook/limits' : null)
   const signedOut = session.data?.authenticated === false
   const [type, setType] = useState<'STAKE' | 'DEPOSIT' | 'LOSS' | 'SESSION'>('STAKE')
   const [period, setPeriod] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY')
@@ -42,7 +42,7 @@ export function LimitsScreen() {
     setStatus('')
     setError('')
     try {
-      const result = await frozen.submit<LimitActionResult>('limit', '/api/sandbox/sportsbook/limits', 'POST', idempotencyKey => ({ type, period, amountMinor, idempotencyKey }))
+      const result = await frozen.submit<LimitActionResult>('limit', '/api/sportsbook/limits', 'POST', idempotencyKey => ({ type, period, amountMinor, idempotencyKey }))
       setStatus(result.state === 'PENDING' ? `Increase saved. It becomes effective ${formatDate(result.effectiveFrom ?? null)} after the cooling-off period.` : 'Limit saved and effective immediately.')
       limits.reload()
     } catch (reason) {

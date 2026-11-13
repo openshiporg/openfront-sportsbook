@@ -73,7 +73,7 @@ export async function WebhooksScreen() {
       </div>
     </section>
     <DetailGrid items={[
-      { label: 'Inbound route', value: <code className="break-all tabular-nums text-xs">/api/sandbox/webhooks/[kind]</code> },
+      { label: 'Inbound route', value: <code className="break-all tabular-nums text-xs">/api/webhooks/providers/[kind]</code> },
       { label: 'Outbound signature', value: <code className="break-all tabular-nums text-xs">timestamp + delivery ID + raw body</code> },
       { label: 'Outbound hosts', value: 'Approved HTTPS only; no private ranges or redirects' },
     ]} />

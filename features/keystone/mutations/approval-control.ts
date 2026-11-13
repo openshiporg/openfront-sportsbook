@@ -16,8 +16,7 @@ export const reviewPayload = (value: unknown) => JSON.parse(JSON.stringify(value
 export const approvalReview = (payload: unknown) => ({ requestPayload: reviewPayload(payload), expiresAt: approvalExpiry() })
 
 export const isTrustedInternalContext = (context: any, capability: string) =>
-  Boolean(context?.trustedTenantId && context?.trustedActorId && context?.trustedCapabilities?.includes(capability)) &&
-  (process.env.NODE_ENV === 'test' || Boolean(process.env.NODE_TEST_CONTEXT) || process.env.SPORTSBOOK_SANDBOX === 'true')
+  Boolean(context?.trustedTenantId && context?.trustedActorId && context?.trustedCapabilities?.includes(capability))
 
 type OperatorRow = { id: string; tenantId: string | null; operatorMfaEnabled?: boolean | null; role?: Record<string, any> | null; tenant?: { status?: string | null } | null }
 

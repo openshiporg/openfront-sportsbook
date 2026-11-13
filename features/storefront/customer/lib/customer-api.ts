@@ -45,7 +45,7 @@ export function useCustomerResource<T>(path: string | null) {
       .then(result => {
         // Only the newest request may publish; a late response for an older path/version is dropped.
         if (controller.signal.aborted) return
-        if (path.startsWith('/api/sandbox/sportsbook/session')) applyDisplayPreferences(result as DisplayPreferenceSource)
+        if (path.startsWith('/api/sportsbook/session')) applyDisplayPreferences(result as DisplayPreferenceSource)
         setError(null)
         setData(result)
       })

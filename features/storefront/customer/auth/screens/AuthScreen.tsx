@@ -13,7 +13,7 @@ type Terms = { termsVersion: string; termsContentHash: string }
 const MODES = [['register', 'Create'], ['login', 'Sign in'], ['recover', 'Recover']] as const
 
 export function AuthScreen() {
-  const session = useCustomerResource<{ authenticated?: boolean }>('/api/sandbox/sportsbook/session')
+  const session = useCustomerResource<{ authenticated?: boolean }>('/api/sportsbook/session')
   const [mode, setMode] = useState<Mode>('register')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -42,7 +42,7 @@ export function AuthScreen() {
     // Terms are read only once the session read says the customer API is open.
     if (mode !== 'register' || terms || !session.data) return
     let cancelled = false
-    customerApi<Terms>('/api/sandbox/sportsbook/auth/register').then(result => { if (!cancelled) setTerms(result) }).catch(() => { if (!cancelled) setError('Registration is unavailable until the operator publishes its terms.') })
+    customerApi<Terms>('/api/sportsbook/auth/register').then(result => { if (!cancelled) setTerms(result) }).catch(() => { if (!cancelled) setError('Registration is unavailable until the operator publishes its terms.') })
     return () => { cancelled = true }
   }, [mode, terms, session.data])
 
@@ -72,16 +72,16 @@ export function AuthScreen() {
     try {
       if (mode === 'register') {
         if (!terms || !termsAccepted) { setError(errors.TERMS_ACCEPTANCE_REQUIRED); return }
-        await customerApi('/api/sandbox/sportsbook/auth/register', { method: 'POST', body: JSON.stringify({ email, password, locale: navigator.language || 'en-US', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', marketingConsent, acceptedTermsVersion: terms.termsVersion, acceptedTermsContentHash: terms.termsContentHash }) })
+        await customerApi('/api/sportsbook/auth/register', { method: 'POST', body: JSON.stringify({ email, password, locale: navigator.language || 'en-US', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', marketingConsent, acceptedTermsVersion: terms.termsVersion, acceptedTermsContentHash: terms.termsContentHash }) })
         window.location.assign('/')
       } else if (mode === 'login') {
-        await customerApi('/api/sandbox/sportsbook/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+        await customerApi('/api/sportsbook/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
         window.location.assign('/')
       } else if (!recoveryToken) {
-        await customerApi<{ accepted: boolean }>('/api/sandbox/sportsbook/auth/recovery', { method: 'POST', body: JSON.stringify({ email }) })
+        await customerApi<{ accepted: boolean }>('/api/sportsbook/auth/recovery', { method: 'POST', body: JSON.stringify({ email }) })
         setSuccess('If an account exists for that email, a recovery link was sent. It works once and expires in 15 minutes.')
       } else {
-        await customerApi('/api/sandbox/sportsbook/auth/recovery', { method: 'PUT', body: JSON.stringify({ token: recoveryToken, password }) })
+        await customerApi('/api/sportsbook/auth/recovery', { method: 'PUT', body: JSON.stringify({ token: recoveryToken, password }) })
         setMode('login'); setRecoveryToken(''); setPassword(''); setSuccess('Password updated. Sign in with the new password.')
       }
     } catch (reason) {

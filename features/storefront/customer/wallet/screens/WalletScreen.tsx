@@ -12,12 +12,12 @@ import AuthorizeNetCardForm from '../components/authorizenet-card-form'
 
 type Statements={statements:Array<{id:string;periodStart:string;periodEnd:string;openingMinor:string;closingMinor:string;currency:string;journalHash:string;artifactReference:string;status:string}>;nextCursor:string|null}
 export function WalletScreen() {
-  const session = useCustomerResource<CustomerSessionSummary>('/api/sandbox/sportsbook/session')
-  const wallet = useCustomerResource<WalletResponse>(session.data?.authenticated ? '/api/sandbox/sportsbook/wallet' : null)
+  const session = useCustomerResource<CustomerSessionSummary>('/api/sportsbook/session')
+  const wallet = useCustomerResource<WalletResponse>(session.data?.authenticated ? '/api/sportsbook/wallet' : null)
   const signedOut = session.data?.authenticated === false
   const [statementCursors,setStatementCursors]=useState<string[]>([])
   const statementCursor=statementCursors[statementCursors.length-1]
-  const statements = useCustomerResource<Statements>(session.data?.authenticated ? `/api/sandbox/sportsbook/statements${statementCursor?`?cursor=${encodeURIComponent(statementCursor)}`:''}` : null)
+  const statements = useCustomerResource<Statements>(session.data?.authenticated ? `/api/sportsbook/statements${statementCursor?`?cursor=${encodeURIComponent(statementCursor)}`:''}` : null)
   const [amount, setAmount] = useState('')
   const [action, setAction] = useState<'DEPOSIT'|'WITHDRAWAL'>('DEPOSIT')
   const [funding, setFunding] = useState(false)
@@ -39,7 +39,7 @@ export function WalletScreen() {
     if (!amountMinor || BigInt(amountMinor) < BigInt(wallet.data.fundingMinMinor) || BigInt(amountMinor) > BigInt(wallet.data.fundingMaxMinor)) { setCageError(`Enter an amount from ${formatMinor(wallet.data.fundingMinMinor, wallet.data.currency, wallet.data.currencyExponent)} to ${formatMinor(wallet.data.fundingMaxMinor, wallet.data.currency, wallet.data.currencyExponent)}.`); return }
     setCageBusy(true); setCageError('')
     try {
-      const result = await customerApi<{ reference: string; amountMinor: string; currency: string }>('/api/sandbox/sportsbook/cage-deposit', { method: 'POST', body: JSON.stringify({ amountMinor, idempotencyKey: `cage_${crypto.randomUUID()}` }) })
+      const result = await customerApi<{ reference: string; amountMinor: string; currency: string }>('/api/sportsbook/cage-deposit', { method: 'POST', body: JSON.stringify({ amountMinor, idempotencyKey: `cage_${crypto.randomUUID()}` }) })
       setCageNotice({ reference: result.reference, amount: formatMinor(result.amountMinor, result.currency, wallet.data.currencyExponent) })
       setCageAmount(''); wallet.reload()
     } catch (reason) { setCageError(customerMessage(reason, 'The deposit request wasn’t created. Try again.')) }
@@ -90,7 +90,7 @@ export function WalletScreen() {
       requestStarted = true
       const init = fundingRequestInit(intent)
       if (intent.action === 'DEPOSIT' && opaqueData) init.body = JSON.stringify({ ...JSON.parse(String(init.body)), opaqueData })
-      const result = await customerApi<FundingResult>('/api/sandbox/sportsbook/wallet', init)
+      const result = await customerApi<FundingResult>('/api/sportsbook/wallet', init)
       const actionLabel = intent.action.toLowerCase()
       const amountLabel = formatMinor(result.amountMinor ?? intent.amountMinor, result.currency ?? intent.currency, result.currencyExponent ?? exponent)
       wallet.reload()
@@ -132,7 +132,7 @@ export function WalletScreen() {
     }
   }
 
-  async function generateStatement(){setStatementPending(true);setError('');try{const end=new Date(),start=new Date(end.getTime()-30*86_400_000);await frozen.submit('statement','/api/sandbox/sportsbook/statements','POST',idempotencyKey=>({periodStart:start.toISOString(),periodEnd:end.toISOString(),idempotencyKey}));setStatus('30-day statement ready.');if(statementCursors.length)setStatementCursors([]);else statements.reload()}catch(reason){setError(customerMessage(reason,'The statement couldn’t be prepared. Try again.'))}finally{setStatementPending(false)}}
+  async function generateStatement(){setStatementPending(true);setError('');try{const end=new Date(),start=new Date(end.getTime()-30*86_400_000);await frozen.submit('statement','/api/sportsbook/statements','POST',idempotencyKey=>({periodStart:start.toISOString(),periodEnd:end.toISOString(),idempotencyKey}));setStatus('30-day statement ready.');if(statementCursors.length)setStatementCursors([]);else statements.reload()}catch(reason){setError(customerMessage(reason,'The statement couldn’t be prepared. Try again.'))}finally{setStatementPending(false)}}
 
   const enabled = wallet.data ? (action==='DEPOSIT'?wallet.data.depositsEnabled&&Boolean(wallet.data.card):wallet.data.withdrawalsEnabled) : false
   return <CustomerShell current="wallet" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference} closed={isClosedError(session.error)}>

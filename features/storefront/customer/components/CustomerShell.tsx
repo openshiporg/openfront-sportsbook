@@ -57,7 +57,7 @@ export function CustomerShell({
   async function signOut() {
     setSigningOut(true)
     try {
-      await customerApi('/api/sandbox/sportsbook/session', { method: 'DELETE', body: '{}' })
+      await customerApi('/api/sportsbook/session', { method: 'DELETE', body: '{}' })
       window.location.assign('/')
     } finally {
       setSigningOut(false)

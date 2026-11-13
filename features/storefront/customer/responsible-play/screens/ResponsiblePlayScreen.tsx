@@ -21,8 +21,8 @@ import { CustomerApiError, formatDate, useCustomerResource, useFrozenSubmission,
 const durationLabel = (days: number | null) => days === null ? 'permanent self-exclusion' : days === 1 ? '24-hour break' : days === 7 ? '7-day break' : '6-week break'
 
 export function ResponsiblePlayScreen() {
-  const session = useCustomerResource<CustomerSessionSummary>('/api/sandbox/sportsbook/session')
-  const responsible = useCustomerResource<ResponsiblePlayResponse>(session.data?.authenticated ? '/api/sandbox/sportsbook/responsible-play' : null)
+  const session = useCustomerResource<CustomerSessionSummary>('/api/sportsbook/session')
+  const responsible = useCustomerResource<ResponsiblePlayResponse>(session.data?.authenticated ? '/api/sportsbook/responsible-play' : null)
   const signedOut = session.data?.authenticated === false
   const [pendingDuration, setPendingDuration] = useState<number | null | undefined>(undefined)
   // An unconfirmed exclusion stays frozen (exact duration and key) until the server answers definitively;
@@ -60,7 +60,7 @@ export function ResponsiblePlayScreen() {
     setSaving(true)
     setError('')
     try {
-      const result = await frozen.submit<ExclusionActionResult>('exclusion', '/api/sandbox/sportsbook/responsible-play', 'POST', idempotencyKey => ({ durationDays: duration, idempotencyKey }), 'exclude')
+      const result = await frozen.submit<ExclusionActionResult>('exclusion', '/api/sportsbook/responsible-play', 'POST', idempotencyKey => ({ durationDays: duration, idempotencyKey }), 'exclude')
       setStatus(`${durationLabel(duration)} active${result.endsAt ? ` until ${formatDate(result.endsAt)}` : ''}. Betting is blocked.`)
       setPendingDuration(undefined)
       setFrozenDuration(undefined)

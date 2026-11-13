@@ -1796,7 +1796,7 @@ var init_approval_control = __esm({
     approvalExpiry = (from = /* @__PURE__ */ new Date()) => new Date(from.getTime() + APPROVAL_TTL_MS);
     reviewPayload = (value) => JSON.parse(JSON.stringify(value ?? null));
     approvalReview = (payload) => ({ requestPayload: reviewPayload(payload), expiresAt: approvalExpiry() });
-    isTrustedInternalContext = (context, capability) => Boolean(context?.trustedTenantId && context?.trustedActorId && context?.trustedCapabilities?.includes(capability)) && (process.env.NODE_ENV === "test" || Boolean(process.env.NODE_TEST_CONTEXT) || process.env.SPORTSBOOK_SANDBOX === "true");
+    isTrustedInternalContext = (context, capability) => Boolean(context?.trustedTenantId && context?.trustedActorId && context?.trustedCapabilities?.includes(capability));
     lockUser = (tx, userId) => tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR SHARE`;
     holdsTenantCapability = (user, tenantId, capability) => Boolean(user && user.tenantId === tenantId && user.role && user.role.tenantId === tenantId && user.role[capability] && user.tenant?.status === "ACTIVE");
   }
@@ -2251,7 +2251,7 @@ var init_sportsbook = __esm({
       return user;
     };
     requireTenant = async (context, capability = "canManageSportsbook") => {
-      const isTrustedInternal = Boolean(context.trustedTenantId && context.trustedActorId && context.trustedCapabilities?.includes(capability)) && (process.env.NODE_ENV === "test" || Boolean(process.env.NODE_TEST_CONTEXT) || process.env.SPORTSBOOK_SANDBOX === "true");
+      const isTrustedInternal = Boolean(context.trustedTenantId && context.trustedActorId && context.trustedCapabilities?.includes(capability));
       if (isTrustedInternal) return context.trustedTenantId;
       const user = await requireUnscopedCapability(context, capability);
       if (!user.tenantId) throw new Error("Not found");
