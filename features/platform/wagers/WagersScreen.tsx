@@ -5,6 +5,7 @@ import { searchFrom } from "../lib/graphql";
 import { getOperatorContext, notFoundWhenForbidden } from "../lib/operator";
 import { allowedParam, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { getWagers } from "./actions";
+import { accountNumber } from "@/features/sportsbook/domain/references";
 import { WagersPageClient } from "./screens/WagersPageClient";
 
 const wagerStatuses = ["PENDING", "DELAYED", "ACCEPTED", "REJECTED", "OPEN", "PARTIALLY_CASHED_OUT", "CASHED_OUT", "GRADED", "SETTLED", "VOID"] as const;
@@ -28,7 +29,7 @@ export async function WagersScreen({ searchParams }: { searchParams?: PlatformSe
   const rejectedRequested = sumByCurrency(wagers.filter((wager) => wager.status === "REJECTED"), (wager) => wager.stakeMinor, (wager) => wager.currency);
   return <OperatorShell active="Wagers" title="Wagers" tone={result.data.openDisputes ? "wait" : "ok"} meta={`${result.data.total} wagers · ${result.data.openDisputes} open disputes`} tenantName={operator.tenantName}>
     <WagersPageClient data={{
-      rows: wagers.map((wager) => ({ id: wager.id, reference: shortId(wager.id), player: wager.player ? wager.player.subject || shortId(wager.player.id) : "Restricted", stakeAndReturn: `${money(wager.stakeMinor, wager.currency)} → ${money(wager.potentialReturnMinor, wager.currency)} · ${dateTime(wager.createdAt)}`, status: wager.status, disputed: wager.disputes > 0 })),
+      rows: wagers.map((wager) => ({ id: wager.id, reference: shortId(wager.id), player: wager.player ? accountNumber(wager.player.id) : "Restricted", stakeAndReturn: `${money(wager.stakeMinor, wager.currency)} → ${money(wager.potentialReturnMinor, wager.currency)} · ${dateTime(wager.createdAt)}`, status: wager.status, disputed: wager.disputes > 0 })),
       total: result.data.total, accepted: result.data.accepted, rejected: result.data.rejected, openDisputes: result.data.openDisputes,
       handle: moneyTotals(handle), handleDetail: `${acceptedEconomic.length}/${wagers.length} on page · rejected ${moneyTotals(rejectedRequested)}`,
       page, pageSize: PLATFORM_PAGE_SIZE, status, search, statuses: wagerStatuses,

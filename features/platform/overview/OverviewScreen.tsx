@@ -4,6 +4,7 @@ import { ExternalGateNotice, OperatorShell, TenantRequired } from "../components
 import { Mono, StatusDot, type Tone } from "../components/kit";
 import { MetricGrid, RecordList } from "../components/WorkflowUI";
 import { dateTime, money, moneyTotals, shortId, sumByCurrency } from "../lib/format";
+import { playerDisplay, playerDisplayInclude } from "@/features/sportsbook/domain/references";
 import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 
 const stateText = (value: string | null | undefined) => (value || "unknown").replaceAll("_", " ").toLowerCase();
@@ -25,7 +26,7 @@ export async function OverviewScreen() {
     prisma.resultVersion.count({ where: { tenantId, status: "PENDING" } }),
     can.canManageFinance ? prisma.reconciliationItem.count({ where: { tenantId, status: "OPEN" } }) : null,
     prisma.incident.count({ where: { tenantId, status: { not: "RESOLVED" } } }),
-    can.canManageRisk ? prisma.wager.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" }, take: 5, include: { player: { select: { subject: true } } } }) : null,
+    can.canManageRisk ? prisma.wager.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" }, take: 5, include: { player: playerDisplayInclude } }) : null,
   ]);
   const liability = exposure ? sumByCurrency(exposure, (item: any) => item.liabilityMinor, (item: any) => item.currency) : null;
   const attention = pendingResults + (reconExceptions ?? 0) + incidents;
@@ -56,7 +57,7 @@ export async function OverviewScreen() {
       { label: "Wagers", value: wagers },
       { label: "Needs attention", value: attention, tone: attention ? "wait" : "ok" },
     ]} />
-    {recent === null ? null : <RecordList title="Latest wagers" columns={["Reference", "Player", "Stake", "State"]} rows={recent.map((wager: any) => ({ id: wager.id, href: `/dashboard/platform/wagers/${wager.id}`, status: wager.status, cells: [<Mono key="ref">{shortId(wager.id)}</Mono>, wager.player?.subject || "Unknown player", <span key="stake"><Mono className="text-foreground">{money(wager.stakeMinor, wager.currency)}</Mono><span className="block text-xs">{dateTime(wager.createdAt)}</span></span>, stateText(wager.status)] }))} emptyTitle="No wagers" />}
+    {recent === null ? null : <RecordList title="Latest wagers" columns={["Reference", "Player", "Stake", "State"]} rows={recent.map((wager: any) => ({ id: wager.id, href: `/dashboard/platform/wagers/${wager.id}`, status: wager.status, cells: [<Mono key="ref">{shortId(wager.id)}</Mono>, playerDisplay(wager.player, wager.playerId).primary, <span key="stake"><Mono className="text-foreground">{money(wager.stakeMinor, wager.currency)}</Mono><span className="block text-xs">{dateTime(wager.createdAt)}</span></span>, stateText(wager.status)] }))} emptyTitle="No wagers" />}
     <ExternalGateNotice />
   </OperatorShell>;
 }

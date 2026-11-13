@@ -6,6 +6,11 @@ import { Mono, Pill, PillLink, Track } from "../../components/kit";
 import { MetricGrid, RecordList, WorkflowNote } from "../../components/WorkflowUI";
 import { hrefWith } from "../../lib/paging";
 
+/** "America/New_York" → "Eastern Time" for labels; falls back to the zone id. */
+function zoneName(timeZone: string) {
+  try { return new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "longGeneric" }).formatToParts(new Date()).find(part => part.type === "timeZoneName")?.value || timeZone; } catch { return timeZone; }
+}
+
 export type CatalogEventRow = { id: string; name: string; reference: string; competition: string; startsAt: string; status: string | null };
 export type CatalogOption = { label: string; value: string };
 
@@ -54,7 +59,7 @@ export function CatalogPageClient({ data }: { data: CatalogPageData }) {
         </Track>
         <ListFilters searchLabel="Search events" searchPlaceholder="Event, key or ID" />
       </div>}
-      columns={["Event", "Competition", `Starts (${data.timeZone})`, "State"]}
+      columns={["Event", "Competition", `Starts (${zoneName(data.timeZone)})`, "State"]}
       rows={data.rows.map((event) => ({ id: event.id, href: `${basePath}/${event.id}`, status: event.status ?? undefined, cells: [<span key="name">{event.name}<Mono className="mt-1 block break-all text-xs text-muted-foreground">{event.reference}</Mono></span>, event.competition, <Mono key="starts">{event.startsAt}</Mono>, stateText(event.status)] }))}
       filtered={filtered}
       emptyTitle={filtered ? "No matching events" : "No events"}
@@ -77,7 +82,7 @@ export function CatalogPageClient({ data }: { data: CatalogPageData }) {
         { name: "competitionId", label: "Competition", type: "select", options: data.competitionOptions, emptyOptionsMessage: data.competitionSearch ? "No competition matches." : undefined },
         { name: "externalKey", label: "External reference", placeholder: "provider:event:2026-001" },
         { name: "name", label: "Event name", placeholder: "Home v Away" },
-        { name: "startAt", label: `Scheduled start (${data.timeZone})`, type: "datetime-local", help: `Tenant time ${data.timeZone}. DST-gap times rejected; repeated times need an offset.` },
+        { name: "startAt", label: `Scheduled start (${zoneName(data.timeZone)})`, type: "datetime-local", help: `Operator time, ${zoneName(data.timeZone)}. DST-gap times rejected; repeated times need an offset.` },
         { name: "marketDefinition", label: "Market type", type: "select", options: data.definitionOptions, emptyOptionsMessage: "No active market types." },
         { name: "selections", label: "Selections", type: "rows", minRows: 2, defaultValue: JSON.stringify([{ key: "home", label: "Home" }, { key: "away", label: "Away" }]), columns: [{ name: "key", label: "Key", placeholder: "draw" }, { name: "label", label: "Name", placeholder: "Draw" }], help: "Min 2, unique keys." },
       ]} submitLabel="Create catalog event" successMessage="Event created · market suspended until priced." resultHref={`${basePath}/{id}`} disabledReason={data.canTrade ? undefined : "Trading permission required."} /></div>

@@ -135,7 +135,7 @@ export async function TenantRequired() {
         <div className="mt-3 pl-4">
           <Track>
             {state.kind === "signed_out" ? <PillLink size="sm" href="/dashboard/signin">Sign in</PillLink> : null}
-            {state.kind === "step_up_required" ? <PillLink size="sm" href="/dashboard/platform/security">Verify MFA</PillLink> : null}
+            {state.kind === "step_up_required" ? <PillLink size="sm" className="h-11 md:h-7" href="/dashboard/platform/security">Verify MFA</PillLink> : null}
             {state.kind === "unassigned" && state.canSetUp ? <PillLink size="sm" href="/dashboard/platform/onboarding">Set up operator</PillLink> : null}
             {state.kind === "service_unavailable" ? <PillLink size="sm" href="/dashboard/platform">Try again</PillLink> : null}
           </Track>

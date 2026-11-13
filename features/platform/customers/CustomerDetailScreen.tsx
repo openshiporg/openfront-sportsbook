@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { playerDisplay } from "@/features/sportsbook/domain/references";
 import { MutationForm } from "../components/MutationForm";
 import { Mono, PillLink, StatusDot, Track } from "../components/kit";
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
@@ -14,7 +15,7 @@ export async function CustomerDetailScreen({ playerId }: { playerId: string }) {
   const operator = await getOperatorContext("canManageCompliance");
   if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Customers" detail title="Customer"><TenantRequired /></OperatorShell>;
-  const player = await prisma.player.findFirst({ where: { id: playerId, tenantId: operator.tenantId }, include: { brand: true, from_VerificationCase_player: { orderBy: { createdAt: "desc" }, take: 100 }, from_AMLCase_player: { orderBy: { createdAt: "desc" }, take: 50 }, from_GeoSession_player: { orderBy: { createdAt: "desc" }, take: 20, include: { from_GeoCheck_geoSession: { orderBy: { checkedAt: "desc" }, take: 1 } } }, from_AccountRestriction_player: { orderBy: { createdAt: "desc" }, take: 50 }, _count: { select: { from_Wager_player: true, from_PaymentIntent_player: true } } } });
+  const player = await prisma.player.findFirst({ where: { id: playerId, tenantId: operator.tenantId }, include: { brand: true, from_CustomerCredential_player: { select: { emailMasked: true }, orderBy: { createdAt: "asc" }, take: 1 }, from_VerificationCase_player: { orderBy: { createdAt: "desc" }, take: 100 }, from_AMLCase_player: { orderBy: { createdAt: "desc" }, take: 50 }, from_GeoSession_player: { orderBy: { createdAt: "desc" }, take: 20, include: { from_GeoCheck_geoSession: { orderBy: { checkedAt: "desc" }, take: 1 } } }, from_AccountRestriction_player: { orderBy: { createdAt: "desc" }, take: 50 }, _count: { select: { from_Wager_player: true, from_PaymentIntent_player: true } } } });
   if (!player) notFound();
   // Ledger accounts and balances are finance records (LedgerAccount is canManageFinance); compliance-only operators see counts, not balances.
   const canFinance = operator.capabilities.canManageFinance;
@@ -53,7 +54,7 @@ export async function CustomerDetailScreen({ playerId }: { playerId: string }) {
   const tone = activeRestrictions.length ? "alert" : statusDotTone(player.status);
   const meta = `KYC ${String(player.kycStatus ?? "unknown").toLowerCase()} · ${activeRestrictions.length} restrictions · ${pendingCases.length} pending verification · ${openAml.length} AML open${closureOpen ? ` · closure ${String(closure.status).replaceAll("_", " ").toLowerCase()}` : ""}`;
 
-  return <OperatorShell active="Customers" detail title={player.subject} tenantName={operator.tenantName} tone={tone} meta={meta}>
+  return <OperatorShell active="Customers" detail title={playerDisplay(player, player.id).primary} tenantName={operator.tenantName} tone={tone} meta={meta}>
     <DetailGrid items={[
       { label: "Account", value: <span className="flex flex-wrap gap-x-3 gap-y-1"><StatusBadge value={player.status} />{activeRestrictions.length ? <StatusBadge value="RESTRICTED" /> : null}</span> },
       { label: "KYC", value: <StatusBadge value={player.kycStatus} /> },

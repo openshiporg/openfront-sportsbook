@@ -2,6 +2,7 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { ReadFailed } from "../components/ReadFailed";
 import { dateTime, shortId } from "../lib/format";
 import { searchFrom } from "../lib/graphql";
+import { accountNumber } from "@/features/sportsbook/domain/references";
 import { getOperatorContext, notFoundWhenForbidden } from "../lib/operator";
 import { allowedParam, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { getCustomers } from "./actions";
@@ -23,7 +24,7 @@ export async function CustomersScreen({ searchParams }: { searchParams?: Platfor
   const tone = result.success ? (result.data.pendingKyc || result.data.openAml ? "wait" : "ok") : "alert";
   return <OperatorShell active="Customers" title="Customers" tenantName={operator.tenantName} tone={tone} meta={meta}>
     {result.success ? <CustomersPageClient data={{
-      rows: result.data.players.map((player) => ({ id: player.id, subject: player.subject || shortId(player.id), reference: shortId(player.id), createdAt: dateTime(player.createdAt), kycStatus: player.kycStatus, riskBand: player.riskBand || "UNKNOWN", verificationCases: player.verificationCases, amlCases: player.amlCases, status: player.status, restricted: player.activeRestrictions > 0 })),
+      rows: result.data.players.map((player) => ({ id: player.id, subject: accountNumber(player.id), reference: shortId(player.id), createdAt: dateTime(player.createdAt), kycStatus: player.kycStatus, riskBand: player.riskBand || "UNKNOWN", verificationCases: player.verificationCases, amlCases: player.amlCases, status: player.status, restricted: player.activeRestrictions > 0 })),
       total: result.data.total, pendingKyc: result.data.pendingKyc, openAml: result.data.openAml, restricted: result.data.restricted,
       page, pageSize: PLATFORM_PAGE_SIZE, search, kycStatus,
     }} /> : <ReadFailed subject="customers" />}

@@ -45,9 +45,11 @@ export function statusDotTone(value: string | null | undefined): Tone {
   return label === "LIVE" || label === "IN_PLAY" ? "live" : dotByStatusTone[statusTone(label)];
 }
 
+const sentenceCase = (value: string) => { const text = value.replaceAll("_", " ").toLowerCase(); return text.charAt(0).toUpperCase() + text.slice(1); };
+
 export function StatusBadge({ value }: { value: string | null | undefined }) {
   const label = value || "UNKNOWN";
-  return <span title={label} className="inline-flex items-center whitespace-nowrap text-xs font-medium text-foreground"><StatusDot tone={statusDotTone(label)} className="mr-1.5 size-1.5 align-middle" />{label.replaceAll("_", " ").toLowerCase()}</span>;
+  return <span title={label} className="inline-flex items-center whitespace-nowrap text-xs font-medium text-foreground"><StatusDot tone={statusDotTone(label)} className="mr-1.5 size-1.5 align-middle" />{sentenceCase(label)}</span>;
 }
 
 export type RecordListPagination = { page: number; pageSize: number; total: number; hrefForPage: (page: number) => string };
