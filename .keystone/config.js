@@ -1243,6 +1243,7 @@ async function dispatchPinnedPayment(intent, provider, fresh, opaqueData) {
     const result = await executePaymentProvider(provider, { type: intent.type === "DEPOSIT" ? "deposit" : "withdrawal", payload: { amountMinor: intent.amountMinor, currency: intent.currency, opaqueData } }, `${provider.id}:${intent.idempotencyKey}`);
     if (result.status === "SUCCEEDED") return { status: "SUCCEEDED", externalRef: result.externalRef, reasonCode: "" };
     if (result.status === "FAILED") return { status: "FAILED", externalRef: result.externalRef, reasonCode: "PROVIDER_DECLINED" };
+    if (result.reasonCode === "OPERATOR_PAYOUT_REQUIRED") return { status: "PROCESSING", externalRef: "", reasonCode: "OPERATOR_PAYOUT_REQUIRED" };
     return { status: "UNKNOWN", externalRef: result.externalRef, reasonCode: "PROVIDER_PENDING" };
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
@@ -1285,11 +1286,12 @@ async function applyPaymentOutcome(tx, current, outcome, now) {
       }
     }
   } else {
-    status3 = "UNKNOWN";
+    status3 = outcome.status === "PROCESSING" ? "PROCESSING" : "UNKNOWN";
   }
-  const intent = await tx.paymentIntent.update({ where: { id: current.id }, data: { status: status3, completedAt: status3 === "UNKNOWN" ? null : now, ...outcome.externalRef ? { providerSessionReference: outcome.externalRef } : {} } });
+  const definitive = status3 === "SUCCEEDED" || status3 === "FAILED";
+  const intent = await tx.paymentIntent.update({ where: { id: current.id }, data: { status: status3, completedAt: definitive ? now : null, ...outcome.externalRef ? { providerSessionReference: outcome.externalRef } : {} } });
   const attempt = await tx.paymentAttempt.findFirst({ where: { tenantId, paymentIntentId: current.id }, orderBy: { attempt: "desc" } });
-  if (attempt) await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: status3, reasonCode: outcome.reasonCode, ...outcome.externalRef ? { externalReference: outcome.externalRef } : {} } });
+  if (attempt) await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: status3 === "PROCESSING" ? "PENDING" : status3, reasonCode: outcome.reasonCode, ...outcome.externalRef ? { externalReference: outcome.externalRef } : {} } });
   return { status: status3, intent };
 }
 var PRE_DISPATCH_REFUSALS, isCustomerOrigin;
@@ -1319,7 +1321,7 @@ async function ensureSandboxPromotions(prisma, tenantId) {
       if (!promotion) {
         const termsHash = evidenceHash({ key: fixture.key, economics: fixture.economics, requirements: fixture.requirements, version: "sandbox-full-v1" });
         promotion = await tx.promotion.create({ data: { tenantId, key: fixture.key, name: fixture.name, description: fixture.description, type: fixture.type, status: "ACTIVE", startsAt: new Date(now.getTime() - 864e5), endsAt: new Date(now.getTime() + 30 * 864e5), budgetMinor: fixture.budgetMinor, currency, termsVersion: "sandbox-full-v1", termsHash } });
-        const rule = await tx.promotionRuleVersion.create({ data: { tenantId, promotionId: promotion.id, version: 1, eligibility: { kyc: "APPROVED", onePerPlayer: true }, economics: fixture.economics, wageringRequirements: fixture.requirements, abuseControls: { duplicateAccount: "DENY", linkedPaymentMethod: "REVIEW", maxAwardsPerPlayer: 1 }, contributionRules: { sportsbook: 100 }, status: "ACTIVE", effectiveFrom: now, evidenceHash: termsHash } });
+        await tx.promotionRuleVersion.create({ data: { tenantId, promotionId: promotion.id, version: 1, eligibility: { kyc: "APPROVED", onePerPlayer: true }, economics: fixture.economics, wageringRequirements: fixture.requirements, abuseControls: { duplicateAccount: "DENY", linkedPaymentMethod: "REVIEW", maxAwardsPerPlayer: 1 }, contributionRules: { sportsbook: 100 }, status: "ACTIVE", effectiveFrom: now, evidenceHash: termsHash } });
         await tx.campaignBudget.create({ data: { tenantId, promotionId: promotion.id, allocatedMinor: fixture.budgetMinor, awardedMinor: "0", redeemedMinor: "0", forfeitedMinor: "0", currency, version: 1, status: "ACTIVE" } });
       }
     }
@@ -4171,7 +4173,7 @@ var PamSubjectMapping = scoped("canManageIntegrations", { providerConnection: re
 var DataExport = scoped("canReadAudit", { requestedBy: requiredText3(), type: status2(["AUDIT", "WAGERS", "FINANCE", "CUSTOMERS", "REGULATORY", "PRIVACY"]), scope: (0, import_fields7.json)(), classification: status2(["INTERNAL", "CONFIDENTIAL", "RESTRICTED_PII", "RESTRICTED_FINANCIAL", "RESTRICTED_REGULATORY"]), status: status2(["PENDING", "GENERATING", "READY", "EXPIRED", "REVOKED"]), rowCount: (0, import_fields7.integer)({ defaultValue: 0 }), contentHash: optionalText(), storageReference: optionalText(), expiresAt: requiredTime(), approvalRequest: optionalRelation("ApprovalRequest") });
 
 // features/keystone/models/index.ts
-var models = {
+var rawModels = {
   User,
   Role,
   ...Sportsbook_exports,
@@ -4179,6 +4181,34 @@ var models = {
   ...Customer_exports,
   ...SportsbookFull_exports
 };
+var userLookups = /* @__PURE__ */ new WeakMap();
+var sharedUserContext = (context) => {
+  const cache = userLookups.get(context) ?? /* @__PURE__ */ new Map();
+  userLookups.set(context, cache);
+  const findUnique = (args) => {
+    const key2 = JSON.stringify(args);
+    if (!cache.has(key2)) cache.set(key2, context.prisma.user.findUnique(args));
+    return cache.get(key2);
+  };
+  return { ...context, prisma: { user: { findUnique } } };
+};
+var models = Object.fromEntries(Object.entries(rawModels).map(([key2, config2]) => {
+  const operationQuery = config2?.access?.operation?.query;
+  const filterQuery = config2?.access?.filter?.query;
+  if (typeof operationQuery !== "function" && typeof filterQuery !== "function") return [key2, config2];
+  const existing = config2?.ui?.isHidden;
+  const isHidden = async (args) => {
+    if (existing === true || typeof existing === "function" && await existing(args)) return true;
+    try {
+      const checked = { ...args, context: args.context ? sharedUserContext(args.context) : args.context };
+      if (typeof operationQuery === "function" && !await operationQuery(checked)) return true;
+      return typeof filterQuery === "function" && await filterQuery(checked) === false;
+    } catch {
+      return false;
+    }
+  };
+  return [key2, { ...config2, ui: { ...config2.ui ?? {}, isHidden } }];
+}));
 
 // features/keystone/ui-create-access.ts
 function createRule(access) {

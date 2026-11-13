@@ -31,7 +31,8 @@ export async function ListPage({ params, searchParams }: PageProps) {
   // Get the list by path using our cached function
   const list = await getListByPath(listKeyParam);
 
-  if (!list) {
+  // A list hidden for this session (the sidebar's own per-role check) has no pages: a 404, not an empty 200.
+  if (!list || list.isHidden) {
     notFound()
   }
 

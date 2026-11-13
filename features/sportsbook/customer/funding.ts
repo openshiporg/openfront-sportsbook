@@ -81,7 +81,8 @@ async function serializable<T>(prisma: PrismaClient, fn: (tx: any) => Promise<T>
 }
 
 type FundingKind = 'DEPOSIT' | 'WITHDRAWAL'
-export type DispatchOutcome = { status: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN'; externalRef: string; reasonCode: string }
+/** PROCESSING: the provider accepted the request and a definitive answer comes later (e.g. a staff bank payout); not unknown. */
+export type DispatchOutcome = { status: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN' | 'PROCESSING'; externalRef: string; reasonCode: string }
 
 /** Intent states whose provider effect is not yet definitive; reserved funds and limit headroom stay held. */
 const IN_FLIGHT = new Set(['PENDING', 'PROCESSING', 'UNKNOWN'])
@@ -91,7 +92,7 @@ const PRE_DISPATCH_REFUSALS = new Set(['PAYMENT_PROVIDER_UNAVAILABLE', 'PAYMENT_
 function fundingResultFor(intent: any, duplicate: boolean, availableMinor: string | undefined, currencyExponent: number): FundingResult {
   const base = { duplicate, paymentId: intent.id, amountMinor: intent.amountMinor, currency: intent.currency, currencyExponent, ...(availableMinor === undefined ? {} : { availableMinor }) }
   if (intent.status === 'SUCCEEDED') return { state: 'SUCCEEDED', ...base }
-  if (IN_FLIGHT.has(intent.status ?? '')) return { state: 'PENDING', ...base, pendingCode: intent.type === 'WITHDRAWAL' ? 'WITHDRAWAL_OUTCOME_PENDING' : 'DEPOSIT_OUTCOME_PENDING' }
+  if (IN_FLIGHT.has(intent.status ?? '')) return { state: 'PENDING', ...base, pendingCode: intent.type === 'WITHDRAWAL' ? (intent.status === 'PROCESSING' && intent.paymentMethodReference === 'sandbox-tokenized-payout' && (intent.riskEvidence as any)?.provider?.adapterId === 'manual' ? 'WITHDRAWAL_PAYOUT_IN_PROGRESS' : 'WITHDRAWAL_OUTCOME_PENDING') : 'DEPOSIT_OUTCOME_PENDING' }
   return { state: 'REJECTED', ...base, rejectionCode: intent.type === 'WITHDRAWAL' ? 'WITHDRAWAL_FAILED' : 'PAYMENT_FAILED' }
 }
 
@@ -120,6 +121,8 @@ export async function dispatchPinnedPayment(intent: any, provider: any, fresh: b
     const result = await executePaymentProvider(provider, { type: intent.type === 'DEPOSIT' ? 'deposit' : 'withdrawal', payload: { amountMinor: intent.amountMinor, currency: intent.currency, opaqueData } }, `${provider.id}:${intent.idempotencyKey}`)
     if (result.status === 'SUCCEEDED') return { status: 'SUCCEEDED', externalRef: result.externalRef, reasonCode: '' }
     if (result.status === 'FAILED') return { status: 'FAILED', externalRef: result.externalRef, reasonCode: 'PROVIDER_DECLINED' }
+    // A manual payout is accepted and waits for staff to send the bank transfer: known, in progress, funds held.
+    if ((result as { reasonCode?: string }).reasonCode === 'OPERATOR_PAYOUT_REQUIRED') return { status: 'PROCESSING', externalRef: '', reasonCode: 'OPERATOR_PAYOUT_REQUIRED' }
     return { status: 'UNKNOWN', externalRef: result.externalRef, reasonCode: 'PROVIDER_PENDING' }
   } catch (error) {
     const code = error instanceof Error ? error.message : ''
@@ -144,7 +147,7 @@ export async function applyPaymentOutcome(tx: any, current: any, outcome: Dispat
     tx.ledgerAccount.findFirst({ where: { tenantId, playerId: null, key: 'PAYMENT_CLEARING', currency: current.currency } }),
   ])
   if (!cash || !clearing) throw new Error('PAYMENT_LEDGER_UNAVAILABLE')
-  let status: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN' = outcome.status
+  let status: 'SUCCEEDED' | 'FAILED' | 'UNKNOWN' | 'PROCESSING' = outcome.status
   if (outcome.status === 'SUCCEEDED') {
     const deposit = current.type === 'DEPOSIT'
     // Same journal identity as the path that dispatched the attempt (customer withdrawals use withdrawal:, all else payment:).
@@ -172,11 +175,13 @@ export async function applyPaymentOutcome(tx: any, current: any, outcome: Dispat
       }
     }
   } else {
-    status = 'UNKNOWN'
+    // Not definitive: funds stay held. An accepted manual payout is PROCESSING; anything else is UNKNOWN.
+    status = outcome.status === 'PROCESSING' ? 'PROCESSING' : 'UNKNOWN'
   }
-  const intent = await tx.paymentIntent.update({ where: { id: current.id }, data: { status, completedAt: status === 'UNKNOWN' ? null : now, ...(outcome.externalRef ? { providerSessionReference: outcome.externalRef } : {}) } })
+  const definitive = status === 'SUCCEEDED' || status === 'FAILED'
+  const intent = await tx.paymentIntent.update({ where: { id: current.id }, data: { status, completedAt: definitive ? now : null, ...(outcome.externalRef ? { providerSessionReference: outcome.externalRef } : {}) } })
   const attempt = await tx.paymentAttempt.findFirst({ where: { tenantId, paymentIntentId: current.id }, orderBy: { attempt: 'desc' } })
-  if (attempt) await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status, reasonCode: outcome.reasonCode, ...(outcome.externalRef ? { externalReference: outcome.externalRef } : {}) } })
+  if (attempt) await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { status: status === 'PROCESSING' ? 'PENDING' : status, reasonCode: outcome.reasonCode, ...(outcome.externalRef ? { externalReference: outcome.externalRef } : {}) } })
   return { status, intent }
 }
 
@@ -226,7 +231,7 @@ export async function reconcileUnknownPayment(
     if (!IN_FLIGHT.has(current.status ?? '')) return { state: 'ALREADY_RESOLVED' as const, intentId: current.id }
     const now = new Date()
     const { status, intent: settled } = await applyPaymentOutcome(tx, current, outcome, now)
-    if (status === 'UNKNOWN') throw new Error('PAYMENT_STILL_UNKNOWN')
+    if (status !== 'SUCCEEDED' && status !== 'FAILED') throw new Error('PAYMENT_STILL_UNKNOWN')
     await audit(tx, status === 'SUCCEEDED' ? 'payment.reconciled_completed' : 'payment.reconciled_failed', current.id, { type: current.type, amountMinor: current.amountMinor, currency: current.currency, providerConnectionId: current.providerConnectionId, externalReference: outcome.externalRef, reasonCode: outcome.reasonCode })
     // Complete the originating customer command (if still in progress) with the converged receipt.
     const commandId = String(current.idempotencyKey ?? '').match(/^customer(?:-withdrawal)?:(.+)$/)?.[1]
@@ -354,9 +359,9 @@ async function runFundingCommand(
     }
     const now = new Date()
     const { status, intent } = await applyPaymentOutcome(tx, current, outcome, now)
-    await appendCustomerAudit(tx, { tenantId: actor.tenantId, playerId: actor.playerId, action: current.type === 'DEPOSIT' ? 'customer.wallet_funded' : 'customer.withdrawal_requested', targetType: 'PaymentIntent', targetId: current.id, reason: status === 'SUCCEEDED' ? 'SANDBOX_CONFIRMED' : status === 'FAILED' ? 'SANDBOX_PROVIDER_FAILED' : 'PROVIDER_OUTCOME_UNKNOWN', payload: { amountMinor: current.amountMinor, currency: current.currency, holdId: current.holdId, externalReference: outcome.externalRef, reasonCode: outcome.reasonCode } })
+    await appendCustomerAudit(tx, { tenantId: actor.tenantId, playerId: actor.playerId, action: current.type === 'DEPOSIT' ? 'customer.wallet_funded' : 'customer.withdrawal_requested', targetType: 'PaymentIntent', targetId: current.id, reason: status === 'SUCCEEDED' ? 'SANDBOX_CONFIRMED' : status === 'FAILED' ? 'SANDBOX_PROVIDER_FAILED' : status === 'PROCESSING' ? 'OPERATOR_PAYOUT_REQUIRED' : 'PROVIDER_OUTCOME_UNKNOWN', payload: { amountMinor: current.amountMinor, currency: current.currency, holdId: current.holdId, externalReference: outcome.externalRef, reasonCode: outcome.reasonCode } })
     const result = fundingResultFor(intent, duplicate, await availableFor(tx, actor, current.currency), currency.exponent)
-    if (status === 'UNKNOWN') await recordCustomerCommandProgress(tx, commandId, result)
+    if (status !== 'SUCCEEDED' && status !== 'FAILED') await recordCustomerCommandProgress(tx, commandId, result)
     else await finishCustomerCommand(tx, commandId, status === 'SUCCEEDED' ? 'SUCCEEDED' : 'REJECTED', result)
     return result
   })

@@ -144,7 +144,8 @@ async function getCustomerWalletUnderAuthority(prisma: Prisma.TransactionClient,
         currency: intent.currency,
         status: intent.status ?? 'UNKNOWN',
         createdAt: iso(intent.createdAt) ?? new Date(0).toISOString(),
-        ...(attempt?.externalReference ? { externalReference: attempt.externalReference } : {}),
+        // Internal idempotency keys (tenant:customer-withdrawal:…) are not customer references.
+        ...(attempt?.externalReference && !/customer(-withdrawal)?:/.test(attempt.externalReference) ? { externalReference: attempt.externalReference } : {}),
       }
     }),
   }

@@ -44,8 +44,10 @@ export function BetsScreen() {
           </div>
           <dl className="sb-tear grid grid-cols-2 gap-x-4 gap-y-3 bg-sb-paper/60 p-4 text-sm md:border-l md:border-t-0 md: md:border-sb-line md:p-5 md:before:hidden md:after:hidden md:grid-cols-1">
             <div><dt className="text-xs font-semibold  text-sb-mute">Stake</dt><dd className="mt-0.5 tabular-nums text-lg font-semibold ">{formatMinor(bet.stakeMinor, bet.currency)}</dd></div>
-            <div><dt className="text-xs font-semibold  text-sb-mute">Return</dt><dd className="mt-0.5 tabular-nums text-lg font-semibold ">{formatMinor(bet.potentialReturnMinor, bet.currency)}</dd></div>
-            {bet.netRemainingStakeMinor !== null && <div><dt className="text-xs font-semibold  text-sb-mute">Stake after cash-out</dt><dd className="mt-0.5 tabular-nums font-semibold ">{formatMinor(bet.netRemainingStakeMinor, bet.currency)}</dd></div>}
+            {bet.status === 'VOID'
+              ? <div><dt className="text-xs font-semibold  text-sb-mute">Stake returned</dt><dd className="mt-0.5 tabular-nums text-lg font-semibold ">{formatMinor(bet.stakeMinor, bet.currency)}</dd></div>
+              : <div><dt className="text-xs font-semibold  text-sb-mute">{['SETTLED','CASHED_OUT','REJECTED'].includes(bet.status) ? 'Potential return' : 'Return'}</dt><dd className="mt-0.5 tabular-nums text-lg font-semibold ">{formatMinor(bet.potentialReturnMinor, bet.currency)}</dd></div>}
+            {bet.netRemainingStakeMinor !== null && bet.status !== 'VOID' && <div><dt className="text-xs font-semibold  text-sb-mute">Stake after cash-out</dt><dd className="mt-0.5 tabular-nums font-semibold ">{formatMinor(bet.netRemainingStakeMinor, bet.currency)}</dd></div>}
             {bet.payoutMinor !== null && <div><dt className="text-xs font-semibold  text-sb-mute">Paid</dt><dd className="mt-0.5 tabular-nums text-lg font-semibold  text-sb-win">{formatMinor(bet.payoutMinor, bet.currency)}</dd></div>}
           </dl>
         </div>
