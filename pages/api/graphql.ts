@@ -25,7 +25,7 @@ function operatorCodeOrMasked(error:unknown,message:string,isDev?:boolean){
 }
 
 export const config={api:{bodyParser:{sizeLimit:'256kb'}}}
-const yoga=createYoga({graphqlEndpoint:'/api/graphql',schema:keystoneContext.graphql.schema,graphiql:process.env.NODE_ENV!=='production',maskedErrors:process.env.NODE_ENV==='production'?{maskError:operatorCodeOrMasked}:false,context:({req,res}:{req:any;res:any})=>keystoneContext.withRequest(req,res),multipart:false})
+const yoga=createYoga({graphqlEndpoint:'/api/graphql',schema:keystoneContext.graphql.schema,graphiql:false,maskedErrors:process.env.NODE_ENV==='production'?{maskError:operatorCodeOrMasked}:false,context:({req,res}:{req:any;res:any})=>keystoneContext.withRequest(req,res),multipart:false})
 export default async function handler(req:NextApiRequest,res:NextApiResponse){
  if(req.method!=='GET'&&req.method!=='POST'){res.setHeader('allow','GET, POST');return res.status(405).json({errors:[{message:'Method not allowed'}]})}
  // Tenant comes only from the signed operator session through the narrow bootstrap read; the whole request (session data, resolvers) then runs in that tenant's scope.
