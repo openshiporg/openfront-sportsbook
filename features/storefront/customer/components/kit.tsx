@@ -21,7 +21,7 @@ const toneClass: Record<Tone, string> = {
 
 /** Inline dot that sits on the title line, before the title text. */
 export function Dot({ tone, className }: { tone: Tone; className?: string }) {
-  return <span aria-hidden="true" className={cn('mr-2 inline-block size-2 shrink-0 rounded-[1px] align-[0.2em]', tone === 'live' && 'motion-safe:animate-pulse', toneClass[tone], className)} />
+  return <span aria-hidden="true" className={cn('mr-2 inline-block size-2 shrink-0 rounded-full align-[0.2em]', tone === 'live' && 'motion-safe:animate-pulse', toneClass[tone], className)} />
 }
 
 /** Status values from the API, mapped to a dot tone. Unknown values are neutral, never "good". */
@@ -59,7 +59,7 @@ export function pillClass(variant: PillVariant = 'raised', size: 'sm' | 'md' | '
   return cn(
     'inline-flex min-w-0 select-none items-center justify-center gap-1.5 whitespace-nowrap font-semibold transition-colors duration-150 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0',
     size === 'sm' ? 'min-h-11 px-3 text-xs md:min-h-9' : size === 'lg' ? 'min-h-12 px-6 text-sm' : 'min-h-10 px-4 text-sm',
-    (variant === 'raised' || variant === 'primary' || variant === 'danger') && 'rounded-[2px] border',
+    (variant === 'raised' || variant === 'primary' || variant === 'danger') && 'rounded-xl border',
     variant === 'raised' && 'border-sb-ink/25 bg-sb-card text-sb-ink hover:border-sb-ink',
     variant === 'primary' && 'border-sb-brand bg-sb-brand text-white hover:brightness-110',
     variant === 'danger' && 'border-sb-live/50 bg-sb-card text-sb-live hover:border-sb-live',
@@ -81,7 +81,7 @@ export function PillLink({ href, variant = 'raised', size = 'md', className, chi
 export function PageTitle({ title, tone, meta, aside }: { title: ReactNode; tone?: Tone; meta?: ReactNode; aside?: ReactNode }) {
   return <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
     <div className="min-w-0">
-      <h1 className="break-words font-sb-display text-4xl font-bold uppercase leading-none tracking-tight text-sb-ink sm:text-5xl">{tone ? <Dot tone={tone} className="size-2.5 align-[0.35em]" /> : null}{title}</h1>
+      <h1 className="break-words font-sb-display text-3xl font-semibold leading-none tracking-tight text-sb-ink sm:text-4xl">{tone ? <Dot tone={tone} className="size-2.5 align-[0.35em]" /> : null}{title}</h1>
       {meta ? <p className="mt-2 text-sm tabular-nums text-sb-mute">{meta}</p> : null}
     </div>
     {aside}
@@ -92,7 +92,7 @@ export function PageTitle({ title, tone, meta, aside }: { title: ReactNode; tone
 export function Section({ title, tone, count, actions, children, id, className }: { title: ReactNode; tone?: Tone; count?: ReactNode; actions?: ReactNode; children: ReactNode; id?: string; className?: string }) {
   return <section aria-labelledby={id} className={cn('mt-8 min-w-0', className)}>
     <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-sb-ink pb-2">
-      <h2 id={id} className="font-sb-display text-xl font-bold uppercase tracking-wide text-sb-ink">{tone ? <Dot tone={tone} /> : null}{title}{count !== undefined ? <span className="ml-2 text-sm font-normal tabular-nums text-sb-mute">{count}</span> : null}</h2>
+      <h2 id={id} className="font-sb-display text-lg font-semibold  text-sb-ink">{tone ? <Dot tone={tone} /> : null}{title}{count !== undefined ? <span className="ml-2 text-sm font-normal tabular-nums text-sb-mute">{count}</span> : null}</h2>
       {actions}
     </div>
     <div className="pt-4">{children}</div>
@@ -101,7 +101,7 @@ export function Section({ title, tone, count, actions, children, id, className }
 
 /** Headline figures: a ruled strip of mono readouts. */
 export function Readouts({ items, className }: { items: Array<{ label: string; value: ReactNode; tone?: Tone; sub?: ReactNode }>; className?: string }) {
-  return <dl className={cn('grid grid-cols-2 gap-px overflow-hidden rounded-[2px] bg-sb-line ring-1 ring-sb-line', items.length >= 4 ? 'lg:grid-cols-4' : items.length === 3 ? 'sm:grid-cols-3' : '', className)}>
+  return <dl className={cn('grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-sb-line ring-1 ring-sb-line', items.length >= 4 ? 'lg:grid-cols-4' : items.length === 3 ? 'sm:grid-cols-3' : '', className)}>
     {items.map(item => <div key={item.label} className="min-w-0 bg-sb-card px-4 py-3.5">
       <dt className="truncate text-xs font-semibold text-sb-mute">{item.tone ? <Dot tone={item.tone} /> : null}{item.label}</dt>
       <dd className="mt-1 truncate text-xl font-semibold tabular-nums text-sb-ink sm:text-2xl">{item.value}</dd>
@@ -111,17 +111,17 @@ export function Readouts({ items, className }: { items: Array<{ label: string; v
 }
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('min-w-0 rounded-[2px] bg-sb-card ring-1 ring-sb-ink/15', className)}>{children}</div>
+  return <div className={cn('min-w-0 rounded-xl bg-sb-card ring-1 ring-sb-ink/15', className)}>{children}</div>
 }
 
 export function Notice({ tone = 'status', children, className }: { tone?: 'status' | 'alert' | 'ok'; children: ReactNode; className?: string }) {
-  return <div role={tone === 'alert' ? 'alert' : 'status'} className={cn('rounded-[2px] px-3.5 py-2.5 text-sm', tone === 'alert' ? 'bg-red-50 text-red-900 ring-1 ring-red-200' : tone === 'ok' ? 'bg-emerald-50 text-emerald-950 ring-1 ring-emerald-200' : 'bg-sb-well text-sb-ink', className)}>
+  return <div role={tone === 'alert' ? 'alert' : 'status'} className={cn('rounded-xl px-3.5 py-2.5 text-sm', tone === 'alert' ? 'bg-red-50 text-red-900 ring-1 ring-red-200' : tone === 'ok' ? 'bg-emerald-50 text-emerald-950 ring-1 ring-emerald-200' : 'bg-sb-well text-sb-ink', className)}>
     <Dot tone={tone === 'alert' ? 'alert' : tone === 'ok' ? 'win' : 'info'} />{children}
   </div>
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="rounded-[2px] border border-sb-line px-4 py-6 text-sm text-sb-mute">{children}</p>
+  return <p className="rounded-xl border border-sb-line px-4 py-6 text-sm text-sb-mute">{children}</p>
 }
 
 /** Key/value rows with mono values. */
@@ -134,6 +134,6 @@ export function Ledger({ rows, className }: { rows: Array<[ReactNode, ReactNode]
   </dl>
 }
 
-export const fieldClass = 'min-h-11 w-full min-w-0 rounded-[2px] border border-sb-ink/25 bg-sb-card px-3 text-sm text-sb-ink placeholder:text-sb-mute/70 focus-visible:border-sb-brand disabled:opacity-60'
+export const fieldClass = 'min-h-11 w-full min-w-0 rounded-xl border border-sb-ink/25 bg-sb-card px-3 text-sm text-sb-ink placeholder:text-sb-mute/70 focus-visible:border-sb-brand disabled:opacity-60'
 export const labelClass = 'grid min-w-0 gap-1.5 text-xs font-semibold text-sb-mute'
-export const checkClass = 'mt-0.5 size-5 min-w-5 accent-[#155eef]'
+export const checkClass = 'mt-0.5 size-5 min-w-5 accent-[#1f6b35]'

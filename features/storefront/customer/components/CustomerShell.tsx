@@ -66,10 +66,10 @@ export function CustomerShell({
 
   return (
     <div className="flex min-h-screen flex-col overflow-x-clip bg-sb-paper text-sb-ink">
-      <a href="#main-content" className="sr-only z-50 rounded-[2px] bg-white px-4 py-3 text-sm font-semibold text-sb-ink focus:not-sr-only focus:fixed focus:left-3 focus:top-3">
+      <a href="#main-content" className="sr-only z-50 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-sb-ink focus:not-sr-only focus:fixed focus:left-3 focus:top-3">
         Skip to content
       </a>
-      <header className="sticky top-0 z-30 bg-sb-night text-white">
+      <header className="sticky top-0 z-30 border-b border-sb-line bg-white text-sb-ink">
         <div className="mx-auto flex min-h-16 max-w-[1560px] flex-wrap items-center gap-3 px-4 py-2.5 lg:px-6">
           <button
             type="button"
@@ -77,23 +77,23 @@ export function CustomerShell({
             aria-expanded={menuOpen}
             aria-controls="customer-navigation"
             onClick={() => setMenuOpen(value => !value)}
-            className="-ml-1 grid size-11 place-items-center rounded-full text-white/95 hover:bg-white/10 md:hidden"
+            className="-ml-1 grid size-11 place-items-center rounded-full text-sb-ink hover:bg-sb-well md:hidden"
           >
             {menuOpen ? <X aria-hidden="true" className="size-5" /> : <Menu aria-hidden="true" className="size-5" />}
           </button>
           <Link href="/" data-testid="nav-store-link" className="flex min-w-0 flex-1 items-center gap-2.5 md:flex-none">
-            <span style={brandFilter} aria-hidden="true" dangerouslySetInnerHTML={{ __html: logoSvg }} className="box-content h-6 w-5 shrink-0 rounded-[2px] bg-white px-1 py-0.5 [&>svg]:block [&>svg]:h-full [&>svg]:w-full" />
-            <span className="min-w-0 truncate font-sb-display text-xl font-bold uppercase leading-none tracking-wide sm:text-2xl">{brandName}</span>
+            <span style={brandFilter} aria-hidden="true" dangerouslySetInnerHTML={{ __html: logoSvg }} className="box-content h-6 w-5 shrink-0 rounded-lg bg-white px-1 py-0.5 ring-1 ring-sb-line [&>svg]:block [&>svg]:h-full [&>svg]:w-full" />
+            <span className="min-w-0 truncate font-sb-display text-lg font-semibold leading-none  sm:text-xl">{brandName}</span>
           </Link>
           <nav className="ml-4 hidden md:block" aria-label="Primary navigation">
-            <Track dark>
-              {primaryLinks.map(link => <Link key={link.href} href={link.href} aria-current={isCurrent(link.href) ? 'page' : undefined} className={pillClass('flatDark', 'sm')}>{link.label}</Link>)}
+            <Track>
+              {primaryLinks.map(link => <Link key={link.href} href={link.href} aria-current={isCurrent(link.href) ? 'page' : undefined} className={pillClass('flat', 'sm')}>{link.label}</Link>)}
             </Track>
           </nav>
           <div className="ml-auto flex shrink-0 items-center gap-2">
             {authenticated ? (
               <>
-                <Link href="/account/profile" className="hidden items-center gap-2 rounded-[2px] px-3 py-1.5 tabular-nums text-xs text-white/70 hover:bg-white/10 hover:text-white sm:inline-flex">
+                <Link href="/account/profile" className="hidden items-center gap-2 rounded-xl px-3 py-1.5 tabular-nums text-xs text-sb-mute hover:bg-sb-well hover:text-sb-ink sm:inline-flex">
                   <span aria-hidden="true" className="size-1.5 rounded-full bg-sb-win" />{accountReference ?? 'Account'}
                 </Link>
                 <button
@@ -101,27 +101,26 @@ export function CustomerShell({
                   aria-label={signingOut ? 'Signing out' : 'Sign out'}
                   onClick={signOut}
                   disabled={signingOut}
-                  className="inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-[2px] px-3.5 text-sm font-semibold text-white/95 ring-1 ring-white/15 hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-60"
+                  className="inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-xl px-3.5 text-sm font-semibold text-sb-ink ring-1 ring-sb-line hover:bg-sb-well disabled:cursor-wait disabled:opacity-60"
                 >
                   <LogOut aria-hidden="true" className="size-4" />
                   <span className="hidden sm:inline">{signingOut ? 'Signing out…' : 'Sign out'}</span>
                 </button>
               </>
             ) : (
-              <Link href="/account/auth" className={cn(pillClass('raised', 'sm'), 'border-white bg-white text-sb-brand hover:bg-white/90')}>Sign in</Link>
+              <Link href="/account/auth" className={cn(pillClass('raised', 'sm'), 'border-sb-night bg-sb-night text-white hover:bg-sb-board')}>Sign in</Link>
             )}
           </div>
-          <nav id="customer-navigation" hidden={!menuOpen} className="w-full border-t border-white/10 pb-2 pt-3 md:hidden" aria-label="Mobile navigation">
+          <nav id="customer-navigation" hidden={!menuOpen} className="w-full border-t border-sb-line pb-2 pt-3 md:hidden" aria-label="Mobile navigation">
             {[{ label: 'Browse', links: [{ href: '/', label: 'Live & upcoming', key: 'board' }, { href: '/sports', label: 'Sports', key: 'sports' }, { href: '/promotions', label: 'Promotions', key: 'offers' }] }, { label: 'Account', links: accountLinks }].map(group => <div key={group.label} className="mt-1 first:mt-0">
-              <p className="px-4 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-white/60">{group.label}</p>
+              <p className="px-4 pb-1 pt-2 text-xs font-semibold  text-sb-mute">{group.label}</p>
               <div className="grid grid-cols-2 gap-1">
-                {group.links.map(link => <Link key={link.key} onClick={() => setMenuOpen(false)} aria-current={isCurrent(link.href) ? 'page' : undefined} className="flex min-h-11 items-center rounded-[2px] px-4 text-sm text-white/85 hover:bg-white/10 hover:text-white aria-[current=page]:bg-sb-rule aria-[current=page]:text-white" href={link.href}>{link.label}</Link>)}
+                {group.links.map(link => <Link key={link.key} onClick={() => setMenuOpen(false)} aria-current={isCurrent(link.href) ? 'page' : undefined} className="flex min-h-11 items-center rounded-xl px-4 text-sm text-sb-ink hover:bg-sb-well aria-[current=page]:bg-sb-well aria-[current=page]:font-semibold" href={link.href}>{link.label}</Link>)}
               </div>
             </div>)}
           </nav>
         </div>
-        <div aria-hidden="true" style={brandFilter} className="h-1 bg-[linear-gradient(90deg,#fff_0_38%,transparent_38%_40%,#fff_40%_62%,transparent_62%)] opacity-40" />
-      </header>
+        </header>
 
       {current ? (
         <div className="mx-auto grid w-full max-w-6xl flex-1 gap-6 px-4 py-6 md:grid-cols-[200px_minmax(0,1fr)] md:gap-10 md:py-10">
@@ -147,13 +146,13 @@ export function CustomerShell({
         </div>
       ) : <main id="main-content" className="flex-1">{closed ? <div className="mx-auto w-full max-w-3xl px-4 py-6"><ClosedState /></div> : children}</main>}
 
-      <footer className="bg-sb-night px-4 py-6 text-xs text-white/95">
+      <footer className="border-t border-sb-line bg-white px-4 py-6 text-xs text-sb-mute">
         <div className="mx-auto flex max-w-[1560px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:px-2">
           <p className="">21+. Gambling problem? Call 1-800-GAMBLER.</p>
           <div className="flex flex-wrap gap-x-5 gap-y-2">
-            <Link href="/account/responsible-play" className="inline-flex min-h-11 items-center hover:text-white">Safer play</Link>
-            <Link href="/account/disputes" className="inline-flex min-h-11 items-center hover:text-white">Support</Link>
-            <a className="inline-flex min-h-11 items-center hover:text-white" href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noreferrer">Independent help</a>
+            <Link href="/account/responsible-play" className="inline-flex min-h-11 items-center hover:text-sb-ink">Safer play</Link>
+            <Link href="/account/disputes" className="inline-flex min-h-11 items-center hover:text-sb-ink">Support</Link>
+            <a className="inline-flex min-h-11 items-center hover:text-sb-ink" href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noreferrer">Independent help</a>
           </div>
         </div>
       </footer>

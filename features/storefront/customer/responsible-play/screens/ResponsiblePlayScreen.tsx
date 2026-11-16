@@ -91,10 +91,10 @@ export function ResponsiblePlayScreen() {
         { label: 'Location', value: label(responsible.data.geoStatus), tone: toneFor(responsible.data.geoStatus) },
       ]} />
 
-      {active && <div role="status" className="mt-6 rounded-[2px] bg-red-50 p-5 text-red-950 ring-1 ring-red-200"><p className="font-sb-display text-2xl font-bold uppercase tracking-wide"><Dot tone="alert" />Exclusion active</p><p className="mt-1 tabular-nums text-xs">{label(active.scope)} · from {formatDate(active.startsAt)} · {active.endsAt ? `until ${formatDate(active.endsAt)}` : 'no end date'}</p></div>}
+      {active && <div role="status" className="mt-6 rounded-xl bg-red-50 p-5 text-red-950 ring-1 ring-red-200"><p className="font-sb-display text-xl font-semibold "><Dot tone="alert" />Exclusion active</p><p className="mt-1 tabular-nums text-xs">{label(active.scope)} · from {formatDate(active.startsAt)} · {active.endsAt ? `until ${formatDate(active.endsAt)}` : 'no end date'}</p></div>}
 
-      <section aria-labelledby="take-break-heading" className="mt-6 rounded-[2px] bg-sb-card p-5 ring-1 ring-sb-line sm:p-6">
-        <h2 id="take-break-heading" className="font-sb-display text-2xl font-bold uppercase tracking-wide">Take a break</h2>
+      <section aria-labelledby="take-break-heading" className="mt-6 rounded-xl bg-sb-card p-5 ring-1 ring-sb-line sm:p-6">
+        <h2 id="take-break-heading" className="font-sb-display text-xl font-semibold ">Take a break</h2>
         <p className="mt-1 text-xs text-sb-mute">Starts immediately · can’t be shortened or cancelled here</p>
         <div className="mt-4 sb-scroll -mx-1 px-1"><Track label="Break length">
           {[1, 7, 42].map(days => <Pill key={days} disabled={Boolean(active)} onClick={event => begin(days, event.currentTarget)}>{days === 1 ? '24 hours' : days === 7 ? '7 days' : '6 weeks'}</Pill>)}
@@ -112,9 +112,9 @@ export function ResponsiblePlayScreen() {
     </>}
 
     <AlertDialog open={pendingDuration !== undefined} onOpenChange={open => { if (!open) closeDialog() }}>
-      <AlertDialogContent onCloseAutoFocus={event => { event.preventDefault(); returnFocusRef.current?.focus() }} className="max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto rounded-[2px]">
+      <AlertDialogContent onCloseAutoFocus={event => { event.preventDefault(); returnFocusRef.current?.focus() }} className="max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl">
         <AlertDialogHeader><AlertDialogTitle>Start {pendingDuration === undefined ? 'exclusion' : durationLabel(pendingDuration)}?</AlertDialogTitle><AlertDialogDescription>Starts now and blocks new bets. It can’t be undone here.</AlertDialogDescription></AlertDialogHeader>
-        <AlertDialogFooter><AlertDialogCancel disabled={saving} onClick={closeDialog} className="min-h-11 rounded-full">Cancel</AlertDialogCancel><AlertDialogAction disabled={saving} onClick={event => { event.preventDefault(); void confirm() }} className="min-h-11 rounded-[2px] bg-sb-live text-white hover:bg-red-700 focus-visible:ring-red-800">{saving ? 'Starting…' : unresolved ? 'Retry original request' : 'Start now'}</AlertDialogAction></AlertDialogFooter>
+        <AlertDialogFooter><AlertDialogCancel disabled={saving} onClick={closeDialog} className="min-h-11 rounded-full">Cancel</AlertDialogCancel><AlertDialogAction disabled={saving} onClick={event => { event.preventDefault(); void confirm() }} className="min-h-11 rounded-xl bg-sb-live text-white hover:bg-red-700 focus-visible:ring-red-800">{saving ? 'Starting…' : unresolved ? 'Retry original request' : 'Start now'}</AlertDialogAction></AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
   </CustomerShell>

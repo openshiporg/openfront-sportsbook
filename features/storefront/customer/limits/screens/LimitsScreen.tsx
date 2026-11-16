@@ -63,8 +63,8 @@ export function LimitsScreen() {
     {signedOut && <AuthenticationRequired />}
     {limits.error && <ErrorPanel error={limits.error} retry={limits.reload} />}
     {limits.data && <>
-      <section aria-labelledby="set-limit-heading" className="mt-6 rounded-[2px] bg-sb-card p-5 ring-1 ring-sb-line sm:p-6">
-        <h2 id="set-limit-heading" className="font-sb-display text-2xl font-bold uppercase tracking-wide">{unresolved ? <Dot tone="wait" /> : null}Set a limit</h2>
+      <section aria-labelledby="set-limit-heading" className="mt-6 rounded-xl bg-sb-card p-5 ring-1 ring-sb-line sm:p-6">
+        <h2 id="set-limit-heading" className="font-sb-display text-xl font-semibold ">{unresolved ? <Dot tone="wait" /> : null}Set a limit</h2>
         <div className="mt-4 space-y-4">
           <div><p className="mb-1.5 text-xs font-semibold  text-sb-mute">Type</p><div className="sb-scroll -mx-1 px-1"><Track label="Limit type">{types.map(([value, text]) => <Pill key={value} variant="flat" size="sm" aria-pressed={type === value} disabled={unresolved || saving} onClick={() => setType(value)}>{text}</Pill>)}</Track></div></div>
           <div><p className="mb-1.5 text-xs font-semibold  text-sb-mute">Rolling period</p><Track label="Period">{periods.map(([value, text]) => <Pill key={value} variant="flat" size="sm" aria-pressed={period === value} disabled={unresolved || saving} onClick={() => setPeriod(value)}>{text}</Pill>)}</Track></div>

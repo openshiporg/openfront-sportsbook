@@ -30,11 +30,11 @@ function CardFields({ onToken, tokenized }: { onToken: (token: Token | null) => 
   }
   return (
     <form onSubmit={tokenize} className="mt-4 space-y-3" aria-label="Card details">
-      <div className="rounded-[2px] bg-white px-3 py-3.5 ring-1 ring-sb-line">
+      <div className="rounded-xl bg-white px-3 py-3.5 ring-1 ring-sb-line">
         <CardElement options={{ hidePostalCode: false, style: { base: { fontSize: "16px" } } }} onChange={() => { if (tokenized) onToken(null); }} />
       </div>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-      <button type="submit" disabled={!stripe || busy} className="rounded-[2px] bg-sb-night px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+      <button type="submit" disabled={!stripe || busy} className="rounded-xl bg-sb-night px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
         {busy ? "Checking card…" : tokenized ? "Card ready ✓" : "Use this card"}
       </button>
     </form>

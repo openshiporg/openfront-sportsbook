@@ -10,7 +10,7 @@ export function AccountPageHeader({ title, tone, meta, aside }: { title: string;
 }
 
 export function LoadingPanel({ label = 'Loading' }: { label?: string }) {
-  return <div role="status" className="mt-6 flex min-h-40 items-center justify-center rounded-[2px] bg-sb-card text-sm text-sb-mute ring-1 ring-sb-line">
+  return <div role="status" className="mt-6 flex min-h-40 items-center justify-center rounded-xl bg-sb-card text-sm text-sb-mute ring-1 ring-sb-line">
     <LoaderCircle aria-hidden="true" className="mr-2 size-5 animate-spin motion-reduce:animate-none" />{label}
   </div>
 }
@@ -24,19 +24,19 @@ export function ClosedPanel({ coupon = false }: { coupon?: boolean }) {
   const actions = <div className="mt-5"><Track>{coupon
     ? <><PillLink href="/sports" size="sm" variant="primary">Browse sports</PillLink><PillLink href="/account/responsible-play" size="sm">Safer play</PillLink></>
     : <><PillLink href="/" size="sm" variant="primary">Back to the board</PillLink><PillLink href="/sports" size="sm">Browse sports</PillLink></>}</Track></div>
-  if (coupon) return <div role="status" className="mt-4 overflow-hidden rounded-[2px] bg-sb-card ring-1 ring-sb-ink/15">
+  if (coupon) return <div role="status" className="mt-4 overflow-hidden rounded-xl bg-sb-card ring-1 ring-sb-ink/15">
     <div className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_3.5rem] border-b-2 border-sb-ink px-4 py-2 text-xs font-semibold text-sb-mute sm:px-5">
       <span>Event</span><span className="text-center">1</span><span className="text-center">X</span><span className="text-center">2</span>
     </div>
     <div className="px-4 py-6 sm:px-5 sm:py-8">
-      <p className="font-sb-display text-3xl font-bold uppercase leading-none text-sb-ink"><Dot tone="off" />Betting closed</p>
+      <p className="font-sb-display text-2xl font-semibold leading-none text-sb-ink"><Dot tone="off" />Betting closed</p>
       <p className="mt-3 max-w-prose text-sm leading-relaxed text-sb-ink">Betting is currently unavailable.</p>
       <p className="mt-2 max-w-prose text-sm leading-relaxed text-sb-mute">21+. Gambling problem? Call 1-800-GAMBLER.</p>
       {actions}
     </div>
   </div>
-  return <div role="status" className="mt-6 rounded-[2px] bg-sb-card px-5 py-6 ring-1 ring-sb-ink/15 sm:px-6">
-    <p className="font-sb-display text-3xl font-bold uppercase leading-none text-sb-ink"><Dot tone="off" />Betting closed</p>
+  return <div role="status" className="mt-6 rounded-xl bg-sb-card px-5 py-6 ring-1 ring-sb-ink/15 sm:px-6">
+    <p className="font-sb-display text-2xl font-semibold leading-none text-sb-ink"><Dot tone="off" />Betting closed</p>
     <p className="mt-3 max-w-prose text-sm leading-relaxed text-sb-ink">Betting is currently unavailable.</p>
     <p className="mt-2 max-w-prose text-sm leading-relaxed text-sb-mute">21+. Gambling problem? Call 1-800-GAMBLER.</p>
     {actions}
@@ -46,16 +46,16 @@ export function ClosedPanel({ coupon = false }: { coupon?: boolean }) {
 export function ErrorPanel({ error, retry }: { error: CustomerApiError; retry: () => void }) {
   if (error.status === 401) return <AuthenticationRequired />
   if (isClosedError(error)) return <ClosedPanel />
-  return <div role="alert" className="mt-6 rounded-[2px] bg-red-50 p-5 text-sm text-red-950 ring-1 ring-red-200">
+  return <div role="alert" className="mt-6 rounded-xl bg-red-50 p-5 text-sm text-red-950 ring-1 ring-red-200">
     <p className="font-semibold"><Dot tone="alert" />Couldn’t load this page</p>
     <div className="mt-4"><Track><Pill size="sm" onClick={retry}><RefreshCw aria-hidden="true" />Retry</Pill></Track></div>
   </div>
 }
 
 export function AuthenticationRequired() {
-  return <div className="mt-6 overflow-hidden rounded-[2px] bg-sb-card ring-1 ring-sb-line">
-    <div className="bg-sb-night px-5 py-5 text-white sm:px-6">
-      <p className="font-sb-display text-3xl font-bold uppercase leading-none tracking-wide"><Dot tone="off" className="bg-white/40" />Signed out</p>
+  return <div className="mt-6 overflow-hidden rounded-xl bg-sb-card ring-1 ring-sb-line">
+    <div className="border-b border-sb-line px-5 py-5 text-sb-ink sm:px-6">
+      <p className="font-sb-display text-2xl font-semibold leading-none "><Dot tone="off" className="bg-sb-mute/60" />Signed out</p>
     </div>
     <div className="grid gap-5 p-5 sm:grid-cols-2 sm:p-6">
       <div>
