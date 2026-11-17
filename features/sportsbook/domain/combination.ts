@@ -118,6 +118,11 @@ export function combinationGradeMultiplier(decimalOdds: string, outcome: Combina
   return add(rational(1n, 1n), multiply(subtract(odds, rational(1n, 1n)), rational(factorNumerator, factorDenominator)))
 }
 
+/** The accepted return of the part of a stake still open after a partial cash-out (rounded down). */
+export function remainingAcceptedReturn(acceptedReturnMinor: bigint, acceptedStakeMinor: bigint, remainingStakeMinor: bigint) {
+  return acceptedStakeMinor > 0n ? acceptedReturnMinor * remainingStakeMinor / acceptedStakeMinor : 0n
+}
+
 export function settleCombinationPart(input: {
   stakeMinor: bigint
   legs: Array<{ decimalOdds: string; outcome: CombinationGrade; factorNumerator?: bigint; factorDenominator?: bigint }>

@@ -2,7 +2,7 @@ const graphql = String.raw
 import { randomBytes } from 'node:crypto'
 import { evidenceHash } from '../../sportsbook/domain/engine'
 import { reverseJournal, type Journal } from '../../sportsbook/domain/ledger'
-import { settleCombinationPart } from '../../sportsbook/domain/combination'
+import { remainingAcceptedReturn, settleCombinationPart } from '../../sportsbook/domain/combination'
 import { accountMap, appendAudit, assertCurrentSettlement, lockWagerForSettlement, postJournal, positiveMoney, requireTenant, serializable } from './sportsbook'
 import { assertArtifactDeliveryHasHandler } from '../../sportsbook/domain/artifact-delivery-contract'
 import { sendPasswordResetEmail } from '../lib/mail'
@@ -150,7 +150,7 @@ async function combinationSettlement(tx:any,tenantId:string,actorId:string,wager
     if(part.status==='CASHED_OUT')continue
     const partLegs=legs.filter((leg:any)=>leg.wagerPartId===part.id)
     const stake=remainingStakes[partIndex]
-    const calculated=settleCombinationPart({stakeMinor:stake,stakeReturned:bonus?Boolean(bonus.stakeReturned):true,acceptedPotentialReturnMinor:BigInt(part.potentialReturnMinor),legs:partLegs.map((leg:any)=>{const grade=latestGrade.get(leg.id);return{decimalOdds:leg.decimalOdds,outcome:grade.outcome,factorNumerator:grade.factorNumerator?BigInt(grade.factorNumerator):undefined,factorDenominator:grade.factorDenominator?BigInt(grade.factorDenominator):undefined}})})
+    const calculated=settleCombinationPart({stakeMinor:stake,stakeReturned:bonus?Boolean(bonus.stakeReturned):true,acceptedPotentialReturnMinor:remainingAcceptedReturn(BigInt(part.potentialReturnMinor),BigInt(part.stakeMinor),stake),legs:partLegs.map((leg:any)=>{const grade=latestGrade.get(leg.id);return{decimalOdds:leg.decimalOdds,outcome:grade.outcome,factorNumerator:grade.factorNumerator?BigInt(grade.factorNumerator):undefined,factorDenominator:grade.factorDenominator?BigInt(grade.factorDenominator):undefined}})})
     totalStake+=stake;totalPayout+=calculated.payoutMinor
     linePlans.push({part,stake,payout:calculated.payoutMinor,multiplier:calculated.multiplier,inputHash:calculated.inputHash,grades:partLegs.map((leg:any)=>({legId:leg.id,gradeId:latestGrade.get(leg.id).id,outcome:latestGrade.get(leg.id).outcome}))})
   }
