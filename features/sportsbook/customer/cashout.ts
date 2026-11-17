@@ -5,6 +5,7 @@ import { CustomerError } from './errors'
 import { claimCustomerCommand, commandResult, finishCustomerCommand, validateIdempotencyKey } from './idempotency'
 import { evidenceHash } from '../domain/engine'
 import { cashOutPortionMillionths, cashOutStakeForPortion, projectCashOutState, remainingStakeByPart } from '../domain/cashout-economics'
+import { isEventAcceptingBets } from '../domain/trading-eligibility'
 
 const OFFER_MS = 20_000
 
@@ -12,6 +13,12 @@ function parsePortionBps(value: unknown) {
   const bps = Number(value ?? 10_000)
   if (!Number.isInteger(bps) || bps < 1_000 || bps > 10_000) throw new CustomerError('INVALID_CASH_OUT_PORTION', 400)
   return bps
+}
+
+/** Cash-out follows the same clock as bet placement: a pre-match event past its start no longer offers it. */
+async function assertEventsTakingBets(db: any, tenantId: string, legs: Array<{ eventKey: string | null }>) {
+  const events = await db.event.findMany({ where: { tenantId, id: { in: [...new Set(legs.map(leg => String(leg.eventKey ?? '')))] } }, select: { status: true, startAt: true } })
+  if (events.length !== new Set(legs.map(leg => leg.eventKey)).size || events.some((event: any) => !isEventAcceptingBets(event))) throw new CustomerError('CASH_OUT_SUSPENDED', 409)
 }
 
 async function eligibleWager(prisma: PrismaClient, actor: CustomerActor, wagerId: string) {
@@ -24,6 +31,7 @@ async function eligibleWager(prisma: PrismaClient, actor: CustomerActor, wagerId
   if (!legs.length) throw new CustomerError('WAGER_NOT_CASHOUT_ELIGIBLE', 409)
   const markets = await prisma.market.findMany({ where: { tenantId: actor.tenantId, id: { in: [...new Set(legs.map(leg => leg.marketKey))] } } })
   if (markets.some(market => market.status !== 'OPEN' || !market.cashOutEnabled)) throw new CustomerError('CASH_OUT_SUSPENDED', 409)
+  await assertEventsTakingBets(prisma, actor.tenantId, legs)
   return { wager, legs, markets }
 }
 
@@ -94,6 +102,7 @@ export async function acceptCustomerCashOut(prisma: PrismaClient, actor: Custome
     const legs = await tx.wagerLeg.findMany({ where: { tenantId: actor.tenantId, wagerId: wager.id } })
     const markets = await tx.market.findMany({ where: { tenantId: actor.tenantId, id: { in: [...new Set(legs.map(leg => leg.marketKey))] } } })
     if (markets.some(market => market.status !== 'OPEN' || !market.cashOutEnabled)) throw new CustomerError('CASH_OUT_SUSPENDED', 409)
+    await assertEventsTakingBets(tx, actor.tenantId, legs)
     const acceptanceRows = await tx.cashOutAcceptance.findMany({ where: { tenantId: actor.tenantId, wagerId: wager.id } })
     const priorCashOutState = projectCashOutState(wager.stakeMinor, acceptanceRows)
     const priorMillionths = priorCashOutState.closedMillionths
