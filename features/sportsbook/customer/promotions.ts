@@ -118,8 +118,10 @@ export async function claimCustomerPromotion(prisma: PrismaClient, actor: Custom
     const currency = promotion.currency
     const eligibility = await evaluatePromotionEligibility(tx, actor, promotion, rule, now)
     if (!eligibility.eligible) throw new CustomerError(eligibility.reason === 'ALREADY_CLAIMED' ? 'PROMOTION_ALREADY_CLAIMED' : 'PROMOTION_INELIGIBLE', eligibility.reason === 'ALREADY_CLAIMED' ? 409 : 422, { reason: eligibility.reason })
-    const budget = await tx.campaignBudget.findFirst({ where: { tenantId: actor.tenantId, promotionId, status: 'ACTIVE' }, orderBy: { version: 'desc' } })
+    // The latest budget row is the truth; once it is EXHAUSTED an older ACTIVE row must not reopen claims.
+    const budget = await tx.campaignBudget.findFirst({ where: { tenantId: actor.tenantId, promotionId }, orderBy: { version: 'desc' } })
     if (!budget) throw new CustomerError('PROMOTION_BUDGET_UNAVAILABLE', 409)
+    if (budget.status !== 'ACTIVE') throw new CustomerError(budget.status === 'EXHAUSTED' ? 'PROMOTION_BUDGET_EXHAUSTED' : 'PROMOTION_BUDGET_UNAVAILABLE', 409)
     await tx.$queryRaw`SELECT id FROM "CampaignBudget" WHERE id = ${budget.id} FOR UPDATE`
     const economics = (rule.economics ?? {}) as Record<string, unknown>
     const amountMinor = String(economics.amountMinor ?? '0')
