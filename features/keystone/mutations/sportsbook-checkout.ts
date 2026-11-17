@@ -2,7 +2,7 @@
 // refund a succeeded card deposit (wallet debited, processor refunded or voided). Both are single, audited,
 // ledger-balanced commands under the operator's own tenant capability.
 import { reverseJournal, type Journal } from '../../sportsbook/domain/ledger'
-import { nextProjection, postedChange } from '../../sportsbook/domain/balance'
+import { captureChange, nextProjection, postedChange, releaseChange, reserveChange } from '../../sportsbook/domain/balance'
 import { refundPaymentProvider } from '../utils/paymentProviderAdapter'
 import { assertCurrentActor } from './approval-control'
 import { applyPaymentOutcome } from '../../sportsbook/customer/funding'
@@ -139,7 +139,15 @@ export const sportsbookCheckoutResolvers = {
         const cash = await tx.ledgerAccount.findFirst({ where: { tenantId, playerId: deposit.playerId, key: 'PLAYER_CASH', currency: deposit.currency } })
         if (!cash) throw new Error('WALLET_UNAVAILABLE')
         const projection = await lockedProjection(tx, tenantId, cash.id)
-        if (!existing && BigInt(projection.availableMinor) < BigInt(deposit.amountMinor)) throw new Error('INSUFFICIENT_WALLET_FUNDS')
+        // Reserve the refund in the wallet before the processor is called (as withdrawals do), so a bet or
+        // withdrawal in between cannot spend money the card is about to get back.
+        const hold = await tx.hold.findFirst({ where: { tenantId, purposeType: 'REFUND', purposeId: refundKey } })
+        if (hold?.status !== 'ACTIVE' && !(existing && !hold)) {
+          if (BigInt(projection.availableMinor) < BigInt(deposit.amountMinor)) throw new Error('INSUFFICIENT_WALLET_FUNDS')
+          if (hold) await tx.hold.update({ where: { id: hold.id }, data: { status: 'ACTIVE', version: { increment: 1 } } })
+          else await tx.hold.create({ data: { tenantId, accountId: cash.id, purposeType: 'REFUND', purposeId: refundKey, amountMinor: String(deposit.amountMinor), status: 'ACTIVE', expiresAt: null, version: 1 } })
+          await tx.balanceProjection.create({ data: { tenantId, accountId: cash.id, ...nextProjection(projection, reserveChange(BigInt(deposit.amountMinor))) } })
+        }
         const intent = existing ?? await tx.paymentIntent.create({ data: {
           tenantId, playerId: deposit.playerId, providerConnectionId: deposit.providerConnectionId, type: 'REFUND', amountMinor: deposit.amountMinor, feeMinor: '0', currency: deposit.currency,
           idempotencyKey: refundKey, paymentMethodReference: deposit.paymentMethodReference, providerSessionReference: '', status: 'PROCESSING',
@@ -154,7 +162,16 @@ export const sportsbookCheckoutResolvers = {
       let outcome: { status: string; externalRef: string; method?: string } = { status: 'UNKNOWN', externalRef: '' }
       try { outcome = await refundPaymentProvider(p.provider, p.reference, p.amountMinor, refundKey) } catch { /* stays UNKNOWN: nothing is released until the processor confirms */ }
       if (outcome.status !== 'SUCCEEDED') {
-        await context.prisma.paymentIntent.updateMany({ where: { id: p.intentId, tenantId, status: { in: ['PROCESSING', 'PENDING', 'UNKNOWN'] } }, data: { status: outcome.status === 'FAILED' ? 'FAILED' : 'UNKNOWN' } })
+        await serializable(context.prisma, async (tx: any) => {
+          await tx.paymentIntent.updateMany({ where: { id: p.intentId, tenantId, status: { in: ['PROCESSING', 'PENDING', 'UNKNOWN'] } }, data: { status: outcome.status === 'FAILED' ? 'FAILED' : 'UNKNOWN' } })
+          // A definite decline gives the reserved money back; an unknown outcome keeps it reserved.
+          if (outcome.status !== 'FAILED') return
+          const hold = await tx.hold.findFirst({ where: { tenantId, purposeType: 'REFUND', purposeId: refundKey, status: 'ACTIVE' } })
+          if (!hold) return
+          await tx.hold.update({ where: { id: hold.id }, data: { status: 'RELEASED', version: { increment: 1 } } })
+          const projection = await lockedProjection(tx, tenantId, hold.accountId)
+          await tx.balanceProjection.create({ data: { tenantId, accountId: hold.accountId, ...nextProjection(projection, releaseChange(BigInt(hold.amountMinor))) } })
+        })
         throw new Error('REFUND_NOT_CONFIRMED')
       }
 
@@ -171,8 +188,10 @@ export const sportsbookCheckoutResolvers = {
         const now = new Date()
         await postJournal(tx, tenantId, reverseJournal(original, `deposit-refund:${p.depositId}`), p.depositId)
         const projection = await lockedProjection(tx, tenantId, cashEntry.accountId)
-        if (BigInt(projection.availableMinor) < BigInt(p.amountMinor)) throw new Error('INSUFFICIENT_WALLET_FUNDS')
-        await tx.balanceProjection.create({ data: { tenantId, accountId: cashEntry.accountId, ...nextProjection(projection, postedChange(-BigInt(p.amountMinor)), now) } })
+        const hold = await tx.hold.findFirst({ where: { tenantId, purposeType: 'REFUND', purposeId: refundKey, status: 'ACTIVE' } })
+        if (hold) await tx.hold.update({ where: { id: hold.id }, data: { status: 'CAPTURED', version: { increment: 1 } } })
+        else if (BigInt(projection.availableMinor) < BigInt(p.amountMinor)) throw new Error('INSUFFICIENT_WALLET_FUNDS')
+        await tx.balanceProjection.create({ data: { tenantId, accountId: cashEntry.accountId, ...nextProjection(projection, hold ? captureChange(BigInt(p.amountMinor)) : postedChange(-BigInt(p.amountMinor)), now) } })
         await tx.paymentIntent.update({ where: { id: p.intentId }, data: { status: 'SUCCEEDED', completedAt: now, providerSessionReference: outcome.externalRef } })
         await tx.paymentAttempt.create({ data: { tenantId, paymentIntentId: p.intentId, attempt: 1, externalReference: outcome.externalRef, status: 'SUCCEEDED', reasonCode: outcome.method === 'void' ? 'PROCESSOR_VOID' : 'PROCESSOR_REFUND' } })
         await tx.paymentIntent.update({ where: { id: p.depositId }, data: { status: 'CANCELLED' } })
