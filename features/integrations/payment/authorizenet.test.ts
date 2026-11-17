@@ -109,3 +109,39 @@ test("webhook HMAC-SHA512 over the raw body is enforced", async () => {
   await assert.rejects(handleWebhookFunction({ rawBody: rawBody + " ", headers: { "x-anet-signature": signature } }), /signature/);
   await assert.rejects(handleWebhookFunction({ rawBody, headers: {} }), /signature/);
 });
+
+test("a wallet deposit sends its key as the invoice number, and status by that key finds the charge", async () => {
+  creds();
+  const key = "conn_1:customer:cmd_abcdefghijklmnop";
+  const seen: string[] = [];
+  globalThis.fetch = (async (_url: any, init: any) => {
+    const body = JSON.parse(init.body);
+    const op = Object.keys(body)[0];
+    seen.push(op);
+    if (op === "createTransactionRequest") {
+      assert.equal(body[op].transactionRequest.order.invoiceNumber, key.replace(/[^A-Za-z0-9-]/g, "").slice(-20));
+      return reply({ messages: { resultCode: "Ok" }, transactionResponse: { responseCode: "1", transId: "60001", authCode: "A" } });
+    }
+    if (op === "getUnsettledTransactionListRequest") return reply({ messages: { resultCode: "Ok" }, transactions: [{ transId: "59999", invoiceNumber: "other" }, { transId: "60001", invoiceNumber: key.replace(/[^A-Za-z0-9-]/g, "").slice(-20) }] });
+    if (op === "getTransactionDetailsRequest") { assert.equal(body[op].transId, "60001"); return reply({ messages: { resultCode: "Ok" }, transaction: { transId: "60001", transactionStatus: "capturedPendingSettlement", authAmount: "25.00", settleAmount: "25.00" } }); }
+    throw new Error(`unexpected ${op}`);
+  }) as typeof fetch;
+  await createPaymentFunction({ amount: 2500, currency: "USD", opaqueData: { dataDescriptor: "d", dataValue: "v" }, idempotencyKey: key, captureNow: true });
+  const status = await getPaymentStatusFunction({ paymentId: key });
+  assert.equal(status.status, "succeeded");
+  assert.equal(status.amount, 2500);
+  assert.deepEqual(seen, ["createTransactionRequest", "getUnsettledTransactionListRequest", "getTransactionDetailsRequest"]);
+});
+
+test("status by key with no matching charge stays unknown", async () => {
+  creds();
+  globalThis.fetch = (async (_url: any, init: any) => {
+    const op = Object.keys(JSON.parse(init.body))[0];
+    if (op === "getUnsettledTransactionListRequest") return reply({ messages: { resultCode: "Ok" }, transactions: [] });
+    if (op === "getSettledBatchListRequest") return reply({ messages: { resultCode: "Ok" }, batchList: [{ batchId: "b1" }] });
+    if (op === "getTransactionListRequest") return reply({ messages: { resultCode: "Ok" }, transactions: [{ transId: "1", invoiceNumber: "nope" }] });
+    throw new Error(`unexpected ${op}`);
+  }) as typeof fetch;
+  const status = await getPaymentStatusFunction({ paymentId: "conn_1:customer:cmd_missing" });
+  assert.equal(status.status, "unknown");
+});

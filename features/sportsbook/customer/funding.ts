@@ -313,7 +313,17 @@ async function runFundingCommand(
       if (!cash || !clearing) throw new CustomerError(unavailable, 409)
       const projection = await lockedProjection(tx, actor.tenantId, cash.id)
       if (!projection) throw new CustomerError(unavailable, 409)
-      if (kind === 'DEPOSIT') await assertDepositLimits(tx, actor, amount, new Date())
+      if (kind === 'DEPOSIT') {
+        // Same refusals as a cage deposit: a self-excluded or restricted player cannot pay in.
+        const now = new Date()
+        const [exclusion, depositRestriction] = await Promise.all([
+          tx.selfExclusion.findFirst({ where: { tenantId: actor.tenantId, playerId: actor.playerId, status: 'ACTIVE', startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gt: now } }] } }),
+          tx.accountRestriction.findFirst({ where: { tenantId: actor.tenantId, playerId: actor.playerId, status: 'ACTIVE', capability: { in: ['DEPOSIT', 'WAGER'] } } }),
+        ])
+        if (exclusion) throw new CustomerError('SELF_EXCLUDED', 422)
+        if (depositRestriction) throw new CustomerError('ACCOUNT_RESTRICTED', 422)
+        await assertDepositLimits(tx, actor, amount, now)
+      }
       if (kind === 'WITHDRAWAL' && BigInt(projection.availableMinor) < amount) throw new CustomerError('INSUFFICIENT_FUNDS', 422)
       const provider = kind === 'DEPOSIT'
         ? await activeCardProcessor(tx, actor.tenantId)
@@ -359,6 +369,10 @@ async function runFundingCommand(
   }
   if (prepared.kind === 'DONE') return prepared.result
 
+  // A retry never sends an attempt the processor has already seen (its outcome was recorded, even if UNKNOWN);
+  // staff reconcile it with Check status. Only an attempt that never got past PREPARED is dispatched again.
+  const attempt = prepared.fresh ? null : await prisma.paymentAttempt.findFirst({ where: { tenantId: actor.tenantId, paymentIntentId: prepared.intent.id }, orderBy: { attempt: 'desc' } })
+  if (attempt && attempt.reasonCode !== 'PREPARED') return fundingResultFor(prepared.intent, true, await availableFor(prisma as any, actor, prepared.intent.currency), currency.exponent)
   const outcome = await dispatchPinnedPayment(prepared.intent, prepared.provider, prepared.fresh, input.opaqueData)
 
   return serializable(prisma, async tx => {

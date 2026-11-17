@@ -92,7 +92,8 @@ export async function createPaymentFunction({ amount, currency, opaqueData, cart
       },
     };
   }
-  const invoiceNumber = ref(String(order?.displayId || order?.orderNumber || order?.id || cart?.id || "order"));
+  // With no order (a wallet deposit) the attempt's own key is the invoice number, so a lost reply can be found again.
+  const invoiceNumber = ref(String(order?.displayId || order?.orderNumber || order?.id || cart?.id || idempotencyKey || "order"));
   const result = await call(
     "createTransactionRequest",
     {
@@ -173,9 +174,28 @@ export async function refundPaymentFunction({ paymentId, amount, currency, idemp
   return { status: ok ? "refunded" : "unknown", amount: refundAmount, currency: currency || "USD", data: tx, error: ok ? undefined : transactionError(result), method: "refund" };
 }
 
+/** Find a charge by the invoice number it was sent with: unsettled first, then batches settled in the last 7 days. */
+async function findTransIdByInvoice(invoiceNumber: string): Promise<string | null> {
+  const match = (list: any[] | undefined) => (list || []).find((t: any) => t?.invoiceNumber === invoiceNumber)?.transId ?? null;
+  const unsettled = await call("getUnsettledTransactionListRequest", { sorting: { orderBy: "submitTimeUTC", orderDescending: true }, paging: { limit: 1000, offset: 1 } });
+  const found = match(unsettled?.transactions);
+  if (found) return String(found);
+  const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 19);
+  const batches = await call("getSettledBatchListRequest", { firstSettlementDate: day(-7), lastSettlementDate: day(0) });
+  for (const batch of [...(batches?.batchList || [])].reverse()) {
+    const list = await call("getTransactionListRequest", { batchId: batch.batchId, sorting: { orderBy: "submitTimeUTC", orderDescending: true }, paging: { limit: 1000, offset: 1 } });
+    const hit = match(list?.transactions);
+    if (hit) return String(hit);
+  }
+  return null;
+}
+
 export async function getPaymentStatusFunction({ paymentId }: Input) {
   if (!paymentId) throw new Error("Payment reference is required");
-  const result = await call("getTransactionDetailsRequest", { transId: paymentId });
+  // A processor transaction id is all digits; anything else is the key the charge was sent with.
+  const transId = /^\d+$/.test(paymentId) ? paymentId : await findTransIdByInvoice(ref(paymentId));
+  if (!transId) return { status: "unknown", error: "No Authorize.net transaction for this payment yet" };
+  const result = await call("getTransactionDetailsRequest", { transId });
   const transaction = result.transaction;
   if (!transaction) return { status: "unknown", error: transactionError(result) };
   const status = mapTransactionStatus(transaction.transactionStatus);
