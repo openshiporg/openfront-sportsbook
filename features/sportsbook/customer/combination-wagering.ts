@@ -162,6 +162,8 @@ export async function createCombinationQuote(prisma: PrismaClient, actor: Custom
   const houseRules = await Promise.all(candidates.map(candidate => activeHouseRule(prisma, actor.tenantId, candidate.market, now)))
   if (houseRules.some(rule => { const supported = (rule?.rules as { structures?: unknown } | null)?.structures; return !rule || !Array.isArray(supported) || !supported.includes(structure) })) throw new CustomerError('APPROVED_HOUSE_RULE_REQUIRED', 422)
   for (const rule of houseRules) if (!rule || !await approvedHouseRuleEvidence(prisma, actor.tenantId, rule)) throw new CustomerError('APPROVED_HOUSE_RULE_REQUIRED', 422)
+  // A single is settled only under a rule with taxPolicy "NONE" and currencyExponent 2 (settlement/full-straight.ts); never accept one it cannot settle.
+  if (structure === 'STRAIGHT' && houseRules.some(rule => { const doc = rule?.rules as { taxPolicy?: unknown; currencyExponent?: unknown } | null; return doc?.taxPolicy !== 'NONE' || doc?.currencyExponent !== 2 })) throw new CustomerError('APPROVED_HOUSE_RULE_REQUIRED', 422)
   const ruleEvidence = houseRules.map((rule, legIndex) => ({ legIndex, ruleId: rule!.id, ruleVersion: `${rule!.name}@${rule!.version}`, ruleHash: rule!.semanticHash }))
   const live = candidates.some(candidate => candidate.event.status === 'LIVE' || candidate.market.tradingMode === 'LIVE')
   const liveDelayMs = live ? policy.liveDelayMs : 0
