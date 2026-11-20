@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { AccountPageHeader, AuthenticationRequired, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
 import { CustomerShell } from '../../components/CustomerShell'
-import { Card, Dot, Notice, Pill, Readouts, Section, Track, label, pillClass, toneFor } from '../../components/kit'
+import { Dot, Notice, Pill, Readouts, Section, Track, label, pillClass, toneFor } from '../../components/kit'
 import { CustomerApiError, formatDate, useCustomerResource, useFrozenSubmission, customerMessage } from '../../lib/customer-api'
 
 const durationLabel = (days: number | null) => days === null ? 'permanent self-exclusion' : days === 1 ? '24-hour break' : days === 7 ? '7-day break' : '6-week break'
@@ -93,7 +93,7 @@ export function ResponsiblePlayScreen() {
 
       {active && <div role="status" className="mt-6 rounded-xl bg-red-50 p-5 text-red-950 ring-1 ring-red-200"><p className="font-sb-display text-xl font-semibold "><Dot tone="alert" />Exclusion active</p><p className="mt-1 tabular-nums text-xs">{label(active.scope)} · from {formatDate(active.startsAt)} · {active.endsAt ? `until ${formatDate(active.endsAt)}` : 'no end date'}</p></div>}
 
-      <section aria-labelledby="take-break-heading" className="mt-6 rounded-xl bg-sb-card p-5 ring-1 ring-sb-line sm:p-6">
+      <section aria-labelledby="take-break-heading" className="mt-8 border-t-2 border-sb-ink pt-5">
         <h2 id="take-break-heading" className="font-sb-display text-xl font-semibold ">Take a break</h2>
         <p className="mt-1 text-xs text-sb-mute">Starts immediately · can’t be shortened or cancelled here</p>
         <div className="mt-4 sb-scroll -mx-1 px-1"><Track label="Break length">
@@ -108,7 +108,7 @@ export function ResponsiblePlayScreen() {
         <Track label="Independent help"><a href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noreferrer" className={pillClass('raised')}>NCPG help and treatment <ExternalLink aria-hidden="true" /></a><a href="https://www.gamblersanonymous.org/" target="_blank" rel="noreferrer" className={pillClass('raised')}>Gamblers Anonymous <ExternalLink aria-hidden="true" /></a></Track>
       </Section>
 
-      {responsible.data.history.length > 0 && <Section id="exclusion-history" title="History" count={responsible.data.history.length}><Card className="divide-y divide-sb-line">{responsible.data.history.map(item => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3.5"><div className="min-w-0"><p className="text-sm font-semibold"><Dot tone={toneFor(item.status)} />{label(item.scope)} exclusion<span className="ml-2 text-xs font-normal text-sb-mute">{label(item.status)}</span></p><p className="mt-0.5 tabular-nums text-xs text-sb-mute">{label(item.source)} · from {formatDate(item.startsAt)} · {item.endsAt ? `until ${formatDate(item.endsAt)}` : 'no end date'}</p></div></div>)}</Card></Section>}
+      {responsible.data.history.length > 0 && <Section id="exclusion-history" title="History" count={responsible.data.history.length}><div className="divide-y divide-sb-line border-b border-sb-line">{responsible.data.history.map(item => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-3.5"><div className="min-w-0"><p className="text-sm font-semibold"><Dot tone={toneFor(item.status)} />{label(item.scope)} exclusion<span className="ml-2 text-xs font-normal text-sb-mute">{label(item.status)}</span></p><p className="mt-0.5 tabular-nums text-xs text-sb-mute">{label(item.source)} · from {formatDate(item.startsAt)} · {item.endsAt ? `until ${formatDate(item.endsAt)}` : 'no end date'}</p></div></div>)}</div></Section>}
     </>}
 
     <AlertDialog open={pendingDuration !== undefined} onOpenChange={open => { if (!open) closeDialog() }}>

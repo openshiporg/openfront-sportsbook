@@ -5,7 +5,7 @@ import { LoaderCircle } from 'lucide-react'
 import type { CustomerSessionSummary, LimitActionResult, LimitsResponse } from '@/features/sportsbook/customer/contracts'
 import { AccountPageHeader, AuthenticationRequired, ErrorPanel, LoadingPanel, isClosedError } from '../../components/AccountStates'
 import { CustomerShell } from '../../components/CustomerShell'
-import { Card, Dot, Empty, Notice, Pill, Section, Track, fieldClass, label, toneFor } from '../../components/kit'
+import { Dot, Empty, Notice, Pill, Section, Track, fieldClass, label, toneFor } from '../../components/kit'
 import { amountInputToMinor, currencyExponent, CustomerApiError, formatDate, formatMinor, useCustomerResource, useFrozenSubmission, customerMessage } from '../../lib/customer-api'
 
 const SESSION_PERIOD_MINUTES: Record<'DAILY' | 'WEEKLY' | 'MONTHLY', number> = { DAILY: 1_440, WEEKLY: 10_080, MONTHLY: 43_200 }
@@ -63,7 +63,7 @@ export function LimitsScreen() {
     {signedOut && <AuthenticationRequired />}
     {limits.error && <ErrorPanel error={limits.error} retry={limits.reload} />}
     {limits.data && <>
-      <section aria-labelledby="set-limit-heading" className="mt-6 rounded-xl bg-sb-card p-5 ring-1 ring-sb-line sm:p-6">
+      <section aria-labelledby="set-limit-heading" className="mt-8 border-t-2 border-sb-ink pt-5">
         <h2 id="set-limit-heading" className="font-sb-display text-xl font-semibold ">{unresolved ? <Dot tone="wait" /> : null}Set a limit</h2>
         <div className="mt-4 space-y-4">
           <div><p className="mb-1.5 text-xs font-semibold  text-sb-mute">Type</p><div className="sb-scroll -mx-1 px-1"><Track label="Limit type">{types.map(([value, text]) => <Pill key={value} variant="flat" size="sm" aria-pressed={type === value} disabled={unresolved || saving} onClick={() => setType(value)}>{text}</Pill>)}</Track></div></div>
@@ -78,12 +78,12 @@ export function LimitsScreen() {
       </section>
 
       <Section id="saved-limits" title="Saved limits" count={limits.data.limits.length}>
-        {limits.data.limits.length === 0 ? <Empty>No limits set</Empty> : <Card className="divide-y divide-sb-line">
-          {limits.data.limits.map(limit => <div key={limit.id} className="flex min-w-0 items-center justify-between gap-3 px-4 py-3.5">
+        {limits.data.limits.length === 0 ? <Empty>No limits set</Empty> : <div className="divide-y divide-sb-line border-b border-sb-line">
+          {limits.data.limits.map(limit => <div key={limit.id} className="flex min-w-0 items-center justify-between gap-3 py-3.5">
             <div className="min-w-0"><p className="text-sm font-semibold"><Dot tone={toneFor(limit.state)} />{label(limit.type)} limit<span className="ml-2 text-xs font-normal text-sb-mute">{label(limit.state)}</span></p><p className="mt-0.5 tabular-nums text-xs text-sb-mute">{label(limit.period)} · from {formatDate(limit.effectiveFrom)}{limit.effectiveTo ? ` · ends ${formatDate(limit.effectiveTo)}` : ''}</p></div>
             <p className="shrink-0 tabular-nums text-lg font-semibold ">{limit.type==='SESSION'?`${limit.amountMinor} min`:formatMinor(limit.amountMinor, limit.currency)}</p>
           </div>)}
-        </Card>}
+        </div>}
       </Section>
     </>}
   </CustomerShell>

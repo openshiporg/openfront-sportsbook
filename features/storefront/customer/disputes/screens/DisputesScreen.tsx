@@ -79,7 +79,7 @@ export function DisputesScreen() {
   return <CustomerShell current="disputes" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference} closed={isClosedError(session.error)}>
     <AccountPageHeader title="Support" meta="Account, payments, safer play, privacy and bet disputes" />
     {session.data && !session.data.authenticated ? <AuthenticationRequired /> : <>
-    {isClosedError(cases.error) ? <ClosedPanel /> : <form onSubmit={submit} className="mt-6 rounded-xl bg-sb-card p-5 ring-1 ring-sb-line sm:p-6">
+    {isClosedError(cases.error) ? <ClosedPanel /> : <form onSubmit={submit} className="mt-8 border-t-2 border-sb-ink pt-5">
       <h2 className="font-sb-display text-xl font-semibold ">{wagerCase ? 'Dispute a bet' : 'New request'}</h2>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className={labelClass}>About<select value={form.category} onChange={e => setForm(v => ({ ...v, category: e.target.value, wagerId: '', paymentIntentId: '' }))} className={fieldClass}>{categories.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
