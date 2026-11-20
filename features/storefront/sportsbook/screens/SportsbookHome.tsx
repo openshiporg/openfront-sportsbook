@@ -123,7 +123,7 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
        <Link href={`/sports/${encodeURIComponent(event.sportKey)}/${encodeURIComponent(event.competitionSlug)}`} className="truncate font-semibold  text-sb-mute hover:text-sb-ink">{event.competition}</Link>
        <span className={cn('tabular-nums ',live?'font-semibold text-sb-live':'text-sb-mute')}>{live?`LIVE ${event.livePhase??''} · ${event.clockSeconds??0}s`:formatDate(event.startsAt)}</span>
       </p>
-      <h2 className="mt-1.5 break-words font-sb-display text-lg font-semibold leading-tight"><Link href={`/events/${event.eventId}`} className="hover:text-sb-brand">{live&&<Dot tone="live"/>}{event.name}</Link></h2>
+      <h2 className={cn('mt-1.5 break-words font-sb-display text-lg font-semibold leading-tight',initialEventId&&'sr-only')}><Link href={`/events/${event.eventId}`} className="hover:text-sb-brand">{live&&<Dot tone="live"/>}{event.name}</Link></h2>
      </div>
      <button type="button" aria-label={`${favorite?'Remove':'Add'} ${event.name} favorite`} aria-pressed={favorite} onClick={()=>toggleFavorite(event.eventId)} className="-mr-1 grid size-11 shrink-0 place-items-center rounded-xl hover:bg-sb-well"><Heart className={cn('size-4',favorite?'fill-sb-live text-sb-live':'text-sb-mute')}/></button>
     </header>
