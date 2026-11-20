@@ -101,8 +101,8 @@ export function Section({ title, tone, count, actions, children, id, className }
 
 /** Headline figures: a ruled strip of mono readouts. */
 export function Readouts({ items, className }: { items: Array<{ label: string; value: ReactNode; tone?: Tone; sub?: ReactNode }>; className?: string }) {
-  return <dl className={cn('grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-sb-line ring-1 ring-sb-line', items.length >= 4 ? 'lg:grid-cols-4' : items.length === 3 ? 'sm:grid-cols-3' : '', className)}>
-    {items.map(item => <div key={item.label} className="min-w-0 bg-sb-card px-4 py-3.5">
+  return <dl className={cn('grid grid-cols-2 gap-x-6 border-y border-sb-line', items.length >= 4 ? 'lg:grid-cols-4' : items.length === 3 ? 'sm:grid-cols-3' : '', className)}>
+    {items.map(item => <div key={item.label} className="min-w-0 py-3.5">
       <dt className="truncate text-xs font-semibold text-sb-mute">{item.tone ? <Dot tone={item.tone} /> : null}{item.label}</dt>
       <dd className="mt-1 truncate text-xl font-semibold tabular-nums text-sb-ink sm:text-2xl">{item.value}</dd>
       {item.sub ? <dd className="mt-0.5 truncate text-xs text-sb-mute">{item.sub}</dd> : null}
@@ -111,7 +111,7 @@ export function Readouts({ items, className }: { items: Array<{ label: string; v
 }
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('min-w-0 rounded-xl bg-sb-card ring-1 ring-sb-ink/15', className)}>{children}</div>
+  return <div className={cn('min-w-0 rounded-md bg-sb-card ring-1 ring-sb-line', className)}>{children}</div>
 }
 
 export function Notice({ tone = 'status', children, className }: { tone?: 'status' | 'alert' | 'ok'; children: ReactNode; className?: string }) {
@@ -121,7 +121,7 @@ export function Notice({ tone = 'status', children, className }: { tone?: 'statu
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="rounded-xl border border-sb-line px-4 py-6 text-sm text-sb-mute">{children}</p>
+  return <p className="border-t border-sb-line py-6 text-sm text-sb-mute">{children}</p>
 }
 
 /** Key/value rows with mono values. */

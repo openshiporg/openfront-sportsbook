@@ -139,7 +139,7 @@ export function WalletScreen() {
 
   const enabled = wallet.data ? (action==='DEPOSIT'?wallet.data.depositsEnabled&&Boolean(wallet.data.card):wallet.data.withdrawalsEnabled) : false
   return <CustomerShell current="wallet" authenticated={Boolean(session.data?.authenticated)} accountReference={session.data?.accountReference} closed={isClosedError(session.error)}>
-    <AccountPageHeader title="Wallet" meta={wallet.data ? `Wallet · as of ${formatDate(wallet.data.asOf)}` : 'Wallet'} />
+    <AccountPageHeader title="Wallet" meta={wallet.data ? `As of ${formatDate(wallet.data.asOf)}` : undefined} />
     {(session.loading || wallet.loading) && <LoadingPanel label="Loading wallet" />}
     {signedOut && <AuthenticationRequired />}
     {wallet.error && <ErrorPanel error={wallet.error} retry={wallet.reload} />}
@@ -153,7 +153,7 @@ export function WalletScreen() {
         </div>
       </div>
 
-      <section aria-labelledby="fund-wallet" className="mt-6 rounded-xl bg-sb-card p-5 ring-1 ring-sb-line sm:p-6">
+      <section aria-labelledby="fund-wallet" className="mt-8 border-t-2 border-sb-ink pt-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 id="fund-wallet" className="font-sb-display text-xl font-semibold ">{pendingIntent ? <Dot tone="wait" /> : null}Move funds</h2>
           <Track label="Wallet action"><Pill variant="flat" size="sm" onClick={()=>{setAction('DEPOSIT');setStatus('');setError('')}} disabled={funding || Boolean(pendingIntent)} aria-pressed={action==='DEPOSIT'}>Deposit</Pill><Pill variant="flat" size="sm" onClick={()=>{setAction('WITHDRAWAL');setStatus('');setError('')}} disabled={funding || Boolean(pendingIntent)} aria-pressed={action==='WITHDRAWAL'}>Withdraw</Pill></Track>

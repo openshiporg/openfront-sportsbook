@@ -10,7 +10,7 @@ export function AccountPageHeader({ title, tone, meta, aside }: { title: string;
 }
 
 export function LoadingPanel({ label = 'Loading' }: { label?: string }) {
-  return <div role="status" className="mt-6 flex min-h-40 items-center justify-center rounded-xl bg-sb-card text-sm text-sb-mute ring-1 ring-sb-line">
+  return <div role="status" className="mt-6 flex min-h-40 items-center justify-center border-t border-sb-line text-sm text-sb-mute">
     <LoaderCircle aria-hidden="true" className="mr-2 size-5 animate-spin motion-reduce:animate-none" />{label}
   </div>
 }
@@ -53,11 +53,9 @@ export function ErrorPanel({ error, retry }: { error: CustomerApiError; retry: (
 }
 
 export function AuthenticationRequired() {
-  return <div className="mt-6 overflow-hidden rounded-xl bg-sb-card ring-1 ring-sb-line">
-    <div className="border-b border-sb-line px-5 py-5 text-sb-ink sm:px-6">
-      <p className="font-sb-display text-2xl font-semibold leading-none "><Dot tone="off" className="bg-sb-mute/60" />Signed out</p>
-    </div>
-    <div className="grid gap-5 p-5 sm:grid-cols-2 sm:p-6">
+  return <div className="mt-6 border-t-2 border-sb-ink">
+    <p className="pt-4 text-sm text-sb-mute">Sign in to see this page.</p>
+    <div className="mt-5 grid gap-5 sm:grid-cols-2">
       <div>
         <p className="text-sm font-semibold">Existing account</p>
         <div className="mt-3"><Track><PillLink href="/account/auth" variant="primary">Sign in or recover</PillLink></Track></div>
