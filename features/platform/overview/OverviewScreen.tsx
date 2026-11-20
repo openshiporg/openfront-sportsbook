@@ -3,11 +3,11 @@ import { ArrowRight } from "lucide-react";
 import { ExternalGateNotice, OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { Mono, StatusDot, type Tone } from "../components/kit";
 import { MetricGrid, RecordList } from "../components/WorkflowUI";
-import { dateTime, money, moneyTotals, shortId, sumByCurrency } from "../lib/format";
-import { playerDisplay, playerDisplayInclude } from "@/features/sportsbook/domain/references";
+import { dateTime, money, moneyTotals, sumByCurrency } from "../lib/format";
+import { betReference, playerDisplay, playerDisplayInclude } from "@/features/sportsbook/domain/references";
 import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 
-const stateText = (value: string | null | undefined) => (value || "unknown").replaceAll("_", " ").toLowerCase();
+const stateText = (value: string | null | undefined) => { const text = (value || "unknown").replaceAll("_", " ").toLowerCase(); return text.charAt(0).toUpperCase() + text.slice(1); };
 
 type Queue = { label: string; count: number; href?: string; tone: Tone };
 
@@ -57,7 +57,7 @@ export async function OverviewScreen() {
       { label: "Wagers", value: wagers },
       { label: "Needs attention", value: attention, tone: attention ? "wait" : "ok" },
     ]} />
-    {recent === null ? null : <RecordList title="Latest wagers" columns={["Reference", "Player", "Stake", "State"]} rows={recent.map((wager: any) => ({ id: wager.id, href: `/dashboard/platform/wagers/${wager.id}`, status: wager.status, cells: [<Mono key="ref">{shortId(wager.id)}</Mono>, playerDisplay(wager.player, wager.playerId).primary, <span key="stake"><Mono className="text-foreground">{money(wager.stakeMinor, wager.currency)}</Mono><span className="block text-xs">{dateTime(wager.createdAt)}</span></span>, stateText(wager.status)] }))} emptyTitle="No wagers" />}
+    {recent === null ? null : <RecordList title="Latest wagers" columns={["Reference", "Player", "Stake", "State"]} rows={recent.map((wager: any) => ({ id: wager.id, href: `/dashboard/platform/wagers/${wager.id}`, status: wager.status, cells: [<Mono key="ref">{betReference(wager.id)}</Mono>, playerDisplay(wager.player, wager.playerId).primary, <span key="stake"><Mono className="text-foreground">{money(wager.stakeMinor, wager.currency)}</Mono><span className="block text-xs">{dateTime(wager.createdAt)}</span></span>, stateText(wager.status)] }))} emptyTitle="No wagers" />}
     <ExternalGateNotice />
   </OperatorShell>;
 }

@@ -9,7 +9,7 @@ import { searchFrom } from "../lib/graphql";
 import type { PlatformSearchParams } from "../lib/paging";
 
 const PICKER_SIZE = 50;
-const stateText = (value: string | null | undefined) => (value || "unknown").replaceAll("_", " ").toLowerCase();
+const stateText = (value: string | null | undefined) => { const text = (value || "unknown").replaceAll("_", " ").toLowerCase(); return text.charAt(0).toUpperCase() + text.slice(1); };
 
 export async function CatalogDetailScreen({ eventId, searchParams }: { eventId: string; searchParams?: PlatformSearchParams }) {
   const params = (await searchParams) ?? {};

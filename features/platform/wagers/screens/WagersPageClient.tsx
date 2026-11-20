@@ -31,7 +31,7 @@ export type WagersPageData = {
 };
 
 const basePath = "/dashboard/platform/wagers";
-const stateText = (value: string | null | undefined) => (value || "unknown").replaceAll("_", " ").toLowerCase();
+const stateText = (value: string | null | undefined) => { const text = (value || "unknown").replaceAll("_", " ").toLowerCase(); return text.charAt(0).toUpperCase() + text.slice(1); };
 
 /** Server-formatted "stake → return · time" split back into mono figures and a time line. */
 function StakeAndReturn({ value }: { value: string }) {
@@ -51,7 +51,7 @@ export function WagersPageClient({ data }: { data: WagersPageData }) {
     ]} />
     <RecordList
       title="Receipts"
-      action={<ListFilters searchLabel="Search wagers" searchPlaceholder="Wager ID or request key" filters={[{ key: "status", label: "Status", options: data.statuses.map((value) => ({ label: stateText(value), value })) }]} />}
+      action={<ListFilters searchLabel="Search wagers" searchPlaceholder="BET- reference, wager ID or request key" filters={[{ key: "status", label: "Status", options: data.statuses.map((value) => ({ label: stateText(value), value })) }]} />}
       columns={["Reference", "Player", "Stake → return", "State"]}
       rows={data.rows.map((wager) => ({
         id: wager.id,

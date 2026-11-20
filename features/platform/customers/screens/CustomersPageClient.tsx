@@ -37,7 +37,7 @@ export function CustomersPageClient({ data }: { data: CustomersPageData }) {
   const filtered = Boolean(data.search || data.kycStatus);
   return <>
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-      <div className="min-w-0 flex-1"><ListFilters searchLabel="Search players" searchPlaceholder="Player reference or ID" /></div>
+      <div className="min-w-0 flex-1"><ListFilters searchLabel="Search players" searchPlaceholder="ACC- account number or player ID" /></div>
       <Track label="KYC">
         <PillLink size="sm" variant="flat" href={hrefWith(basePath, { q: data.search })} current={!data.kycStatus}>All</PillLink>
         {kycValues.map((value) => <PillLink key={value} size="sm" variant="flat" href={hrefWith(basePath, { q: data.search, kyc: value })} current={data.kycStatus === value}>

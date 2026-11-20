@@ -16,6 +16,12 @@ export function accountNumber(playerId: string | null | undefined) {
   return playerId ? `ACC-${tail(playerId)}` : '—'
 }
 
+/** Lower-case id tail for a typed `ACC-XXXXXXXX` / `BET-XXXXXXXX` reference, else null. */
+export function referenceTail(search: string | null | undefined, prefix: 'ACC' | 'BET') {
+  const match = search?.trim().match(new RegExp(`^${prefix}-([a-z0-9]{8})$`, 'i'))
+  return match ? match[1].toLowerCase() : null
+}
+
 type PlayerLike = {
   id?: string | null
   subject?: string | null

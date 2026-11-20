@@ -1,11 +1,11 @@
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { ReadFailed } from "../components/ReadFailed";
-import { dateTime, money, moneyTotals, shortId, sumByCurrency } from "../lib/format";
+import { dateTime, money, moneyTotals, sumByCurrency } from "../lib/format";
 import { searchFrom } from "../lib/graphql";
-import { getOperatorContext, notFoundWhenForbidden } from "../lib/operator";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 import { allowedParam, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { getWagers } from "./actions";
-import { accountNumber } from "@/features/sportsbook/domain/references";
+import { accountNumber, betReference, referenceTail } from "@/features/sportsbook/domain/references";
 import { WagersPageClient } from "./screens/WagersPageClient";
 
 const wagerStatuses = ["PENDING", "DELAYED", "ACCEPTED", "REJECTED", "OPEN", "PARTIALLY_CASHED_OUT", "CASHED_OUT", "GRADED", "SETTLED", "VOID"] as const;
@@ -19,7 +19,9 @@ export async function WagersScreen({ searchParams }: { searchParams?: PlatformSe
   const operator = await getOperatorContext("canManageRisk");
   if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Wagers" title="Wagers"><TenantRequired /></OperatorShell>;
-  const result = await getWagers({ page, pageSize: PLATFORM_PAGE_SIZE, search, status });
+  const tail = referenceTail(search, "BET");
+  const referenceIds = tail ? (await prisma.wager.findMany({ where: { tenantId: operator.tenantId, id: { endsWith: tail } }, select: { id: true }, take: 10 })).map((wager: { id: string }) => wager.id) : undefined;
+  const result = await getWagers({ page, pageSize: PLATFORM_PAGE_SIZE, search, status, referenceIds });
   if (!result.success) return <OperatorShell active="Wagers" title="Wagers" tone="alert" tenantName={operator.tenantName}><ReadFailed subject="wagers" /></OperatorShell>;
   const wagers = result.data.wagers;
   // Handle counts only wagers with an accepted decision that remain economically live or resolved;
@@ -29,7 +31,7 @@ export async function WagersScreen({ searchParams }: { searchParams?: PlatformSe
   const rejectedRequested = sumByCurrency(wagers.filter((wager) => wager.status === "REJECTED"), (wager) => wager.stakeMinor, (wager) => wager.currency);
   return <OperatorShell active="Wagers" title="Wagers" tone={result.data.openDisputes ? "wait" : "ok"} meta={`${result.data.total} wagers · ${result.data.openDisputes} open disputes`} tenantName={operator.tenantName}>
     <WagersPageClient data={{
-      rows: wagers.map((wager) => ({ id: wager.id, reference: shortId(wager.id), player: wager.player ? accountNumber(wager.player.id) : "Restricted", stakeAndReturn: `${money(wager.stakeMinor, wager.currency)} → ${money(wager.potentialReturnMinor, wager.currency)} · ${dateTime(wager.createdAt)}`, status: wager.status, disputed: wager.disputes > 0 })),
+      rows: wagers.map((wager) => ({ id: wager.id, reference: betReference(wager.id), player: wager.player ? accountNumber(wager.player.id) : "Restricted", stakeAndReturn: `${money(wager.stakeMinor, wager.currency)} → ${money(wager.potentialReturnMinor, wager.currency)} · ${dateTime(wager.createdAt)}`, status: wager.status, disputed: wager.disputes > 0 })),
       total: result.data.total, accepted: result.data.accepted, rejected: result.data.rejected, openDisputes: result.data.openDisputes,
       handle: moneyTotals(handle), handleDetail: `${acceptedEconomic.length}/${wagers.length} on page · rejected ${moneyTotals(rejectedRequested)}`,
       page, pageSize: PLATFORM_PAGE_SIZE, status, search, statuses: wagerStatuses,

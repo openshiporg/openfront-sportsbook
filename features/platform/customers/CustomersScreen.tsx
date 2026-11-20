@@ -2,8 +2,8 @@ import { OperatorShell, TenantRequired } from "../components/OperatorShell";
 import { ReadFailed } from "../components/ReadFailed";
 import { dateTime, shortId } from "../lib/format";
 import { searchFrom } from "../lib/graphql";
-import { accountNumber } from "@/features/sportsbook/domain/references";
-import { getOperatorContext, notFoundWhenForbidden } from "../lib/operator";
+import { accountNumber, referenceTail } from "@/features/sportsbook/domain/references";
+import { getOperatorContext, notFoundWhenForbidden, platformPrisma as prisma } from "../lib/operator";
 import { allowedParam, pageFrom, PLATFORM_PAGE_SIZE, type PlatformSearchParams } from "../lib/paging";
 import { getCustomers } from "./actions";
 import { CustomersPageClient } from "./screens/CustomersPageClient";
@@ -19,7 +19,9 @@ export async function CustomersScreen({ searchParams }: { searchParams?: Platfor
   const operator = await getOperatorContext("canManageCompliance");
   if (!operator) await notFoundWhenForbidden();
   if (!operator) return <OperatorShell active="Customers" title="Customers"><TenantRequired /></OperatorShell>;
-  const result = await getCustomers({ page, pageSize: PLATFORM_PAGE_SIZE, search, kycStatus });
+  const tail = referenceTail(search, "ACC");
+  const referenceIds = tail ? (await prisma.player.findMany({ where: { tenantId: operator.tenantId, id: { endsWith: tail } }, select: { id: true }, take: 10 })).map((player: { id: string }) => player.id) : undefined;
+  const result = await getCustomers({ page, pageSize: PLATFORM_PAGE_SIZE, search, kycStatus, referenceIds });
   const meta = result.success ? `${result.data.total} ${search || kycStatus ? "matching" : "players"} · ${result.data.pendingKyc} KYC pending · ${result.data.openAml} AML open · ${result.data.restricted} restricted` : undefined;
   const tone = result.success ? (result.data.pendingKyc || result.data.openAml ? "wait" : "ok") : "alert";
   return <OperatorShell active="Customers" title="Customers" tenantName={operator.tenantName} tone={tone} meta={meta}>

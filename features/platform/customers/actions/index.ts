@@ -30,10 +30,10 @@ export type CustomerKycFilter = (typeof kycStatuses)[number];
  * Customer review queue through GraphQL: Player, VerificationCase, AMLCase and
  * AccountRestriction are compliance lists, tenant-filtered by Keystone access.
  */
-export async function getCustomers({ page, pageSize, search, kycStatus }: { page: number; pageSize: number; search?: string; kycStatus?: CustomerKycFilter }): Promise<KeystoneResponse<CustomerListResult>> {
+export async function getCustomers({ page, pageSize, search, kycStatus, referenceIds }: { page: number; pageSize: number; search?: string; kycStatus?: CustomerKycFilter; referenceIds?: string[] }): Promise<KeystoneResponse<CustomerListResult>> {
   const where = {
     AND: [
-      search ? { OR: [{ subject: { contains: search, mode: "insensitive" } }, { id: { equals: search } }] } : {},
+      search ? { OR: [{ subject: { contains: search, mode: "insensitive" } }, { id: { equals: search } }, ...(referenceIds?.length ? [{ id: { in: referenceIds } }] : [])] } : {},
       kycStatus && kycStatuses.includes(kycStatus) ? { kycStatus: { equals: kycStatus } } : {},
     ],
   };

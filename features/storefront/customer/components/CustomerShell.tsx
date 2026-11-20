@@ -81,7 +81,7 @@ export function CustomerShell({
           >
             {menuOpen ? <X aria-hidden="true" className="size-5" /> : <Menu aria-hidden="true" className="size-5" />}
           </button>
-          <Link href="/" data-testid="nav-store-link" className="flex min-w-0 flex-1 items-center gap-2.5 md:flex-none">
+          <Link href="/" data-testid="nav-store-link" className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 md:flex-none">
             <span style={brandFilter} aria-hidden="true" dangerouslySetInnerHTML={{ __html: logoSvg }} className="box-content h-6 w-5 shrink-0 rounded-lg bg-white px-1 py-0.5 ring-1 ring-sb-line [&>svg]:block [&>svg]:h-full [&>svg]:w-full" />
             <span className="min-w-0 truncate font-sb-display text-lg font-semibold leading-none  sm:text-xl">{brandName}</span>
           </Link>
@@ -93,7 +93,7 @@ export function CustomerShell({
           <div className="ml-auto flex shrink-0 items-center gap-2">
             {authenticated ? (
               <>
-                <Link href="/account/profile" className="hidden items-center gap-2 rounded-xl px-3 py-1.5 tabular-nums text-xs text-sb-mute hover:bg-sb-well hover:text-sb-ink sm:inline-flex">
+                <Link href="/account/profile" className="hidden min-h-11 items-center gap-2 rounded-xl px-3 py-1.5 tabular-nums text-xs text-sb-mute hover:bg-sb-well hover:text-sb-ink sm:inline-flex">
                   <span aria-hidden="true" className="size-1.5 rounded-full bg-sb-win" />{accountReference ?? 'Account'}
                 </Link>
                 <button
@@ -101,14 +101,14 @@ export function CustomerShell({
                   aria-label={signingOut ? 'Signing out' : 'Sign out'}
                   onClick={signOut}
                   disabled={signingOut}
-                  className="inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-xl px-3.5 text-sm font-semibold text-sb-ink ring-1 ring-sb-line hover:bg-sb-well disabled:cursor-wait disabled:opacity-60"
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3.5 text-sm font-semibold text-sb-ink ring-1 ring-sb-line hover:bg-sb-well disabled:cursor-wait disabled:opacity-60"
                 >
                   <LogOut aria-hidden="true" className="size-4" />
                   <span className="hidden sm:inline">{signingOut ? 'Signing out…' : 'Sign out'}</span>
                 </button>
               </>
             ) : (
-              <Link href="/account/auth" className={cn(pillClass('raised', 'sm'), 'border-sb-night bg-sb-night text-white hover:bg-sb-board')}>Sign in</Link>
+              <Link href="/account/auth" className={cn(pillClass('raised', 'sm'), 'min-h-11 border-sb-night bg-sb-night text-white hover:bg-sb-board')}>Sign in</Link>
             )}
           </div>
           <nav id="customer-navigation" hidden={!menuOpen} className="w-full border-t border-sb-line pb-2 pt-3 md:hidden" aria-label="Mobile navigation">

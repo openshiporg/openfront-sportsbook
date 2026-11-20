@@ -1,4 +1,5 @@
 import { MutationForm } from "../../components/MutationForm";
+import { betReference } from "@/features/sportsbook/domain/references"
 import { OperatorShell, TenantRequired } from "../../components/OperatorShell";
 import { ReadFailed } from "../../components/ReadFailed";
 import { Mono, PillLink, StatusDot, Track } from "../../components/kit";
@@ -118,7 +119,7 @@ export async function TaxScreen({ searchParams }: { searchParams?: PlatformSearc
           status: item.status ?? undefined,
           href: item.wagerId ? `/dashboard/platform/wagers/${item.wagerId}` : undefined,
           cells: [
-            <span key="wager"><Mono>{item.wagerId ? shortId(item.wagerId) : "—"}</Mono>{item.wager?.player?.subject ? <span className="block break-all text-xs font-normal text-muted-foreground">{item.wager.player.subject}</span> : null}</span>,
+            <span key="wager"><Mono>{item.wagerId ? betReference(item.wagerId) : "—"}</Mono>{item.wager?.player?.subject ? <span className="block break-all text-xs font-normal text-muted-foreground">{item.wager.player.subject}</span> : null}</span>,
             <span key="rule" className="break-all">{rule.name}</span>,
             <Mono key="basis">{money(item.basisMinor, item.currency)}</Mono>,
             <span key="amount"><Mono className="text-foreground">{money(item.amountMinor, item.currency)}</Mono><span className="block"><StatusBadge value={item.status} /></span></span>,

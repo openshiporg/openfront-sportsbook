@@ -28,7 +28,7 @@ export type TradingPageData = {
 
 const basePath = "/dashboard/platform/trading";
 const statusOptions = ["OPEN", "SUSPENDED", "CLOSED", "GRADED"].map((value) => ({ label: value.toLowerCase(), value }));
-const stateText = (value: string | null | undefined) => (value || "unknown").replaceAll("_", " ").toLowerCase();
+const stateText = (value: string | null | undefined) => { const text = (value || "unknown").replaceAll("_", " ").toLowerCase(); return text.charAt(0).toUpperCase() + text.slice(1); };
 
 /** Reads the server-formatted "N total · M priced" summary back into counts for display and ordering. */
 function priceCoverage(selections: string) {

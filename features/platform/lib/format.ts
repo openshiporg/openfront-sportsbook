@@ -88,7 +88,8 @@ export function dateTime(value: Date | string | null | undefined) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   const context = requestDisplayContext();
-  return new Intl.DateTimeFormat(context.locale, { dateStyle: "medium", timeStyle: "short", timeZone: context.timeZone }).format(date) + ` ${context.timeZone}`;
+  const zone = new Intl.DateTimeFormat(context.locale, { timeZone: context.timeZone, timeZoneName: "short" }).formatToParts(date).find((part) => part.type === "timeZoneName")?.value || context.timeZone;
+  return new Intl.DateTimeFormat(context.locale, { dateStyle: "medium", timeStyle: "short", timeZone: context.timeZone }).format(date) + ` ${zone}`;
 }
 
 /**

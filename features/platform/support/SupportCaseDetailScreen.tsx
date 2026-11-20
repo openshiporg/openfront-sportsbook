@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { betReference } from "@/features/sportsbook/domain/references"
 import Link from "next/link";
 import { MutationForm } from "../components/MutationForm";
 import { OperatorShell, TenantRequired } from "../components/OperatorShell";
@@ -67,7 +68,7 @@ export async function SupportCaseDetailScreen({ caseId, page = 1 }: { caseId: st
       { label: "Player", value: item.player ? <Link className={linkClass} href={`/dashboard/platform/customers/${item.playerId}`}>{shortId(item.playerId)}</Link> : <Mono>{shortId(item.playerId || "")}</Mono> },
       { label: "Opened", value: <Mono>{dateTime(item.openedAt)}</Mono> },
       { label: "SLA due", value: <Mono>{dateTime(item.slaDueAt)}</Mono> },
-      { label: "Wager", value: item.wagerId ? <Link className={linkClass} href={`/dashboard/platform/wagers/${item.wagerId}`}>{shortId(item.wagerId)}</Link> : "—" },
+      { label: "Wager", value: item.wagerId ? <Link className={linkClass} href={`/dashboard/platform/wagers/${item.wagerId}`}>{betReference(item.wagerId)}</Link> : "—" },
       { label: "Dispute", value: item.dispute ? <span className="flex flex-wrap items-center gap-2"><Mono>{shortId(item.dispute.id)}</Mono> <StatusBadge value={item.dispute.status} /></span> : "—" },
       { label: "Payment", value: item.paymentIntentId ? <Mono>{shortId(item.paymentIntentId)}</Mono> : "—" },
     ]} />

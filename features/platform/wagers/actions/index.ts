@@ -32,11 +32,11 @@ export type WagerStatusFilter = (typeof wagerStatuses)[number];
  * risk lists, tenant-filtered by Keystone access; the nested player resolves only
  * for operators who may read players.
  */
-export async function getWagers({ page, pageSize, search, status }: { page: number; pageSize: number; search?: string; status?: WagerStatusFilter }): Promise<KeystoneResponse<WagerListResult>> {
+export async function getWagers({ page, pageSize, search, status, referenceIds }: { page: number; pageSize: number; search?: string; status?: WagerStatusFilter; referenceIds?: string[] }): Promise<KeystoneResponse<WagerListResult>> {
   const where = {
     AND: [
       status && wagerStatuses.includes(status) ? { status: { equals: status } } : {},
-      search ? { OR: [{ id: { equals: search } }, { idempotencyKey: { equals: search } }] } : {},
+      search ? { OR: [{ id: { equals: search } }, { idempotencyKey: { equals: search } }, ...(referenceIds?.length ? [{ id: { in: referenceIds } }] : [])] } : {},
     ],
   };
   const list = await platformRead<{ wagers: Omit<WagerListRecord, "hasAcceptedDecision" | "disputes">[]; wagersCount: number; accepted: number; rejected: number; openDisputes: number }>(`

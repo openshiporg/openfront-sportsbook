@@ -1,4 +1,5 @@
 import { ExternalGateNotice, OperatorShell, TenantRequired } from '../components/OperatorShell'
+import { accountNumber, betReference } from "@/features/sportsbook/domain/references"
 import { ReadFailed } from '../components/ReadFailed'
 import { dateTime, shortId } from '../lib/format'
 import { searchFrom } from '../lib/graphql'
@@ -50,9 +51,9 @@ export async function SupportScreen({ searchParams }: { searchParams?: PlatformS
   const tone = !queue.success ? 'alert' : queue.data.openCases || register.open ? 'wait' : 'ok'
   return <OperatorShell active="Support" title="Support & disputes" tenantName={operator.tenantName} tone={tone} meta={meta}>
     {queue.success ? <SupportPageClient data={{
-      cases: queue.data.cases.map((item) => ({ id: item.id, subject: item.subject || shortId(item.id), reference: shortId(item.id), category: item.category || '—', player: item.player ? shortId(item.player.id) : 'Restricted', openedAt: dateTime(item.openedAt), slaDueAt: dateTime(item.slaDueAt), status: item.status })),
+      cases: queue.data.cases.map((item) => ({ id: item.id, subject: item.subject || shortId(item.id), reference: shortId(item.id), category: item.category || '—', player: item.player ? accountNumber(item.player.id) : 'Restricted', openedAt: dateTime(item.openedAt), slaDueAt: dateTime(item.slaDueAt), status: item.status })),
       casesTotal: queue.data.total, allCases: queue.data.allCases, openCases: queue.data.openCases, customerVisibleEvents: queue.data.customerVisibleEvents, casePage, caseStatus, search,
-      disputes: register.disputes.map((item: any) => ({ id: item.id, category: item.category, reference: shortId(item.id), wager: item.wagerId ? shortId(item.wagerId) : 'No wager', resolution: item.resolution || 'No proposal', status: item.status })),
+      disputes: register.disputes.map((item: any) => ({ id: item.id, category: item.category, reference: shortId(item.id), wager: item.wagerId ? betReference(item.wagerId) : 'No wager', resolution: item.resolution || 'No proposal', status: item.status })),
       disputesTotal: register.total, allDisputes: register.all, openDisputes: register.open, appeals: register.appeals, disputePage, disputeStatus,
       pageSize: PLATFORM_PAGE_SIZE, caseStatuses, disputeStatuses,
       openCaseOptions: queue.data.openCasePicker.map((item) => ({ label: `${shortId(item.id)} · ${item.subject}`, value: item.id })),
