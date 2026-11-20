@@ -106,8 +106,8 @@ export function SportsbookHome({initialSport,initialCompetition,initialEventId,i
    </div>
 
    {!closed&&<div className="mt-4 space-y-2 xl:hidden">
-    <div className="sb-scroll -mx-4 px-4"><Track label="Sport">{sports.map(item=><button key={item} type="button" aria-pressed={sport===item} onClick={()=>pickSport(item)} className={pillClass('flat','sm')}>{sportLabel(item)}</button>)}</Track></div>
-    {competitions.length>1&&<div className="sb-scroll -mx-4 px-4"><Track label="Competition">{competitions.map(item=><button key={item} type="button" aria-pressed={competition===item} onClick={()=>setCompetition(item)} className={pillClass('flat','sm')}>{item==='All'?'All competitions':item}</button>)}</Track></div>}
+    <div className="sb-scroll -mx-4 px-4"><Track label="Sport">{sports.map(item=><button key={item} type="button" aria-pressed={sport===item} onClick={()=>pickSport(item)} className={cn(pillClass('flat','sm'),'shrink-0')}>{sportLabel(item)}</button>)}</Track></div>
+    {competitions.length>1&&<div className="sb-scroll -mx-4 px-4"><Track label="Competition">{competitions.map(item=><button key={item} type="button" aria-pressed={competition===item} onClick={()=>setCompetition(item)} className={cn(pillClass('flat','sm'),'shrink-0')}>{item==='All'?'All competitions':item}</button>)}</Track></div>}
    </div>}
 
    {closed?<ClosedPanel coupon/>:<>
