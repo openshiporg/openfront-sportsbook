@@ -11,7 +11,11 @@ test('each Prisma client gets a bounded pool instead of cpus*2+1', () => {
 
 test('an explicit connection_limit and other params are kept', () => {
   const url = 'postgresql://u:p@h:5432/db?sslmode=require&connection_limit=50'
-  assert.equal(pooledDatabaseUrl(url, 'web'), url)
+  const kept = new URL(pooledDatabaseUrl(url, 'web')!)
+  assert.equal(kept.searchParams.get('connection_limit'), '50')
+  assert.equal(kept.searchParams.get('sslmode'), 'require')
+  assert.equal(kept.searchParams.get('statement_cache_size'), '0')
+  assert.match(kept.searchParams.get('options')!, /jit=off.*idle_session_timeout=60000/)
   const withSsl = new URL(pooledDatabaseUrl('postgresql://u:p@h:5432/db?sslmode=require', 'web')!)
   assert.equal(withSsl.searchParams.get('sslmode'), 'require')
   assert.equal(withSsl.searchParams.get('connection_limit'), '20')
